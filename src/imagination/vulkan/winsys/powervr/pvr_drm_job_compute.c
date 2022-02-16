@@ -22,6 +22,7 @@
  */
 
 #include <errno.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -156,12 +157,131 @@ void pvr_drm_winsys_compute_ctx_destroy(struct pvr_winsys_compute_ctx *ctx)
    vk_free(drm_ws->alloc, drm_ctx);
 }
 
+static void pvr_drm_compute_cmd_init(
+   const struct pvr_winsys_compute_submit_info *restrict submit_info,
+   struct drm_pvr_cmd_compute *restrict cmd)
+{
+   struct drm_pvr_cmd_compute_format_1 *compute_cmd =
+      &cmd->data.cmd_compute_format_1;
+   struct drm_pvr_compute_regs_format_1 *regs = &compute_cmd->regs;
+
+   memset(cmd, 0, sizeof(*cmd));
+
+   cmd->format = DRM_PVR_CMD_COMPUTE_FORMAT_1;
+
+   compute_cmd->frame_num = submit_info->frame_num;
+
+   if (submit_info->flags & PVR_WINSYS_COMPUTE_FLAG_PREVENT_ALL_OVERLAP) {
+      compute_cmd->flags |= DRM_PVR_SUBMIT_JOB_COMPUTE_CMD_PREVENT_ALL_OVERLAP;
+   }
+
+   if (submit_info->flags & PVR_WINSYS_COMPUTE_FLAG_SINGLE_CORE)
+      compute_cmd->flags |= DRM_PVR_SUBMIT_JOB_COMPUTE_CMD_SINGLE_CORE;
+
+   regs->tpu_border_colour_table = submit_info->regs.tpu_border_colour_table;
+   regs->cdm_item = submit_info->regs.cdm_item;
+   regs->compute_cluster = submit_info->regs.compute_cluster;
+   regs->cdm_ctrl_stream_base = submit_info->regs.cdm_ctrl_stream_base;
+   regs->tpu = submit_info->regs.tpu;
+   regs->cdm_resume_pds1 = submit_info->regs.cdm_resume_pds1;
+}
+
 VkResult pvr_drm_winsys_compute_submit(
    const struct pvr_winsys_compute_ctx *ctx,
    const struct pvr_winsys_compute_submit_info *submit_info,
    struct pvr_winsys_syncobj **const syncobj_out)
 {
-   pvr_finishme("powervr-km compute job submission support.");
+   const struct pvr_drm_winsys *drm_ws = to_pvr_drm_winsys(ctx->ws);
+   const struct pvr_drm_winsys_compute_ctx *drm_ctx =
+      to_pvr_drm_winsys_compute_ctx(ctx);
+
+   struct drm_pvr_cmd_compute compute_cmd;
+
+   struct drm_pvr_job_compute_args job_args = {
+      .cmd = (__u64)&compute_cmd,
+   };
+
+   struct drm_pvr_ioctl_submit_job_args args = {
+      .job_type = DRM_PVR_JOB_TYPE_COMPUTE,
+      .context_handle = drm_ctx->handle,
+      .ext_job_ref = submit_info->job_num,
+      .data = (__u64)&job_args,
+   };
+
+   struct pvr_winsys_syncobj *signal_syncobj;
+   struct pvr_drm_winsys_syncobj *drm_syncobj;
+   uint32_t num_syncobjs = 0;
+   uint32_t *handles;
+   VkResult result;
+   int ret;
+
+   pvr_drm_compute_cmd_init(submit_info, &compute_cmd);
+
+   handles = vk_alloc(drm_ws->alloc,
+                      sizeof(*handles) * submit_info->semaphore_count,
+                      8,
+                      VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
+   if (!handles)
+      return vk_error(NULL, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+   for (uint32_t i = 0; i < submit_info->semaphore_count; i++) {
+      PVR_FROM_HANDLE(pvr_semaphore, sem, submit_info->semaphores[i]);
+
+      if (!sem->syncobj)
+         continue;
+
+      drm_syncobj = to_pvr_drm_winsys_syncobj(sem->syncobj);
+
+      if (submit_info->stage_flags[i] & PVR_PIPELINE_STAGE_COMPUTE_BIT) {
+         handles[num_syncobjs++] = drm_syncobj->handle;
+         submit_info->stage_flags[i] &= ~PVR_PIPELINE_STAGE_COMPUTE_BIT;
+      }
+   }
+
+   job_args.in_syncobj_handles = (__u64)handles;
+   job_args.num_in_syncobj_handles = num_syncobjs;
+
+   result = pvr_drm_winsys_syncobj_create(ctx->ws, false, &signal_syncobj);
+   if (result != VK_SUCCESS)
+      goto err_free_handles;
+
+   drm_syncobj = to_pvr_drm_winsys_syncobj(signal_syncobj);
+   job_args.out_syncobj = drm_syncobj->handle;
+
+   ret = drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_SUBMIT_JOB, &args);
+   if (ret) {
+      /* Returns VK_ERROR_OUT_OF_DEVICE_MEMORY to match pvrsrv. */
+      result = vk_errorf(NULL,
+                         VK_ERROR_OUT_OF_DEVICE_MEMORY,
+                         "Failed to submit compute job. Errno: %d - %s.",
+                         errno,
+                         strerror(errno));
+      goto err_destroy_signal_syncobj;
+   }
+
+   for (uint32_t i = 0; i < submit_info->semaphore_count; i++) {
+      PVR_FROM_HANDLE(pvr_semaphore, sem, submit_info->semaphores[i]);
+
+      if (!sem->syncobj)
+         continue;
+
+      if (submit_info->stage_flags[i] == 0) {
+         pvr_drm_winsys_syncobj_destroy(sem->syncobj);
+         sem->syncobj = NULL;
+      }
+   }
+
+   vk_free(drm_ws->alloc, handles);
+
+   *syncobj_out = signal_syncobj;
 
    return VK_SUCCESS;
+
+err_destroy_signal_syncobj:
+   pvr_drm_winsys_syncobj_destroy(signal_syncobj);
+
+err_free_handles:
+   vk_free(drm_ws->alloc, handles);
+
+   return result;
 }
