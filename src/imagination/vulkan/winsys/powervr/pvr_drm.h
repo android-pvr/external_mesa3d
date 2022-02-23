@@ -70,6 +70,7 @@ struct pvr_drm_winsys {
    struct pvr_drm_winsys_heap general_heap;
    struct pvr_drm_winsys_heap pds_heap;
    struct pvr_drm_winsys_heap usc_heap;
+   struct pvr_drm_winsys_heap vis_test_heap;
 
    /* Optional heaps */
    bool rgn_hdr_heap_present;
