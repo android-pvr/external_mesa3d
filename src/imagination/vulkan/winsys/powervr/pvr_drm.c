@@ -61,6 +61,12 @@ static int pvr_drm_get_param(struct pvr_drm_winsys *drm_ws,
 
 static void pvr_drm_finish_heaps(struct pvr_drm_winsys *const drm_ws)
 {
+   if (!pvr_winsys_helper_winsys_heap_finish(&drm_ws->vis_test_heap.base)) {
+      vk_errorf(NULL,
+                VK_ERROR_UNKNOWN,
+                "Visibility test heap in use, can't deinit");
+   }
+
    if (drm_ws->rgn_hdr_heap_present) {
       if (!pvr_winsys_helper_winsys_heap_finish(&drm_ws->rgn_hdr_heap.base)) {
          vk_errorf(NULL,
@@ -129,6 +135,7 @@ static void pvr_drm_winsys_get_heaps_info(struct pvr_winsys *ws,
    heaps->general_heap = &drm_ws->general_heap.base;
    heaps->pds_heap = &drm_ws->pds_heap.base;
    heaps->usc_heap = &drm_ws->usc_heap.base;
+   heaps->vis_test_heap = &drm_ws->vis_test_heap.base;
 
    if (drm_ws->rgn_hdr_heap_present)
       heaps->rgn_hdr_heap = &drm_ws->rgn_hdr_heap.base;
@@ -243,6 +250,7 @@ static VkResult pvr_drm_setup_heaps(struct pvr_drm_winsys *const drm_ws)
       .op = DRM_PVR_HEAP_OP_GET_HEAP_INFO,
    };
 
+   bool vis_test_heap_present = false;
    bool general_heap_present = false;
    bool pds_heap_present = false;
    bool usc_heap_present = false;
@@ -314,6 +322,13 @@ static VkResult pvr_drm_setup_heaps(struct pvr_drm_winsys *const drm_ws)
          drm_heap = &drm_ws->rgn_hdr_heap;
          break;
 
+      case DRM_PVR_HEAP_VIS_TEST:
+         assert(!vis_test_heap_present);
+
+         heap_present_ptr = &vis_test_heap_present;
+         drm_heap = &drm_ws->vis_test_heap;
+         break;
+
       default:
          mesa_logd("Unknown heap id received. Ignoring it.");
          continue;
@@ -351,7 +366,8 @@ static VkResult pvr_drm_setup_heaps(struct pvr_drm_winsys *const drm_ws)
    }
 
    /* Check that required heaps are present (thus initialized). */
-   if (!general_heap_present || !pds_heap_present || !usc_heap_present) {
+   if (!general_heap_present || !pds_heap_present || !usc_heap_present ||
+       !vis_test_heap_present) {
       result = vk_errorf(NULL,
                          VK_ERROR_INITIALIZATION_FAILED,
                          "Some required heaps aren't present.");
@@ -361,6 +377,9 @@ static VkResult pvr_drm_setup_heaps(struct pvr_drm_winsys *const drm_ws)
    return VK_SUCCESS;
 
 err_pvr_drm_heap_finish_all_heaps:
+   if (vis_test_heap_present)
+      pvr_winsys_helper_winsys_heap_finish(&drm_ws->vis_test_heap.base);
+
    if (drm_ws->rgn_hdr_heap_present)
       pvr_winsys_helper_winsys_heap_finish(&drm_ws->rgn_hdr_heap.base);
 
