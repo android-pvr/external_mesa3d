@@ -92,8 +92,10 @@ static void pvr_drm_winsys_destroy(struct pvr_winsys *ws)
    vk_free(drm_ws->alloc, drm_ws);
 }
 
-static int pvr_drm_winsys_device_info_init(struct pvr_winsys *ws,
-                                           struct pvr_device_info *dev_info)
+static int
+pvr_drm_winsys_device_info_init(struct pvr_winsys *ws,
+                                struct pvr_device_info *dev_info,
+                                struct pvr_device_runtime_info *runtime_info)
 {
    struct pvr_drm_winsys *drm_ws = to_pvr_drm_winsys(ws);
    int ret;
@@ -106,6 +108,14 @@ static int pvr_drm_winsys_device_info_init(struct pvr_winsys *ws,
                 PVR_BVNC_UNPACK_N(drm_ws->bvnc),
                 PVR_BVNC_UNPACK_C(drm_ws->bvnc));
       return ret;
+   }
+
+   if (PVR_HAS_FEATURE(dev_info, gpu_multicore_support)) {
+      /* TODO: When kernel support is added, fetch the actual core count. */
+      mesa_logw("Core count fetching is unimplemented. Setting 1 for now.");
+      runtime_info->core_count = 1;
+   } else {
+      runtime_info->core_count = 1;
    }
 
    return 0;
