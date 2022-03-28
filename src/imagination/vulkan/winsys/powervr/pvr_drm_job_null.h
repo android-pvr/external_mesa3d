@@ -21,30 +21,18 @@
  * SOFTWARE.
  */
 
-#ifndef PVR_DRM_JOB_COMPUTE_H
-#define PVR_DRM_JOB_COMPUTE_H
+#ifndef PVR_DRM_JOB_NULL_H
+#define PVR_DRM_JOB_NULL_H
 
+#include <stdint.h>
 #include <vulkan/vulkan.h>
 
 struct pvr_winsys;
-struct pvr_winsys_compute_ctx;
-struct pvr_winsys_compute_ctx_create_info;
-struct pvr_winsys_compute_submit_info;
 struct vk_sync;
 
-/*******************************************
-   Function prototypes
- *******************************************/
+VkResult pvr_drm_winsys_null_job_submit(struct pvr_winsys *ws,
+                                        struct vk_sync **waits,
+                                        uint32_t wait_count,
+                                        struct vk_sync *signal_sync);
 
-VkResult pvr_drm_winsys_compute_ctx_create(
-   struct pvr_winsys *ws,
-   const struct pvr_winsys_compute_ctx_create_info *create_info,
-   struct pvr_winsys_compute_ctx **const ctx_out);
-void pvr_drm_winsys_compute_ctx_destroy(struct pvr_winsys_compute_ctx *ctx);
-
-VkResult pvr_drm_winsys_compute_submit(
-   const struct pvr_winsys_compute_ctx *ctx,
-   const struct pvr_winsys_compute_submit_info *submit_info,
-   struct vk_sync *signal_sync);
-
-#endif /* PVR_DRM_JOB_COMPUTE_H */
+#endif /* PVR_DRM_JOB_NULL_H */
