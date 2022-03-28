@@ -32,14 +32,15 @@
 #include "pvr_drm.h"
 #include "pvr_drm_bo.h"
 #include "pvr_drm_job_compute.h"
+#include "pvr_drm_job_null.h"
 #include "pvr_drm_job_render.h"
 #include "pvr_drm_job_transfer.h"
 #include "pvr_drm_public.h"
-#include "pvr_drm_syncobj.h"
 #include "pvr_private.h"
 #include "pvr_winsys.h"
 #include "pvr_winsys_helper.h"
 #include "vk_alloc.h"
+#include "vk_drm_syncobj.h"
 #include "vk_log.h"
 
 static int pvr_drm_get_param(struct pvr_drm_winsys *drm_ws,
@@ -158,12 +159,6 @@ static const struct pvr_winsys_ops drm_winsys_ops = {
    .heap_free = pvr_drm_winsys_heap_free,
    .vma_map = pvr_drm_winsys_vma_map,
    .vma_unmap = pvr_drm_winsys_vma_unmap,
-   .syncobj_create = pvr_drm_winsys_syncobj_create,
-   .syncobj_destroy = pvr_drm_winsys_syncobj_destroy,
-   .syncobjs_reset = pvr_drm_winsys_syncobjs_reset,
-   .syncobjs_signal = pvr_drm_winsys_syncobjs_signal,
-   .syncobjs_wait = pvr_drm_winsys_syncobjs_wait,
-   .syncobjs_merge = pvr_drm_winsys_syncobjs_merge,
    .free_list_create = pvr_drm_winsys_free_list_create,
    .free_list_destroy = pvr_drm_winsys_free_list_destroy,
    .render_target_dataset_create = pvr_drm_render_target_dataset_create,
@@ -176,6 +171,7 @@ static const struct pvr_winsys_ops drm_winsys_ops = {
    .compute_submit = pvr_drm_winsys_compute_submit,
    .transfer_ctx_create = pvr_drm_winsys_transfer_ctx_create,
    .transfer_ctx_destroy = pvr_drm_winsys_transfer_ctx_destroy,
+   .null_job_submit = pvr_drm_winsys_null_job_submit,
 };
 
 static VkResult pvr_drm_get_heap_static_data_offsets(
@@ -440,6 +436,10 @@ struct pvr_winsys *pvr_drm_winsys_create(int master_fd,
    drm_ws->base.ops = &drm_winsys_ops;
    os_get_page_size(&drm_ws->base.page_size);
    drm_ws->base.log2_page_size = util_logbase2(drm_ws->base.page_size);
+
+   drm_ws->base.syncobj_type = vk_drm_syncobj_get_type(render_fd);
+   drm_ws->base.sync_types[0] = &drm_ws->base.syncobj_type;
+   drm_ws->base.sync_types[1] = NULL;
 
    drm_ws->master_fd = master_fd;
    drm_ws->render_fd = render_fd;

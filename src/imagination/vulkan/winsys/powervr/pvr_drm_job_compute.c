@@ -33,11 +33,11 @@
 #include "pvr_drm.h"
 #include "pvr_drm_job_common.h"
 #include "pvr_drm_job_compute.h"
-#include "pvr_drm_syncobj.h"
 #include "pvr_private.h"
 #include "pvr_winsys.h"
 #include "util/macros.h"
 #include "vk_alloc.h"
+#include "vk_drm_syncobj.h"
 #include "vk_log.h"
 
 static void pvr_drm_compute_ctx_static_state_init(
@@ -188,7 +188,7 @@ static void pvr_drm_compute_cmd_init(
 VkResult pvr_drm_winsys_compute_submit(
    const struct pvr_winsys_compute_ctx *ctx,
    const struct pvr_winsys_compute_submit_info *submit_info,
-   struct pvr_winsys_syncobj **const syncobj_out)
+   struct vk_sync *signal_sync)
 {
    const struct pvr_drm_winsys *drm_ws = to_pvr_drm_winsys(ctx->ws);
    const struct pvr_drm_winsys_compute_ctx *drm_ctx =
@@ -207,9 +207,7 @@ VkResult pvr_drm_winsys_compute_submit(
       .data = (__u64)&job_args,
    };
 
-   struct pvr_winsys_syncobj *signal_syncobj;
-   struct pvr_drm_winsys_syncobj *drm_syncobj;
-   uint32_t num_syncobjs = 0;
+   uint32_t num_syncs = 0;
    uint32_t *handles;
    VkResult result;
    int ret;
@@ -217,35 +215,28 @@ VkResult pvr_drm_winsys_compute_submit(
    pvr_drm_compute_cmd_init(submit_info, &compute_cmd);
 
    handles = vk_alloc(drm_ws->alloc,
-                      sizeof(*handles) * submit_info->semaphore_count,
+                      sizeof(*handles) * submit_info->wait_count,
                       8,
                       VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
    if (!handles)
       return vk_error(NULL, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   for (uint32_t i = 0; i < submit_info->semaphore_count; i++) {
-      PVR_FROM_HANDLE(pvr_semaphore, sem, submit_info->semaphores[i]);
+   for (uint32_t i = 0; i < submit_info->wait_count; i++) {
+      struct vk_sync *sync = submit_info->waits[i];
 
-      if (!sem->syncobj)
+      if (!sync)
          continue;
 
-      drm_syncobj = to_pvr_drm_winsys_syncobj(sem->syncobj);
-
       if (submit_info->stage_flags[i] & PVR_PIPELINE_STAGE_COMPUTE_BIT) {
-         handles[num_syncobjs++] = drm_syncobj->handle;
+         handles[num_syncs++] = vk_sync_as_drm_syncobj(sync)->syncobj;
          submit_info->stage_flags[i] &= ~PVR_PIPELINE_STAGE_COMPUTE_BIT;
       }
    }
 
    job_args.in_syncobj_handles = (__u64)handles;
-   job_args.num_in_syncobj_handles = num_syncobjs;
+   job_args.num_in_syncobj_handles = num_syncs;
 
-   result = pvr_drm_winsys_syncobj_create(ctx->ws, false, &signal_syncobj);
-   if (result != VK_SUCCESS)
-      goto err_free_handles;
-
-   drm_syncobj = to_pvr_drm_winsys_syncobj(signal_syncobj);
-   job_args.out_syncobj = drm_syncobj->handle;
+   job_args.out_syncobj = vk_sync_as_drm_syncobj(signal_sync)->syncobj;
 
    ret = drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_SUBMIT_JOB, &args);
    if (ret) {
@@ -255,29 +246,12 @@ VkResult pvr_drm_winsys_compute_submit(
                          "Failed to submit compute job. Errno: %d - %s.",
                          errno,
                          strerror(errno));
-      goto err_destroy_signal_syncobj;
-   }
-
-   for (uint32_t i = 0; i < submit_info->semaphore_count; i++) {
-      PVR_FROM_HANDLE(pvr_semaphore, sem, submit_info->semaphores[i]);
-
-      if (!sem->syncobj)
-         continue;
-
-      if (submit_info->stage_flags[i] == 0) {
-         pvr_drm_winsys_syncobj_destroy(sem->syncobj);
-         sem->syncobj = NULL;
-      }
+      goto err_free_handles;
    }
 
    vk_free(drm_ws->alloc, handles);
 
-   *syncobj_out = signal_syncobj;
-
    return VK_SUCCESS;
-
-err_destroy_signal_syncobj:
-   pvr_drm_winsys_syncobj_destroy(signal_syncobj);
 
 err_free_handles:
    vk_free(drm_ws->alloc, handles);

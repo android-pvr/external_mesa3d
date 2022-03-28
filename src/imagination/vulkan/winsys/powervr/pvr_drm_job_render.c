@@ -34,11 +34,11 @@
 #include "pvr_drm_bo.h"
 #include "pvr_drm_job_common.h"
 #include "pvr_drm_job_render.h"
-#include "pvr_drm_syncobj.h"
 #include "pvr_private.h"
 #include "pvr_winsys.h"
 #include "util/macros.h"
 #include "vk_alloc.h"
+#include "vk_drm_syncobj.h"
 #include "vk_log.h"
 #include "vk_util.h"
 
@@ -542,8 +542,8 @@ static void pvr_drm_fragment_cmd_init(
 VkResult pvr_drm_winsys_render_submit(
    const struct pvr_winsys_render_ctx *ctx,
    const struct pvr_winsys_render_submit_info *submit_info,
-   struct pvr_winsys_syncobj **const syncobj_geom_out,
-   struct pvr_winsys_syncobj **const syncobj_frag_out)
+   struct vk_sync *signal_sync_geom,
+   struct vk_sync *signal_sync_frag)
 
 {
    const struct pvr_drm_winsys *drm_ws = to_pvr_drm_winsys(ctx->ws);
@@ -570,11 +570,8 @@ VkResult pvr_drm_winsys_render_submit(
       .data = (__u64)&job_args,
    };
 
-   struct pvr_winsys_syncobj *geom_signal_syncobj;
-   struct pvr_winsys_syncobj *frag_signal_syncobj;
-   struct pvr_drm_winsys_syncobj *drm_syncobj;
-   uint32_t num_geom_syncobjs = 0;
-   uint32_t num_frag_syncobjs = 0;
+   uint32_t num_geom_syncs = 0;
+   uint32_t num_frag_syncs = 0;
    uint32_t *handles;
    VkResult result;
    int ret;
@@ -583,50 +580,39 @@ VkResult pvr_drm_winsys_render_submit(
    pvr_drm_fragment_cmd_init(submit_info, &frag_cmd);
 
    handles = vk_alloc(drm_ws->alloc,
-                      sizeof(*handles) * submit_info->semaphore_count * 2,
+                      sizeof(*handles) * submit_info->wait_count * 2,
                       8,
                       VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
    if (!handles)
       return vk_error(NULL, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   for (uint32_t i = 0; i < submit_info->semaphore_count; i++) {
-      PVR_FROM_HANDLE(pvr_semaphore, sem, submit_info->semaphores[i]);
+   for (uint32_t i = 0; i < submit_info->wait_count; i++) {
+      struct vk_sync *sync = submit_info->waits[i];
 
-      if (!sem->syncobj)
+      if (!sync)
          continue;
 
-      drm_syncobj = to_pvr_drm_winsys_syncobj(sem->syncobj);
-
       if (submit_info->stage_flags[i] & PVR_PIPELINE_STAGE_GEOM_BIT) {
-         handles[num_geom_syncobjs++] = drm_syncobj->handle;
+         handles[num_geom_syncs++] = vk_sync_as_drm_syncobj(sync)->syncobj;
          submit_info->stage_flags[i] &= ~PVR_PIPELINE_STAGE_GEOM_BIT;
       }
 
       if (submit_info->stage_flags[i] & PVR_PIPELINE_STAGE_FRAG_BIT) {
-         handles[submit_info->semaphore_count + num_frag_syncobjs++] =
-            drm_syncobj->handle;
+         handles[submit_info->wait_count + num_frag_syncs++] =
+            vk_sync_as_drm_syncobj(sync)->syncobj;
          submit_info->stage_flags[i] &= ~PVR_PIPELINE_STAGE_FRAG_BIT;
       }
    }
 
    job_args.in_syncobj_handles_geom = (__u64)handles;
-   job_args.in_syncobj_handles_frag =
-      (__u64)&handles[submit_info->semaphore_count];
-   job_args.num_in_syncobj_handles_geom = num_geom_syncobjs;
-   job_args.num_in_syncobj_handles_frag = num_frag_syncobjs;
+   job_args.in_syncobj_handles_frag = (__u64)&handles[submit_info->wait_count];
+   job_args.num_in_syncobj_handles_geom = num_geom_syncs;
+   job_args.num_in_syncobj_handles_frag = num_frag_syncs;
 
-   result = pvr_drm_winsys_syncobj_create(ctx->ws, false, &geom_signal_syncobj);
-   if (result != VK_SUCCESS)
-      goto err_free_handles;
-
-   result = pvr_drm_winsys_syncobj_create(ctx->ws, false, &frag_signal_syncobj);
-   if (result != VK_SUCCESS)
-      goto err_destroy_geom_signal_syncobj;
-
-   drm_syncobj = to_pvr_drm_winsys_syncobj(geom_signal_syncobj);
-   job_args.out_syncobj_geom = drm_syncobj->handle;
-   drm_syncobj = to_pvr_drm_winsys_syncobj(frag_signal_syncobj);
-   job_args.out_syncobj_frag = drm_syncobj->handle;
+   job_args.out_syncobj_geom =
+      vk_sync_as_drm_syncobj(signal_sync_geom)->syncobj;
+   job_args.out_syncobj_frag =
+      vk_sync_as_drm_syncobj(signal_sync_frag)->syncobj;
 
    if (submit_info->bo_count > 0U) {
       bo_refs = vk_alloc(drm_ws->alloc,
@@ -635,7 +621,7 @@ VkResult pvr_drm_winsys_render_submit(
                          VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
       if (!bo_refs) {
          result = vk_error(NULL, VK_ERROR_OUT_OF_HOST_MEMORY);
-         goto err_destroy_frag_signal_syncobj;
+         goto err_free_handles;
       }
 
       for (uint32_t i = 0U; i < submit_info->bo_count; i++) {
@@ -666,34 +652,13 @@ VkResult pvr_drm_winsys_render_submit(
       goto err_free_bo_refs;
    }
 
-   for (uint32_t i = 0; i < submit_info->semaphore_count; i++) {
-      PVR_FROM_HANDLE(pvr_semaphore, sem, submit_info->semaphores[i]);
-
-      if (!sem->syncobj)
-         continue;
-
-      if (submit_info->stage_flags[i] == 0) {
-         pvr_drm_winsys_syncobj_destroy(sem->syncobj);
-         sem->syncobj = NULL;
-      }
-   }
-
    vk_free(drm_ws->alloc, bo_refs);
    vk_free(drm_ws->alloc, handles);
-
-   *syncobj_geom_out = geom_signal_syncobj;
-   *syncobj_frag_out = frag_signal_syncobj;
 
    return VK_SUCCESS;
 
 err_free_bo_refs:
    vk_free(drm_ws->alloc, bo_refs);
-
-err_destroy_frag_signal_syncobj:
-   pvr_drm_winsys_syncobj_destroy(frag_signal_syncobj);
-
-err_destroy_geom_signal_syncobj:
-   pvr_drm_winsys_syncobj_destroy(geom_signal_syncobj);
 
 err_free_handles:
    vk_free(drm_ws->alloc, handles);
