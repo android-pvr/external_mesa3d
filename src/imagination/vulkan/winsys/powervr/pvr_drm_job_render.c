@@ -448,7 +448,9 @@ static void pvr_drm_geometry_cmd_init(
    regs->te_psg = state->regs.te_psg;
    regs->tpu = state->regs.tpu;
    regs->vdm_context_resume_task0_size = state->regs.vdm_ctx_resume_task0_size;
-   regs->pds_ctrl = state->regs.pds_ctrl;
+
+   assert(state->regs.pds_ctrl >> 32U == 0U);
+   regs->pds_ctrl = (uint32_t)state->regs.pds_ctrl;
 }
 
 static void pvr_drm_fragment_cmd_init(
