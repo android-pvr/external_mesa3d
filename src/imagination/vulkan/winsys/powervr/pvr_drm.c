@@ -406,8 +406,8 @@ static bool pvr_is_firmware_supported(struct pvr_drm_winsys *drm_ws)
       return false;
    }
 
-   /* For now we only support 1.14 firmware version. */
-   if (fw_version != PVR_DRM_PACK_FW_VERSION(1U, 14U)) {
+   /* For now we only support 1.17 firmware version. */
+   if (fw_version != PVR_DRM_PACK_FW_VERSION(1U, 17U)) {
       vk_errorf(NULL,
                 VK_ERROR_INCOMPATIBLE_DRIVER,
                 "Unsupported firmware version (%u.%u)",

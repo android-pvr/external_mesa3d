@@ -48,9 +48,6 @@ static void pvr_drm_compute_ctx_static_state_init(
 		.format = DRM_PVR_SCCS_FORMAT_1,
 		.data = {
 			.format_1 = {
-				.cdmreg_cdm_context_state_base_addr =
-					create_info->cdm_ctx_state_base_addr,
-
 				.cdmreg_cdm_context_pds0 = create_info->cdm_ctx_store_pds0,
 				.cdmreg_cdm_context_pds1 = create_info->cdm_ctx_store_pds1,
 
@@ -182,6 +179,8 @@ static void pvr_drm_compute_cmd_init(
    regs->cdm_item = submit_info->regs.cdm_item;
    regs->compute_cluster = submit_info->regs.compute_cluster;
    regs->cdm_ctrl_stream_base = submit_info->regs.cdm_ctrl_stream_base;
+   regs->cdm_context_state_base_addr =
+      submit_info->regs.cdm_ctx_state_base_addr;
    regs->tpu = submit_info->regs.tpu;
    regs->cdm_resume_pds1 = submit_info->regs.cdm_resume_pds1;
 }
