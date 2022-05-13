@@ -261,21 +261,9 @@ void pvr_drm_winsys_render_ctx_destroy(struct pvr_winsys_render_ctx *ctx)
 VkResult pvr_drm_render_target_dataset_create(
    struct pvr_winsys *const ws,
    const struct pvr_winsys_rt_dataset_create_info *const create_info,
+   UNUSED const struct pvr_device_info *dev_info,
    struct pvr_winsys_rt_dataset **const rt_dataset_out)
 {
-   /* clang-format off */
-   const struct create_hwrt_geom_data_args geom_data_args_arr[1] = {
-      {
-         .tail_ptrs_dev_addr = (__u64)create_info->tpc_dev_addr.addr,
-         .vheap_table_dev_addr =
-            (__u64)create_info->vheap_table_dev_addr.addr,
-         .rtc_dev_addr = (__u64)create_info->rtc_dev_addr.addr,
-      },
-   };
-   /* clang-format on */
-
-   struct create_hwrt_rt_data_args rt_data_args_arr[ROGUE_NUM_RTDATAS];
-
    struct pvr_drm_winsys_free_list *drm_free_list =
       to_pvr_drm_winsys_free_list(create_info->local_free_list);
 
@@ -283,44 +271,43 @@ VkResult pvr_drm_render_target_dataset_create(
    uint32_t parent_free_list_handle =
       drm_free_list->parent ? drm_free_list->parent->handle : 0;
 
-   struct create_hwrt_free_list_args
-      free_list_args_arr[PVR_DRM_FREE_LIST_MAX] = {
-         /* clang-format off */
-         [PVR_DRM_FREE_LIST_LOCAL] = {
-            .free_list_handle = drm_free_list->handle,
-         },
-
-         [PVR_DRM_FREE_LIST_GLOBAL] = {
-            .free_list_handle = parent_free_list_handle,
-         },
-         /* clang-format on */
-   };
-
-   __u32 free_list_handles_count = 1U + (!!drm_free_list->parent);
-
    struct drm_pvr_ioctl_create_hwrt_dataset_args hwrt_args = {
-      .geom_data_args = (__u64)geom_data_args_arr,
-      .rt_data_args = (__u64)rt_data_args_arr,
-      .free_list_args = (__u64)free_list_args_arr,
+      .geom_data_args = {
+         .tpc_dev_addr = create_info->tpc_dev_addr.addr,
+         .tpc_size = create_info->tpc_size,
+         .tpc_stride = create_info->tpc_stride,
+         .vheap_table_dev_addr = create_info->vheap_table_dev_addr.addr,
+         .rtc_dev_addr = create_info->rtc_dev_addr.addr,
+      },
 
-      .num_geom_datas = (__u32)ARRAY_SIZE(geom_data_args_arr),
-      .num_rt_datas = (__u32)ARRAY_SIZE(rt_data_args_arr),
-      .num_free_lists = free_list_handles_count,
+      .rt_data_args = {
+         [0] = {
+            .pm_mlist_dev_addr =
+               create_info->rt_datas[0].pm_mlist_dev_addr.addr,
+            .macrotile_array_dev_addr =
+               create_info->rt_datas[0].macrotile_array_dev_addr.addr,
+            .region_header_dev_addr =
+               create_info->rt_datas[0].rgn_header_dev_addr.addr,
+         },
+         [1] = {
+            .pm_mlist_dev_addr =
+               create_info->rt_datas[1].pm_mlist_dev_addr.addr,
+            .macrotile_array_dev_addr =
+               create_info->rt_datas[1].macrotile_array_dev_addr.addr,
+            .region_header_dev_addr =
+               create_info->rt_datas[1].rgn_header_dev_addr.addr,
+         },
+      },
 
-      .region_header_size = create_info->rgn_header_size,
+      .free_list_handles = {
+         [PVR_DRM_FREE_LIST_LOCAL] = drm_free_list->handle,
+         [PVR_DRM_FREE_LIST_GLOBAL] = parent_free_list_handle,
+      },
 
-      .flipped_multi_sample_control =
-         create_info->ppp_multi_sample_ctl_y_flipped,
-      .multi_sample_control = create_info->ppp_multi_sample_ctl,
-      .mtile_stride = create_info->mtile_stride,
-      .screen_pixel_max = create_info->ppp_screen,
-
-      .te_aa = create_info->te_aa,
-      .te_mtile = { create_info->te_mtile1, create_info->te_mtile2 },
-      .te_screen_size = create_info->te_screen,
-
-      .tpc_size = create_info->tpc_size,
-      .tpc_stride = create_info->tpc_stride,
+      .width = create_info->width,
+      .height = create_info->height,
+      .samples = create_info->samples,
+      .layers = create_info->layers,
 
       .isp_merge_lower_x = create_info->isp_merge_lower_x,
       .isp_merge_lower_y = create_info->isp_merge_lower_y,
@@ -328,9 +315,8 @@ VkResult pvr_drm_render_target_dataset_create(
       .isp_merge_scale_y = create_info->isp_merge_scale_y,
       .isp_merge_upper_x = create_info->isp_merge_upper_x,
       .isp_merge_upper_y = create_info->isp_merge_upper_y,
-      .isp_mtile_size = create_info->isp_mtile_size,
 
-      .max_rts = create_info->max_rts,
+      .region_header_size = create_info->rgn_header_size,
    };
 
    struct drm_pvr_ioctl_create_object_args args = {
@@ -342,7 +328,8 @@ VkResult pvr_drm_render_target_dataset_create(
    struct pvr_drm_winsys_rt_dataset *drm_rt_dataset;
    int ret;
 
-   assert(free_list_handles_count <= ARRAY_SIZE(free_list_args_arr));
+   STATIC_ASSERT(ARRAY_SIZE(hwrt_args.rt_data_args) ==
+                 ARRAY_SIZE(create_info->rt_datas));
 
    drm_rt_dataset = vk_zalloc(drm_ws->alloc,
                               sizeof(*drm_rt_dataset),
@@ -350,18 +337,6 @@ VkResult pvr_drm_render_target_dataset_create(
                               VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
    if (!drm_rt_dataset)
       return vk_error(NULL, VK_ERROR_OUT_OF_HOST_MEMORY);
-
-   STATIC_ASSERT(ARRAY_SIZE(rt_data_args_arr) ==
-                 ARRAY_SIZE(create_info->rt_datas));
-
-   for (uint32_t i = 0; i < ARRAY_SIZE(rt_data_args_arr); i++) {
-      rt_data_args_arr[i].pm_mlist_dev_addr =
-         create_info->rt_datas[i].pm_mlist_dev_addr.addr;
-      rt_data_args_arr[i].macrotile_array_dev_addr =
-         create_info->rt_datas[i].macrotile_array_dev_addr.addr;
-      rt_data_args_arr[i].region_header_dev_addr =
-         create_info->rt_datas[i].rgn_header_dev_addr.addr;
-   }
 
    ret = drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_CREATE_OBJECT, &args);
    if (ret) {
