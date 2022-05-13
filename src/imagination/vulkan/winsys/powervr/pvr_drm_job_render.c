@@ -30,6 +30,8 @@
 #include <xf86drm.h>
 
 #include "drm-uapi/pvr_drm.h"
+#include "fw-api/pvr_rogue_fwif_client.h"
+#include "fw-api/pvr_rogue_fwif_shared.h"
 #include "pvr_drm.h"
 #include "pvr_drm_bo.h"
 #include "pvr_drm_job_common.h"
@@ -141,41 +143,41 @@ void pvr_drm_winsys_free_list_destroy(struct pvr_winsys_free_list *free_list)
 
 static void pvr_drm_render_ctx_static_state_init(
    struct pvr_winsys_render_ctx_create_info *create_info,
-   struct drm_pvr_static_render_context_state *static_state)
+   struct rogue_fwif_static_rendercontext_state *static_state)
 {
    struct pvr_winsys_render_ctx_static_state *ws_static_state =
       &create_info->static_state;
+   struct rogue_fwif_geom_registers_caswitch *geom_regs =
+      &static_state->ctxswitch_regs[0];
+
+   STATIC_ASSERT(ARRAY_SIZE(static_state->ctxswitch_regs) == 1);
 
    memset(static_state, 0, sizeof(*static_state));
 
-   static_state->format = DRM_PVR_SRCS_FORMAT_1;
-   static_state->data.format_1.geom_reg_vdm_context_state_base_addr =
+   geom_regs->geom_reg_vdm_context_state_base_addr =
       ws_static_state->vdm_ctx_state_base_addr;
-   static_state->data.format_1.geom_reg_ta_context_state_base_addr =
+   /* geom_reg_vdm_context_state_resume_addr is unused and zeroed. */
+   geom_regs->geom_reg_ta_context_state_base_addr =
       ws_static_state->geom_ctx_state_base_addr;
 
-   STATIC_ASSERT(ARRAY_SIZE(static_state->data.format_1.geom_state) ==
+   STATIC_ASSERT(ARRAY_SIZE(geom_regs->geom_state) ==
                  ARRAY_SIZE(ws_static_state->geom_state));
    for (uint32_t i = 0; i < ARRAY_SIZE(ws_static_state->geom_state); i++) {
-      static_state->data.format_1.geom_state[i]
-         .geom_reg_vdm_context_store_task0 =
+      geom_regs->geom_state[i].geom_reg_vdm_context_store_task0 =
          ws_static_state->geom_state[i].vdm_ctx_store_task0;
-      static_state->data.format_1.geom_state[i]
-         .geom_reg_vdm_context_store_task1 =
+      geom_regs->geom_state[i].geom_reg_vdm_context_store_task1 =
          ws_static_state->geom_state[i].vdm_ctx_store_task1;
-      static_state->data.format_1.geom_state[i]
-         .geom_reg_vdm_context_store_task2 =
+      geom_regs->geom_state[i].geom_reg_vdm_context_store_task2 =
          ws_static_state->geom_state[i].vdm_ctx_store_task2;
 
-      static_state->data.format_1.geom_state[i]
-         .geom_reg_vdm_context_resume_task0 =
+      geom_regs->geom_state[i].geom_reg_vdm_context_resume_task0 =
          ws_static_state->geom_state[i].vdm_ctx_resume_task0;
-      static_state->data.format_1.geom_state[i]
-         .geom_reg_vdm_context_resume_task1 =
+      geom_regs->geom_state[i].geom_reg_vdm_context_resume_task1 =
          ws_static_state->geom_state[i].vdm_ctx_resume_task1;
-      static_state->data.format_1.geom_state[i]
-         .geom_reg_vdm_context_resume_task2 =
+      geom_regs->geom_state[i].geom_reg_vdm_context_resume_task2 =
          ws_static_state->geom_state[i].vdm_ctx_resume_task2;
+
+      /* {store, resume}_task{3, 4} are unused and zeroed. */
    }
 }
 
@@ -194,25 +196,16 @@ VkResult pvr_drm_winsys_render_ctx_create(
    struct pvr_winsys_render_ctx_create_info *create_info,
    struct pvr_winsys_render_ctx **const ctx_out)
 {
-   /* Structure hierarchy.
-    *
-    *  drm_pvr_ioctl_create_context_args
-    * 		|
-    * 		 -> drm_pvr_ioctl_create_render_context_args
-    * 		| 		|
-    * 		| 		 -> drm_pvr_static_render_context_state
-    * 		|
-    * 		 -> drm_pvr_reset_framework
-    */
+   struct rogue_fwif_static_rendercontext_state static_ctx_state;
    struct drm_pvr_ioctl_create_context_args ctx_args = {
       .type = DRM_PVR_CTX_TYPE_RENDER,
       .priority = pvr_drm_from_winsys_priority(create_info->priority),
-      .reset_framework_registers = 0ULL,
+      .static_context_state = (uint64_t)&static_ctx_state,
+      .static_context_state_len = sizeof(static_ctx_state),
+      .callstack_addr = create_info->vdm_callstack_addr.addr,
    };
 
    struct pvr_drm_winsys *drm_ws = to_pvr_drm_winsys(ws);
-   struct drm_pvr_ioctl_create_render_context_args render_ctx_args;
-   struct drm_pvr_static_render_context_state static_state;
    struct pvr_drm_winsys_render_ctx *drm_ctx;
    int ret;
 
@@ -223,12 +216,7 @@ VkResult pvr_drm_winsys_render_ctx_create(
    if (!drm_ctx)
       return vk_error(NULL, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   pvr_drm_render_ctx_static_state_init(create_info, &static_state);
-
-   render_ctx_args.vdm_callstack_addr = create_info->vdm_callstack_addr.addr;
-   render_ctx_args.static_render_context_state = (__u64)&static_state;
-
-   ctx_args.data = (__u64)&render_ctx_args;
+   pvr_drm_render_ctx_static_state_init(create_info, &static_ctx_state);
 
    ret = drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_CREATE_CONTEXT, &ctx_args);
    if (ret) {
