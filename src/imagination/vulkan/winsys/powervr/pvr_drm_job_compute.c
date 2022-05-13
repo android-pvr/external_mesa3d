@@ -30,6 +30,8 @@
 #include <xf86drm.h>
 
 #include "drm-uapi/pvr_drm.h"
+#include "fw-api/pvr_rogue_fwif_client.h"
+#include "fw-api/pvr_rogue_fwif_shared.h"
 #include "pvr_drm.h"
 #include "pvr_drm_job_common.h"
 #include "pvr_drm_job_compute.h"
@@ -39,29 +41,6 @@
 #include "vk_alloc.h"
 #include "vk_drm_syncobj.h"
 #include "vk_log.h"
-
-static void pvr_drm_compute_ctx_static_state_init(
-   const struct pvr_winsys_compute_ctx_static_state *create_info,
-   struct drm_pvr_static_compute_context_state *const static_state_out)
-{
-   *static_state_out = (struct drm_pvr_static_compute_context_state) {
-		.format = DRM_PVR_SCCS_FORMAT_1,
-		.data = {
-			.format_1 = {
-				.cdmreg_cdm_context_pds0 = create_info->cdm_ctx_store_pds0,
-				.cdmreg_cdm_context_pds1 = create_info->cdm_ctx_store_pds1,
-
-				.cdmreg_cdm_terminate_pds = create_info->cdm_ctx_terminate_pds,
-				.cdmreg_cdm_terminate_pds1 = create_info->cdm_ctx_terminate_pds1,
-
-				.cdmreg_cdm_resume_pds0 = create_info->cdm_ctx_resume_pds0,
-
-				.cdmreg_cdm_context_pds0_b = create_info->cdm_ctx_store_pds0_b,
-				.cdmreg_cdm_resume_pds0_b = create_info->cdm_ctx_resume_pds0_b,
-			}
-		},
-	};
-}
 
 struct pvr_drm_winsys_compute_ctx {
    struct pvr_winsys_compute_ctx base;
@@ -78,26 +57,33 @@ VkResult pvr_drm_winsys_compute_ctx_create(
    const struct pvr_winsys_compute_ctx_create_info *create_info,
    struct pvr_winsys_compute_ctx **const ctx_out)
 {
-   struct drm_pvr_static_compute_context_state static_state;
-   struct drm_pvr_ioctl_create_compute_context_args compute_ctx_args = {
-      .static_compute_context_state = (__u64)&static_state,
+   struct rogue_fwif_static_computecontext_state static_ctx_state = {
+      .ctxswitch_regs = {
+         .cdmreg_cdm_context_pds0 =
+            create_info->static_state.cdm_ctx_store_pds0,
+         .cdmreg_cdm_context_pds1 =
+            create_info->static_state.cdm_ctx_store_pds1,
+
+         .cdmreg_cdm_terminate_pds =
+            create_info->static_state.cdm_ctx_terminate_pds,
+         .cdmreg_cdm_terminate_pds1 =
+            create_info->static_state.cdm_ctx_terminate_pds1,
+
+         .cdmreg_cdm_resume_pds0 =
+            create_info->static_state.cdm_ctx_resume_pds0,
+
+         .cdmreg_cdm_context_pds0_b =
+            create_info->static_state.cdm_ctx_store_pds0_b,
+         .cdmreg_cdm_resume_pds0_b =
+            create_info->static_state.cdm_ctx_resume_pds0_b,
+      },
    };
 
-   /* Structure hierarchy.
-    *
-    *  drm_pvr_ioctl_create_context_args
-    * 		|
-    * 		 -> drm_pvr_ioctl_create_compute_context_args
-    * 		| 		|
-    * 		| 		 -> drm_pvr_static_compute_context_state
-    * 		|
-    * 		 -> drm_pvr_reset_framework
-    */
    struct drm_pvr_ioctl_create_context_args ctx_args = {
       .type = DRM_PVR_CTX_TYPE_COMPUTE,
       .priority = pvr_drm_from_winsys_priority(create_info->priority),
-      .reset_framework_registers = 0ULL,
-      .data = (__u64)&compute_ctx_args,
+      .static_context_state = (__u64)&static_ctx_state,
+      .static_context_state_len = (__u32)sizeof(static_ctx_state),
    };
 
    struct pvr_drm_winsys *drm_ws = to_pvr_drm_winsys(ws);
@@ -110,9 +96,6 @@ VkResult pvr_drm_winsys_compute_ctx_create(
                       VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
    if (!drm_ctx)
       return vk_error(NULL, VK_ERROR_OUT_OF_HOST_MEMORY);
-
-   pvr_drm_compute_ctx_static_state_init(&create_info->static_state,
-                                         &static_state);
 
    ret = drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_CREATE_CONTEXT, &ctx_args);
    if (ret) {
