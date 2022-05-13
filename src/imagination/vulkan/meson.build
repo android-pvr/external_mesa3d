@@ -37,6 +37,7 @@ pvr_files = files(
   'winsys/powervr/pvr_drm_bo.c',
   'winsys/powervr/pvr_drm_job_compute.c',
   'winsys/powervr/pvr_drm_job_render.c',
+  'winsys/powervr/pvr_drm_job_transfer.c',
   'winsys/powervr/pvr_drm_syncobj.c',
   'winsys/pvr_winsys.c',
   'winsys/pvr_winsys_helper.c',

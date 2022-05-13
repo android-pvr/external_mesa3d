@@ -33,8 +33,9 @@
 #include "pvr_drm_bo.h"
 #include "pvr_drm_job_compute.h"
 #include "pvr_drm_job_render.h"
-#include "pvr_drm_syncobj.h"
+#include "pvr_drm_job_transfer.h"
 #include "pvr_drm_public.h"
+#include "pvr_drm_syncobj.h"
 #include "pvr_private.h"
 #include "pvr_winsys.h"
 #include "pvr_winsys_helper.h"
@@ -173,6 +174,8 @@ static const struct pvr_winsys_ops drm_winsys_ops = {
    .compute_ctx_create = pvr_drm_winsys_compute_ctx_create,
    .compute_ctx_destroy = pvr_drm_winsys_compute_ctx_destroy,
    .compute_submit = pvr_drm_winsys_compute_submit,
+   .transfer_ctx_create = pvr_drm_winsys_transfer_ctx_create,
+   .transfer_ctx_destroy = pvr_drm_winsys_transfer_ctx_destroy,
 };
 
 static VkResult pvr_drm_get_heap_static_data_offsets(
