@@ -137,35 +137,18 @@ void pvr_drm_winsys_compute_ctx_destroy(struct pvr_winsys_compute_ctx *ctx)
    vk_free(drm_ws->alloc, drm_ctx);
 }
 
-static void pvr_drm_compute_cmd_init(
-   const struct pvr_winsys_compute_submit_info *restrict submit_info,
-   struct drm_pvr_cmd_compute *restrict cmd)
+static uint32_t pvr_winsys_compute_flags_to_fwif(uint32_t ws_flags)
 {
-   struct drm_pvr_cmd_compute_format_1 *compute_cmd =
-      &cmd->data.cmd_compute_format_1;
-   struct drm_pvr_compute_regs_format_1 *regs = &compute_cmd->regs;
+   uint32_t flags = 0U;
 
-   memset(cmd, 0, sizeof(*cmd));
-
-   cmd->format = DRM_PVR_CMD_COMPUTE_FORMAT_1;
-
-   compute_cmd->frame_num = submit_info->frame_num;
-
-   if (submit_info->flags & PVR_WINSYS_COMPUTE_FLAG_PREVENT_ALL_OVERLAP) {
-      compute_cmd->flags |= DRM_PVR_SUBMIT_JOB_COMPUTE_CMD_PREVENT_ALL_OVERLAP;
+   if (ws_flags & PVR_WINSYS_COMPUTE_FLAG_PREVENT_ALL_OVERLAP) {
+      flags |= ROGUE_FWIF_COMPUTE_FLAG_PREVENT_ALL_OVERLAP;
    }
 
-   if (submit_info->flags & PVR_WINSYS_COMPUTE_FLAG_SINGLE_CORE)
-      compute_cmd->flags |= DRM_PVR_SUBMIT_JOB_COMPUTE_CMD_SINGLE_CORE;
+   if (flags & PVR_WINSYS_COMPUTE_FLAG_SINGLE_CORE)
+      flags |= ROGUE_FWIF_COMPUTE_FLAG_SINGLE_CORE;
 
-   regs->tpu_border_colour_table = submit_info->regs.tpu_border_colour_table;
-   regs->cdm_item = submit_info->regs.cdm_item;
-   regs->compute_cluster = submit_info->regs.compute_cluster;
-   regs->cdm_ctrl_stream_base = submit_info->regs.cdm_ctrl_stream_base;
-   regs->cdm_context_state_base_addr =
-      submit_info->regs.cdm_ctx_state_base_addr;
-   regs->tpu = submit_info->regs.tpu;
-   regs->cdm_resume_pds1 = submit_info->regs.cdm_resume_pds1;
+   return flags;
 }
 
 VkResult pvr_drm_winsys_compute_submit(
@@ -177,16 +160,33 @@ VkResult pvr_drm_winsys_compute_submit(
    const struct pvr_drm_winsys_compute_ctx *drm_ctx =
       to_pvr_drm_winsys_compute_ctx(ctx);
 
-   struct drm_pvr_cmd_compute compute_cmd;
+   struct rogue_fwif_cmd_compute compute_cmd = {
+      /* common is for kernel use only. Setting to zero. */
+      .regs = {
+         .tpu_border_colour_table = submit_info->regs.tpu_border_colour_table,
+         .cdm_item = submit_info->regs.cdm_item,
+         .compute_cluster = submit_info->regs.compute_cluster,
+         .cdm_ctrl_stream_base = submit_info->regs.cdm_ctrl_stream_base,
+         .cdm_context_state_base_addr =
+            submit_info->regs.cdm_ctx_state_base_addr,
+         .tpu = submit_info->regs.tpu,
+         .cdm_resume_pds1 = submit_info->regs.cdm_resume_pds1,
+      },
+      .flags = pvr_winsys_compute_flags_to_fwif(submit_info->flags),
+   };
 
    struct drm_pvr_job_compute_args job_args = {
       .cmd = (__u64)&compute_cmd,
+      /* bo_handles is unused and zeroed. */
+      .cmd_len = sizeof(compute_cmd),
+      /* num_bo_handles is unused and zeroed. */
    };
 
    struct drm_pvr_ioctl_submit_job_args args = {
       .job_type = DRM_PVR_JOB_TYPE_COMPUTE,
       .context_handle = drm_ctx->handle,
       .ext_job_ref = submit_info->job_num,
+      .frame_num = submit_info->frame_num,
       .data = (__u64)&job_args,
    };
 
@@ -194,8 +194,6 @@ VkResult pvr_drm_winsys_compute_submit(
    uint32_t *handles;
    VkResult result;
    int ret;
-
-   pvr_drm_compute_cmd_init(submit_info, &compute_cmd);
 
    handles = vk_alloc(drm_ws->alloc,
                       sizeof(*handles) * submit_info->wait_count,
