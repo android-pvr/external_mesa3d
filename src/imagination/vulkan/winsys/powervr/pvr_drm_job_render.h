@@ -27,6 +27,7 @@
 #include <stdint.h>
 #include <vulkan/vulkan.h>
 
+struct pvr_device_info;
 struct pvr_winsys;
 struct pvr_winsys_free_list;
 struct pvr_winsys_render_ctx;
@@ -61,6 +62,7 @@ void pvr_drm_winsys_render_ctx_destroy(struct pvr_winsys_render_ctx *ctx);
 VkResult pvr_drm_render_target_dataset_create(
    struct pvr_winsys *const ws,
    const struct pvr_winsys_rt_dataset_create_info *const create_info,
+   const struct pvr_device_info *dev_info,
    struct pvr_winsys_rt_dataset **const rt_dataset_out);
 void pvr_drm_render_target_dataset_destroy(
    struct pvr_winsys_rt_dataset *const rt_dataset);
