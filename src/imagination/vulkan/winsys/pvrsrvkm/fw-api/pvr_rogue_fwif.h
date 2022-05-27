@@ -76,8 +76,6 @@
 /** Render uses paired tile feature, empty tiles must always be enabled. */
 #define ROGUE_FWIF_RENDERFLAGS_PAIRED_TILES 0x00100000UL
 
-#define ROGUE_FWIF_RENDERFLAGS_RESERVED 0x01000000UL
-
 /** Disallow compute overlapped with this render. */
 #define ROGUE_FWIF_RENDERFLAGS_PREVENT_CDM_OVERLAP 0x04000000UL
 /**@}*/
