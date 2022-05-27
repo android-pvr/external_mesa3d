@@ -150,8 +150,6 @@ static void pvr_drm_render_ctx_static_state_init(
    struct rogue_fwif_geom_registers_caswitch *geom_regs =
       &static_state->ctxswitch_regs[0];
 
-   STATIC_ASSERT(ARRAY_SIZE(static_state->ctxswitch_regs) == 1);
-
    memset(static_state, 0, sizeof(*static_state));
 
    geom_regs->geom_reg_vdm_context_state_base_addr =
