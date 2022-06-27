@@ -100,6 +100,79 @@ static void pvr_drm_winsys_destroy(struct pvr_winsys *ws)
    vk_free(drm_ws->alloc, drm_ws);
 }
 
+static int pvr_drm_override_quirks(struct pvr_drm_winsys *drm_ws,
+                                   struct pvr_device_info *dev_info)
+{
+   uint64_t quirks_musthave0 = 0;
+   uint64_t quirks0 = 0;
+   int ret;
+
+   ret = pvr_drm_get_param(drm_ws, DRM_PVR_PARAM_QUIRKS0, &quirks0);
+   if (ret)
+      goto err_out;
+
+   ret = pvr_drm_get_param(drm_ws,
+                           DRM_PVR_PARAM_QUIRKS_MUSTHAVE0,
+                           &quirks_musthave0);
+   if (ret)
+      goto err_out;
+
+#define PVR_QUIRK_MUSTHAVE_CHECK_SET(quirks_x, musthave_x, number)        \
+   do {                                                                   \
+      if ((musthave_x & DRM_PVR_QUIRKS0_HAS_BRN##number) &&               \
+          dev_info->quirks.has_brn##number) {                             \
+         musthave_x &= ~DRM_PVR_QUIRKS0_HAS_BRN##number;                  \
+      }                                                                   \
+      dev_info->quirks.has_brn##number = quirks_x &                       \
+                                         DRM_PVR_QUIRKS0_HAS_BRN##number; \
+   } while (0)
+
+   /*
+    * For each quirk, check that if it is a "must have" that it is set in
+    * dev_info, then set the dev_info value to the one received from the kernel.
+    */
+   PVR_QUIRK_MUSTHAVE_CHECK_SET(quirks0, quirks_musthave0, 44079);
+   PVR_QUIRK_MUSTHAVE_CHECK_SET(quirks0, quirks_musthave0, 48492);
+   PVR_QUIRK_MUSTHAVE_CHECK_SET(quirks0, quirks_musthave0, 48545);
+   PVR_QUIRK_MUSTHAVE_CHECK_SET(quirks0, quirks_musthave0, 49927);
+   PVR_QUIRK_MUSTHAVE_CHECK_SET(quirks0, quirks_musthave0, 51764);
+   PVR_QUIRK_MUSTHAVE_CHECK_SET(quirks0, quirks_musthave0, 62269);
+   PVR_QUIRK_MUSTHAVE_CHECK_SET(quirks0, quirks_musthave0, 66011);
+
+#undef PVR_QUIRK_MUSTHAVE_CHECK_SET
+
+   /* If any "must have" quirks are not supported then fail. */
+   if (quirks_musthave0) {
+      ret = -ENODEV;
+      goto err_out;
+   }
+
+err_out:
+   return ret;
+}
+
+static int pvr_drm_override_enhancements(struct pvr_drm_winsys *drm_ws,
+                                         struct pvr_device_info *dev_info)
+{
+   uint64_t enhancements0 = 0;
+   int ret;
+
+   ret = pvr_drm_get_param(drm_ws, DRM_PVR_PARAM_ENHANCEMENTS0, &enhancements0);
+   if (ret)
+      goto err_out;
+
+#define PVR_ENHANCEMENT_SET(enhancements_x, number) \
+   dev_info->enhancements.has_ern##number =         \
+      enhancements_x & DRM_PVR_ENHANCEMENTS0_HAS_ERN##number
+
+   PVR_ENHANCEMENT_SET(enhancements0, 35421);
+
+#undef PVR_ENHANCEMENT_SET
+
+err_out:
+   return ret;
+}
+
 static int
 pvr_drm_winsys_device_info_init(struct pvr_winsys *ws,
                                 struct pvr_device_info *dev_info,
@@ -115,6 +188,18 @@ pvr_drm_winsys_device_info_init(struct pvr_winsys *ws,
                 PVR_BVNC_UNPACK_V(drm_ws->bvnc),
                 PVR_BVNC_UNPACK_N(drm_ws->bvnc),
                 PVR_BVNC_UNPACK_C(drm_ws->bvnc));
+      return ret;
+   }
+
+   ret = pvr_drm_override_quirks(drm_ws, dev_info);
+   if (ret) {
+      mesa_logw("Failed to get quirks for this GPU\n");
+      return ret;
+   }
+
+   ret = pvr_drm_override_enhancements(drm_ws, dev_info);
+   if (ret) {
+      mesa_logw("Failed to get enhancements for this GPU\n");
       return ret;
    }
 
