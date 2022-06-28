@@ -272,6 +272,17 @@ enum drm_pvr_param {
 	 * in pages.
 	 */
 	DRM_PVR_PARAM_FREE_LIST_MIN_SIZE,
+
+	/**
+	 * @DRM_PVR_PARAM_RESERVED_SHARED_SIZE: Reserved shared size, in dwords.
+	 */
+	DRM_PVR_PARAM_RESERVED_SHARED_SIZE,
+
+	/**
+	 * @DRM_PVR_PARAM_TOTAL_RESERVED_PARTITION_SIZE: Total reserved
+	 * partition size.
+	 */
+	DRM_PVR_PARAM_TOTAL_RESERVED_PARTITION_SIZE,
 };
 
 /**
