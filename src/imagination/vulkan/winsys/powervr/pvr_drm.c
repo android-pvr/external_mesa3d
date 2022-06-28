@@ -203,6 +203,12 @@ pvr_drm_winsys_device_info_init(struct pvr_winsys *ws,
       return ret;
    }
 
+   ret = pvr_drm_get_param(drm_ws,
+                           DRM_PVR_PARAM_FREE_LIST_MIN_SIZE,
+                           &runtime_info->min_free_list_size);
+   if (ret)
+      return ret;
+
    if (PVR_HAS_FEATURE(dev_info, gpu_multicore_support)) {
       /* TODO: When kernel support is added, fetch the actual core count. */
       mesa_logw("Core count fetching is unimplemented. Setting 1 for now.");

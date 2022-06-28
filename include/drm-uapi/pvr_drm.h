@@ -266,6 +266,12 @@ enum drm_pvr_param {
 	 * This is a bitmask of %DRM_PVR_ENHANCEMENTS0_HAS_*.
 	 */
 	DRM_PVR_PARAM_ENHANCEMENTS0,
+
+	/*
+	 * @DRM_PVR_PARAM_FREE_LIST_MIN_SIZE: Minimum allowed free list size,
+	 * in pages.
+	 */
+	DRM_PVR_PARAM_FREE_LIST_MIN_SIZE,
 };
 
 /**
