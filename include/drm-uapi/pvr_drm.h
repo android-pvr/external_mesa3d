@@ -283,6 +283,22 @@ enum drm_pvr_param {
 	 * partition size.
 	 */
 	DRM_PVR_PARAM_TOTAL_RESERVED_PARTITION_SIZE,
+
+	/**
+	 * @DRM_PVR_PARAM_NUM_PHANTOMS: Number of Phantoms present.
+	 */
+	DRM_PVR_PARAM_NUM_PHANTOMS,
+
+	/**
+	 * @DRM_PVR_PARAM_MAX_COEFFS: Maximum coefficients, in dwords.
+	 */
+	DRM_PVR_PARAM_MAX_COEFFS,
+
+	/**
+	 * @DRM_PVR_PARAM_CDM_MAX_LOCAL_MEM_SIZE_REGS: Maximum amount of local
+	 * memory available to a kernel, in dwords.
+	 */
+	DRM_PVR_PARAM_CDM_MAX_LOCAL_MEM_SIZE_REGS,
 };
 
 /**

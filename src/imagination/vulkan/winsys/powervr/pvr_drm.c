@@ -221,6 +221,24 @@ pvr_drm_winsys_device_info_init(struct pvr_winsys *ws,
    if (ret)
       return ret;
 
+   ret = pvr_drm_get_param(drm_ws,
+                           DRM_PVR_PARAM_NUM_PHANTOMS,
+                           &runtime_info->num_phantoms);
+   if (ret)
+      return ret;
+
+   ret = pvr_drm_get_param(drm_ws,
+                           DRM_PVR_PARAM_MAX_COEFFS,
+                           &runtime_info->max_coeffs);
+   if (ret)
+      return ret;
+
+   ret = pvr_drm_get_param(drm_ws,
+                           DRM_PVR_PARAM_CDM_MAX_LOCAL_MEM_SIZE_REGS,
+                           &runtime_info->cdm_max_local_mem_size_regs);
+   if (ret)
+      return ret;
+
    if (PVR_HAS_FEATURE(dev_info, gpu_multicore_support)) {
       /* TODO: When kernel support is added, fetch the actual core count. */
       mesa_logw("Core count fetching is unimplemented. Setting 1 for now.");
