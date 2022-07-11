@@ -207,10 +207,6 @@ struct rogue_fwif_cmd_frag {
 	/* Stride IN BYTES for S-Buffer in case of RTAs. */
 	uint32_t sls_stride;
 
-	uint8_t deprecated1;
-	uint8_t deprecated2;
-	uint8_t deprecated3;
-
 	/* Only used if feature GPU_MULTICORE_SUPPORT present. */
 	uint32_t execute_count;
 };
