@@ -268,10 +268,10 @@ enum drm_pvr_param {
 	DRM_PVR_PARAM_ENHANCEMENTS0,
 
 	/*
-	 * @DRM_PVR_PARAM_FREE_LIST_MIN_SIZE: Minimum allowed free list size,
+	 * @DRM_PVR_PARAM_FREE_LIST_MIN_PAGES: Minimum allowed free list size,
 	 * in pages.
 	 */
-	DRM_PVR_PARAM_FREE_LIST_MIN_SIZE,
+	DRM_PVR_PARAM_FREE_LIST_MIN_PAGES,
 
 	/**
 	 * @DRM_PVR_PARAM_RESERVED_SHARED_SIZE: Reserved shared size, in dwords.
