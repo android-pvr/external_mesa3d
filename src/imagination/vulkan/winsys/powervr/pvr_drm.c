@@ -179,6 +179,7 @@ pvr_drm_winsys_device_info_init(struct pvr_winsys *ws,
                                 struct pvr_device_runtime_info *runtime_info)
 {
    struct pvr_drm_winsys *drm_ws = to_pvr_drm_winsys(ws);
+   uint64_t min_free_list_pages = 0;
    int ret;
 
    ret = pvr_device_info_init(dev_info, drm_ws->bvnc);
@@ -204,10 +205,13 @@ pvr_drm_winsys_device_info_init(struct pvr_winsys *ws,
    }
 
    ret = pvr_drm_get_param(drm_ws,
-                           DRM_PVR_PARAM_FREE_LIST_MIN_SIZE,
-                           &runtime_info->min_free_list_size);
+                           DRM_PVR_PARAM_FREE_LIST_MIN_PAGES,
+                           &min_free_list_pages);
    if (ret)
       return ret;
+
+   runtime_info->min_free_list_size = min_free_list_pages
+                                      << ROGUE_BIF_PM_PHYSICAL_PAGE_SHIFT;
 
    ret = pvr_drm_get_param(drm_ws,
                            DRM_PVR_PARAM_RESERVED_SHARED_SIZE,
