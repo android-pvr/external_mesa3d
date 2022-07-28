@@ -154,6 +154,12 @@ struct rogue_fwif_frag_regs {
 	/* Only used when feature MULTIBUFFER_OCLQRY present. */
 	uint32_t isp_oclqry_stride;
 
+	/* Only used when feature ZLS_SUBTILE present. */
+	uint32_t isp_zls_pixels;
+
+	/* Only used when feature ISP_ZLS_D24_S8_PACKING_OGL_MODE present. */
+	uint32_t rgx_cr_blackpearl_fix;
+
 	/* All values below the ALIGN(8) must be 64 bit. */
 	uint64_t ALIGN(8) isp_scissor_base;
 	uint64_t isp_dbias_base;
@@ -161,9 +167,6 @@ struct rogue_fwif_frag_regs {
 	uint64_t isp_zlsctl;
 	uint64_t isp_zload_store_base;
 	uint64_t isp_stencil_load_store_base;
-
-	/* Only used when feature ZLS_SUBTILE present. */
-	uint64_t isp_zls_pixels;
 
 	/* Only used when HW_REQUIRES_FB_CDC_ZLS_SETUP present. */
 	uint64_t fb_cdc_zls;
@@ -177,9 +180,6 @@ struct rogue_fwif_frag_regs {
 	uint64_t pds_bgnd_brn65101[3U];
 
 	uint64_t pds_pr_bgnd[3U];
-
-	/* Only used when feature ISP_ZLS_D24_S8_PACKING_OGL_MODE present. */
-	uint64_t rgx_cr_blackpearl_fix;
 
 	/* Only used when BRN 62850 or 62865 present. */
 	uint64_t isp_dummy_stencil_store_base;
@@ -218,18 +218,8 @@ struct rogue_fwif_cmd_frag {
 struct rogue_fwif_compute_regs {
 	uint64_t tpu_border_colour_table;
 
-	/* Only used when feature TPU_DM_GLOBAL_REGISTERS present. */
-	uint64_t tpu_tag_cdm_ctrl;
-
 	/* Only used when feature CDM_USER_MODE_QUEUE present. */
 	uint64_t cdm_cb_queue;
-
-	/*
-	 * Only used when features CDM_USER_MODE_QUEUE and
-	 * SUPPORT_TRUSTED_DEVICE are present, and SUPPORT_SECURE_ALLOC_KM is
-	 * not present.
-	 */
-	uint64_t cdm_cb_secure_queue;
 
 	/* Only used when feature CDM_USER_MODE_QUEUE present. */
 	uint64_t cdm_cb_base;
@@ -249,6 +239,11 @@ struct rogue_fwif_compute_regs {
 
 	/* Only used when feature CLUSTER_GROUPING present. */
 	uint32_t compute_cluster;
+
+	/* Only used when feature TPU_DM_GLOBAL_REGISTERS present. */
+	uint32_t tpu_tag_cdm_ctrl;
+
+	uint32_t padding;
 };
 
 struct rogue_fwif_cmd_compute {
