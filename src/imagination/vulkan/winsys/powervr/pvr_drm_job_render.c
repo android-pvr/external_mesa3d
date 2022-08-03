@@ -30,7 +30,6 @@
 #include <xf86drm.h>
 
 #include "drm-uapi/pvr_drm.h"
-#include "fw-api/pvr_rogue_fwif_client.h"
 #include "fw-api/pvr_rogue_fwif_shared.h"
 #include "pvr_drm.h"
 #include "pvr_drm_bo.h"
@@ -380,140 +379,45 @@ void pvr_drm_render_target_dataset_destroy(
    vk_free(drm_ws->alloc, drm_rt_dataset);
 }
 
-static uint32_t pvr_winsys_geom_flags_to_fwif(uint32_t ws_flags)
+static uint32_t pvr_winsys_geom_flags_to_drm(uint32_t ws_flags)
 {
    uint32_t flags = 0U;
 
    if (ws_flags & PVR_WINSYS_GEOM_FLAG_FIRST_GEOMETRY)
-      flags |= ROGUE_FWIF_GEOM_FIRST;
+      flags |= DRM_PVR_SUBMIT_JOB_GEOM_CMD_FIRST;
 
    if (ws_flags & PVR_WINSYS_GEOM_FLAG_LAST_GEOMETRY)
-      flags |= ROGUE_FWIF_GEOM_LAST;
+      flags |= DRM_PVR_SUBMIT_JOB_GEOM_CMD_LAST;
 
    if (ws_flags & PVR_WINSYS_GEOM_FLAG_SINGLE_CORE)
-      flags |= ROGUE_FWIF_GEOM_SINGLE_CORE;
+      flags |= DRM_PVR_SUBMIT_JOB_GEOM_CMD_SINGLE_CORE;
 
    return flags;
 }
 
-static void pvr_drm_geometry_cmd_init(
-   const struct pvr_winsys_render_submit_info *restrict submit_info,
-   struct rogue_fwif_cmd_geom *restrict cmd)
-{
-   const struct pvr_winsys_geometry_state *const state = &submit_info->geometry;
-
-   *cmd = (struct rogue_fwif_cmd_geom){
-      /* cmd_shared is for kernel use only. */
-      .regs = {
-         .vdm_ctrl_stream_base = state->regs.vdm_ctrl_stream_base,
-         .tpu_border_colour_table = state->regs.tpu_border_colour_table,
-         .ppp_ctrl = state->regs.ppp_ctrl,
-         .te_psg = state->regs.te_psg,
-         .tpu = state->regs.tpu,
-         .vdm_context_resume_task0_size = state->regs.vdm_ctx_resume_task0_size,
-         .pds_ctrl = state->regs.pds_ctrl,
-         /* view_idx is unused. */
-      },
-      .flags = pvr_winsys_geom_flags_to_fwif(state->flags),
-      /* partial_render_geom_frag_fence is unused. */
-   };
-}
-
-static uint32_t pvr_winsys_frag_flags_to_fwif(uint32_t ws_flags)
+static uint32_t pvr_winsys_frag_flags_to_drm(uint32_t ws_flags)
 {
    uint32_t flags = 0U;
 
    if (ws_flags & PVR_WINSYS_FRAG_FLAG_SINGLE_CORE)
-      flags |= ROGUE_FWIF_FRAG_SINGLE_CORE;
+      flags |= DRM_PVR_SUBMIT_JOB_FRAG_CMD_SINGLE_CORE;
 
    if (ws_flags & PVR_WINSYS_FRAG_FLAG_DEPTH_BUFFER_PRESENT)
-      flags |= ROGUE_FWIF_FRAG_DEPTHBUFFER;
+      flags |= DRM_PVR_SUBMIT_JOB_FRAG_CMD_DEPTHBUFFER;
 
    if (ws_flags & PVR_WINSYS_FRAG_FLAG_STENCIL_BUFFER_PRESENT)
-      flags |= ROGUE_FWIF_FRAG_STENCILBUFFER;
+      flags |= DRM_PVR_SUBMIT_JOB_FRAG_CMD_STENCILBUFFER;
 
    if (ws_flags & PVR_WINSYS_FRAG_FLAG_PREVENT_CDM_OVERLAP)
-      flags |= ROGUE_FWIF_FRAG_PREVENT_CDM_OVERLAP;
+      flags |= DRM_PVR_SUBMIT_JOB_FRAG_CMD_PREVENT_CDM_OVERLAP;
 
    return flags;
-}
-
-static void pvr_drm_fragment_cmd_init(
-   const struct pvr_winsys_render_submit_info *restrict submit_info,
-   struct rogue_fwif_cmd_frag *restrict cmd)
-{
-   const struct pvr_winsys_fragment_state *const state = &submit_info->fragment;
-
-   *cmd = (struct rogue_fwif_cmd_frag){
-      /* cmd_shared is for kernel use only. */
-      .regs = {
-         .usc_pixel_output_ctrl = state->regs.usc_pixel_output_ctrl,
-         /* usc_clear_register is unused. */
-         .isp_bgobjdepth = state->regs.isp_bgobjdepth,
-         .isp_bgobjvals = state->regs.isp_bgobjvals,
-         .isp_aa = state->regs.isp_aa,
-         .isp_ctl = state->regs.isp_ctl,
-         .tpu = state->regs.tpu,
-         .event_pixel_pds_info = state->regs.event_pixel_pds_info,
-         .pixel_phantom = state->regs.pixel_phantom,
-         /* view_idx is unused. */
-         .event_pixel_pds_data = state->regs.event_pixel_pds_data,
-         .isp_scissor_base = state->regs.isp_scissor_base,
-         .isp_dbias_base = state->regs.isp_dbias_base,
-         .isp_oclqry_base = state->regs.isp_oclqry_base,
-         .isp_zlsctl = state->regs.isp_zlsctl,
-         .isp_zload_store_base = state->regs.isp_zload_store_base,
-         .isp_stencil_load_store_base = state->regs.isp_stencil_load_store_base,
-         .isp_zls_pixels = state->regs.isp_zls_pixels,
-         .tpu_border_colour_table = state->regs.tpu_border_colour_table,
-      },
-      .flags = pvr_winsys_frag_flags_to_fwif(state->flags),
-      .zls_stride = state->zls_stride,
-      .sls_stride = state->sls_stride,
-   };
-
-   STATIC_ASSERT(ARRAY_SIZE(cmd->regs.pbe_word) ==
-                 ARRAY_SIZE(state->regs.pbe_word));
-
-   STATIC_ASSERT(ARRAY_SIZE(cmd->regs.pbe_word[0]) <=
-                 ARRAY_SIZE(state->regs.pbe_word[0]));
-
-#if !defined(NDEBUG)
-   /* Depending on the hardware we might have more PBE words than the firmware
-    * accepts so check that the extra words are 0.
-    */
-   if (ARRAY_SIZE(cmd->regs.pbe_word[0]) <
-       ARRAY_SIZE(state->regs.pbe_word[0])) {
-      /* For each color attachment. */
-      for (uint32_t i = 0; i < ARRAY_SIZE(state->regs.pbe_word); i++) {
-         /* For each extra PBE word not used by the firmware. */
-         for (uint32_t j = ARRAY_SIZE(cmd->regs.pbe_word[0]);
-              j < ARRAY_SIZE(state->regs.pbe_word[0]);
-              j++) {
-            assert(state->regs.pbe_word[i][j] == 0);
-         }
-      }
-   }
-#endif
-
-   memcpy(cmd->regs.pbe_word, state->regs.pbe_word, sizeof(cmd->regs.pbe_word));
-
-   STATIC_ASSERT(ARRAY_SIZE(cmd->regs.pds_bgnd) ==
-                 ARRAY_SIZE(state->regs.pds_bgnd));
-   typed_memcpy(cmd->regs.pds_bgnd,
-                state->regs.pds_bgnd,
-                ARRAY_SIZE(cmd->regs.pds_bgnd));
-
-   STATIC_ASSERT(ARRAY_SIZE(cmd->regs.pds_pr_bgnd) ==
-                 ARRAY_SIZE(state->regs.pds_pr_bgnd));
-   typed_memcpy(cmd->regs.pds_pr_bgnd,
-                state->regs.pds_pr_bgnd,
-                ARRAY_SIZE(cmd->regs.pds_pr_bgnd));
 }
 
 VkResult pvr_drm_winsys_render_submit(
    const struct pvr_winsys_render_ctx *ctx,
    const struct pvr_winsys_render_submit_info *submit_info,
+   UNUSED const struct pvr_device_info *dev_info,
    struct vk_sync *signal_sync_geom,
    struct vk_sync *signal_sync_frag)
 
@@ -521,20 +425,23 @@ VkResult pvr_drm_winsys_render_submit(
    const struct pvr_drm_winsys *drm_ws = to_pvr_drm_winsys(ctx->ws);
    const struct pvr_drm_winsys_render_ctx *drm_ctx =
       to_pvr_drm_winsys_render_ctx(ctx);
+   const struct pvr_winsys_geometry_state *const geom_state =
+      &submit_info->geometry;
+   const struct pvr_winsys_fragment_state *const frag_state =
+      &submit_info->fragment;
    const struct pvr_drm_winsys_rt_dataset *drm_rt_dataset =
       to_pvr_drm_winsys_rt_dataset(submit_info->rt_dataset);
-
-   struct rogue_fwif_cmd_geom geom_cmd;
-   struct rogue_fwif_cmd_frag frag_cmd;
    struct drm_pvr_bo_ref *bo_refs = NULL;
 
    struct drm_pvr_job_render_args job_args = {
-      .cmd_geom = (__u64)&geom_cmd,
-      .cmd_frag = (__u64)&frag_cmd,
-      .cmd_geom_len = sizeof(geom_cmd),
-      .cmd_frag_len = sizeof(frag_cmd),
+      .geom_stream = (__u64)&geom_state->fw_stream[0],
+      .geom_stream_len = geom_state->fw_stream_len,
+      .frag_stream = (__u64)&frag_state->fw_stream[0],
+      .frag_stream_len = frag_state->fw_stream_len,
       .hwrt_data_set_handle = drm_rt_dataset->handle,
       .hwrt_data_index = submit_info->rt_data_idx,
+      .geom_flags = pvr_winsys_geom_flags_to_drm(geom_state->flags),
+      .frag_flags = pvr_winsys_frag_flags_to_drm(frag_state->flags),
    };
 
    struct drm_pvr_ioctl_submit_job_args args = {
@@ -551,8 +458,15 @@ VkResult pvr_drm_winsys_render_submit(
    VkResult result;
    int ret;
 
-   pvr_drm_geometry_cmd_init(submit_info, &geom_cmd);
-   pvr_drm_fragment_cmd_init(submit_info, &frag_cmd);
+   if (geom_state->fw_ext_stream_len) {
+      job_args.geom_ext_stream = (__u64)&geom_state->fw_ext_stream[0];
+      job_args.geom_ext_stream_len = geom_state->fw_ext_stream_len;
+   }
+
+   if (frag_state->fw_ext_stream_len) {
+      job_args.frag_ext_stream = (__u64)&frag_state->fw_ext_stream[0];
+      job_args.frag_ext_stream_len = frag_state->fw_ext_stream_len;
+   }
 
    handles = vk_alloc(drm_ws->alloc,
                       sizeof(*handles) * submit_info->wait_count * 2,

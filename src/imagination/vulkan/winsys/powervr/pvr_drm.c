@@ -119,12 +119,12 @@ static int pvr_drm_override_quirks(struct pvr_drm_winsys *drm_ws,
 
 #define PVR_QUIRK_MUSTHAVE_CHECK_SET(quirks_x, musthave_x, number)        \
    do {                                                                   \
-      if ((musthave_x & DRM_PVR_QUIRKS0_HAS_BRN##number) &&               \
+      if ((musthave_x & DRM_PVR_QUIRK_MASK(DRM_PVR_QUIRK_BRN##number)) && \
           dev_info->quirks.has_brn##number) {                             \
-         musthave_x &= ~DRM_PVR_QUIRKS0_HAS_BRN##number;                  \
+         musthave_x &= ~DRM_PVR_QUIRK_MASK(DRM_PVR_QUIRK_BRN##number);    \
       }                                                                   \
-      dev_info->quirks.has_brn##number = quirks_x &                       \
-                                         DRM_PVR_QUIRKS0_HAS_BRN##number; \
+      dev_info->quirks.has_brn##number =                                  \
+         quirks_x & DRM_PVR_QUIRK_MASK(DRM_PVR_QUIRK_BRN##number);        \
    } while (0)
 
    /*
@@ -158,9 +158,11 @@ static int pvr_drm_override_enhancements(struct pvr_drm_winsys *drm_ws,
    if (ret)
       goto err_out;
 
+/* clang-format off */
 #define PVR_ENHANCEMENT_SET(enhancements_x, number) \
    dev_info->enhancements.has_ern##number =         \
-      enhancements_x & DRM_PVR_ENHANCEMENTS0_HAS_ERN##number
+      enhancements_x & DRM_PVR_ENHANCEMENT_MASK(DRM_PVR_ENHANCEMENT_ERN##number)
+   /* clang-format on */
 
    PVR_ENHANCEMENT_SET(enhancements0, 35421);
 

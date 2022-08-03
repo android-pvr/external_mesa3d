@@ -45,6 +45,7 @@ void pvr_drm_winsys_compute_ctx_destroy(struct pvr_winsys_compute_ctx *ctx);
 VkResult pvr_drm_winsys_compute_submit(
    const struct pvr_winsys_compute_ctx *ctx,
    const struct pvr_winsys_compute_submit_info *submit_info,
+   const struct pvr_device_info *dev_info,
    struct vk_sync *signal_sync);
 
 #endif /* PVR_DRM_JOB_COMPUTE_H */
