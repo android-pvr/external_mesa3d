@@ -131,13 +131,10 @@ static int pvr_drm_override_quirks(struct pvr_drm_winsys *drm_ws,
     * For each quirk, check that if it is a "must have" that it is set in
     * dev_info, then set the dev_info value to the one received from the kernel.
     */
-   PVR_QUIRK_MUSTHAVE_CHECK_SET(quirks0, quirks_musthave0, 44079);
-   PVR_QUIRK_MUSTHAVE_CHECK_SET(quirks0, quirks_musthave0, 48492);
    PVR_QUIRK_MUSTHAVE_CHECK_SET(quirks0, quirks_musthave0, 48545);
    PVR_QUIRK_MUSTHAVE_CHECK_SET(quirks0, quirks_musthave0, 49927);
    PVR_QUIRK_MUSTHAVE_CHECK_SET(quirks0, quirks_musthave0, 51764);
    PVR_QUIRK_MUSTHAVE_CHECK_SET(quirks0, quirks_musthave0, 62269);
-   PVR_QUIRK_MUSTHAVE_CHECK_SET(quirks0, quirks_musthave0, 66011);
 
 #undef PVR_QUIRK_MUSTHAVE_CHECK_SET
 
@@ -214,13 +211,13 @@ pvr_drm_winsys_device_info_init(struct pvr_winsys *ws,
                                       << ROGUE_BIF_PM_PHYSICAL_PAGE_SHIFT;
 
    ret = pvr_drm_get_param(drm_ws,
-                           DRM_PVR_PARAM_RESERVED_SHARED_SIZE,
+                           DRM_PVR_PARAM_COMMON_STORE_ALLOC_REGION_SIZE,
                            &runtime_info->reserved_shared_size);
    if (ret)
       return ret;
 
    ret = pvr_drm_get_param(drm_ws,
-                           DRM_PVR_PARAM_TOTAL_RESERVED_PARTITION_SIZE,
+                           DRM_PVR_PARAM_COMMON_STORE_PARTITION_SPACE_SIZE,
                            &runtime_info->total_reserved_partition_size);
    if (ret)
       return ret;
