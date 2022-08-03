@@ -30,7 +30,6 @@
 #include <xf86drm.h>
 
 #include "drm-uapi/pvr_drm.h"
-#include "fw-api/pvr_rogue_fwif_client.h"
 #include "fw-api/pvr_rogue_fwif_shared.h"
 #include "pvr_drm.h"
 #include "pvr_drm_job_common.h"
@@ -137,16 +136,16 @@ void pvr_drm_winsys_compute_ctx_destroy(struct pvr_winsys_compute_ctx *ctx)
    vk_free(drm_ws->alloc, drm_ctx);
 }
 
-static uint32_t pvr_winsys_compute_flags_to_fwif(uint32_t ws_flags)
+static uint32_t pvr_winsys_compute_flags_to_drm(uint32_t ws_flags)
 {
    uint32_t flags = 0U;
 
    if (ws_flags & PVR_WINSYS_COMPUTE_FLAG_PREVENT_ALL_OVERLAP) {
-      flags |= ROGUE_FWIF_COMPUTE_FLAG_PREVENT_ALL_OVERLAP;
+      flags |= DRM_PVR_SUBMIT_JOB_COMPUTE_CMD_PREVENT_ALL_OVERLAP;
    }
 
    if (flags & PVR_WINSYS_COMPUTE_FLAG_SINGLE_CORE)
-      flags |= ROGUE_FWIF_COMPUTE_FLAG_SINGLE_CORE;
+      flags |= DRM_PVR_SUBMIT_JOB_COMPUTE_CMD_SINGLE_CORE;
 
    return flags;
 }
@@ -154,32 +153,19 @@ static uint32_t pvr_winsys_compute_flags_to_fwif(uint32_t ws_flags)
 VkResult pvr_drm_winsys_compute_submit(
    const struct pvr_winsys_compute_ctx *ctx,
    const struct pvr_winsys_compute_submit_info *submit_info,
+   UNUSED const struct pvr_device_info *dev_info,
    struct vk_sync *signal_sync)
 {
    const struct pvr_drm_winsys *drm_ws = to_pvr_drm_winsys(ctx->ws);
    const struct pvr_drm_winsys_compute_ctx *drm_ctx =
       to_pvr_drm_winsys_compute_ctx(ctx);
 
-   struct rogue_fwif_cmd_compute compute_cmd = {
-      /* common is for kernel use only. Setting to zero. */
-      .regs = {
-         .tpu_border_colour_table = submit_info->regs.tpu_border_colour_table,
-         .cdm_item = submit_info->regs.cdm_item,
-         .compute_cluster = submit_info->regs.compute_cluster,
-         .cdm_ctrl_stream_base = submit_info->regs.cdm_ctrl_stream_base,
-         .cdm_context_state_base_addr =
-            submit_info->regs.cdm_ctx_state_base_addr,
-         .tpu = submit_info->regs.tpu,
-         .cdm_resume_pds1 = submit_info->regs.cdm_resume_pds1,
-      },
-      .flags = pvr_winsys_compute_flags_to_fwif(submit_info->flags),
-   };
-
    struct drm_pvr_job_compute_args job_args = {
-      .cmd = (__u64)&compute_cmd,
+      .stream = (__u64)&submit_info->fw_stream[0],
+      .stream_len = submit_info->fw_stream_len,
       /* bo_handles is unused and zeroed. */
-      .cmd_len = sizeof(compute_cmd),
       /* num_bo_handles is unused and zeroed. */
+      .flags = pvr_winsys_compute_flags_to_drm(submit_info->flags),
    };
 
    struct drm_pvr_ioctl_submit_job_args args = {
@@ -194,6 +180,11 @@ VkResult pvr_drm_winsys_compute_submit(
    uint32_t *handles;
    VkResult result;
    int ret;
+
+   if (submit_info->fw_ext_stream_len) {
+      job_args.ext_stream = (__u64)&submit_info->fw_ext_stream[0];
+      job_args.ext_stream_len = submit_info->fw_ext_stream_len;
+   }
 
    handles = vk_alloc(drm_ws->alloc,
                       sizeof(*handles) * submit_info->wait_count,
