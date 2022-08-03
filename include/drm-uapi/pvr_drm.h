@@ -180,13 +180,11 @@ struct drm_pvr_ioctl_get_bo_mmap_offset_args {
  * DOC: Quirks returned by %DRM_PVR_PARAM_QUIRKS0 and
  *      %DRM_PVR_PARAM_QUIRKS_MUSTHAVE0
  */
-#define DRM_PVR_QUIRKS0_HAS_BRN44079 _BITULL(0)
-#define DRM_PVR_QUIRKS0_HAS_BRN48492 _BITULL(1)
+#define DRM_PVR_QUIRKS0_HAS_BRN47217 _BITULL(0)
 #define DRM_PVR_QUIRKS0_HAS_BRN48545 _BITULL(2)
 #define DRM_PVR_QUIRKS0_HAS_BRN49927 _BITULL(3)
 #define DRM_PVR_QUIRKS0_HAS_BRN51764 _BITULL(4)
 #define DRM_PVR_QUIRKS0_HAS_BRN62269 _BITULL(5)
-#define DRM_PVR_QUIRKS0_HAS_BRN66011 _BITULL(6)
 
 /**
  * DOC: Enhancements returned by %DRM_PVR_PARAM_ENHANCEMENTS0
@@ -244,6 +242,10 @@ enum drm_pvr_param {
 	/**
 	 * @DRM_PVR_PARAM_QUIRKS0: Hardware quirks 0.
 	 *
+	 * These quirks affect userspace and the kernel or firmware. They are
+	 * disabled by default and require userspace to opt-in. The opt-in
+	 * mechanism depends on the quirk.
+	 *
 	 * This is a bitmask of %DRM_PVR_QUIRKS0_HAS_*.
 	 */
 	DRM_PVR_PARAM_QUIRKS0,
@@ -251,8 +253,8 @@ enum drm_pvr_param {
 	/**
 	 * @DRM_PVR_PARAM_QUIRKS_MUSTHAVE0: "Must have" hardware quirks 0.
 	 *
-	 * This describes the quirks that the client must support for this
-	 * device. If the client does not support all the quirks in this
+	 * This describes a fixed list of quirks that the client must support
+	 * for this device. If userspace does not support all the quirks in this
 	 * parameter then functionality is not guaranteed and client
 	 * initialisation must fail.
 	 *
@@ -263,26 +265,33 @@ enum drm_pvr_param {
 	/**
 	 * @DRM_PVR_PARAM_ENHANCEMENTS0: Hardware enhancements 0.
 	 *
+	 * These enhancements affect userspace and the kernel or firmware. They
+	 * are disabled by default and require userspace to opt-in. The opt-in
+	 * mechanism depends on the quirk.
+	 *
 	 * This is a bitmask of %DRM_PVR_ENHANCEMENTS0_HAS_*.
 	 */
 	DRM_PVR_PARAM_ENHANCEMENTS0,
 
 	/*
 	 * @DRM_PVR_PARAM_FREE_LIST_MIN_PAGES: Minimum allowed free list size,
-	 * in pages.
+	 * in PM physical pages.
 	 */
 	DRM_PVR_PARAM_FREE_LIST_MIN_PAGES,
 
-	/**
-	 * @DRM_PVR_PARAM_RESERVED_SHARED_SIZE: Reserved shared size, in dwords.
+	/*
+	 * @DRM_PVR_PARAM_COMMON_STORE_ALLOC_REGION_SIZE: Size of the Allocation
+	 * Region within the Common Store used for coefficient and shared
+	 * registers, in dwords.
 	 */
-	DRM_PVR_PARAM_RESERVED_SHARED_SIZE,
+	DRM_PVR_PARAM_COMMON_STORE_ALLOC_REGION_SIZE,
 
 	/**
-	 * @DRM_PVR_PARAM_TOTAL_RESERVED_PARTITION_SIZE: Total reserved
-	 * partition size.
+	 * @DRM_PVR_PARAM_COMMON_STORE_PARTITION_SPACE_SIZE: Size of the
+	 * Partition Space within the Common Store for output buffers, in
+	 * dwords.
 	 */
-	DRM_PVR_PARAM_TOTAL_RESERVED_PARTITION_SIZE,
+	DRM_PVR_PARAM_COMMON_STORE_PARTITION_SPACE_SIZE,
 
 	/**
 	 * @DRM_PVR_PARAM_NUM_PHANTOMS: Number of Phantoms present.
@@ -539,7 +548,12 @@ struct drm_pvr_ioctl_create_hwrt_dataset_args {
 	/** @rt_data_args: [IN] Array of render target arguments. */
 	struct create_hwrt_rt_data_args rt_data_args[2];
 
-	/** @free_list_args: [IN] Array of free list handles. */
+	/**
+	 * @free_list_args: [IN] Array of free list handles.
+	 *
+	 * free_list_handles[0] must have initial size of at least that reported
+	 * by %DRM_PVR_PARAM_FREE_LIST_MIN_PAGES.
+	 */
 	__u32 free_list_handles[2];
 
 	/** @width: [IN] Width in pixels. */
