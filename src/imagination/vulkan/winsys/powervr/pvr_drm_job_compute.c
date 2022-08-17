@@ -140,11 +140,10 @@ static uint32_t pvr_winsys_compute_flags_to_drm(uint32_t ws_flags)
 {
    uint32_t flags = 0U;
 
-   if (ws_flags & PVR_WINSYS_COMPUTE_FLAG_PREVENT_ALL_OVERLAP) {
+   if (ws_flags & PVR_WINSYS_COMPUTE_FLAG_PREVENT_ALL_OVERLAP)
       flags |= DRM_PVR_SUBMIT_JOB_COMPUTE_CMD_PREVENT_ALL_OVERLAP;
-   }
 
-   if (flags & PVR_WINSYS_COMPUTE_FLAG_SINGLE_CORE)
+   if (ws_flags & PVR_WINSYS_COMPUTE_FLAG_SINGLE_CORE)
       flags |= DRM_PVR_SUBMIT_JOB_COMPUTE_CMD_SINGLE_CORE;
 
    return flags;
