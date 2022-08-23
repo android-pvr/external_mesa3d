@@ -43,6 +43,7 @@ const struct pvr_device_features pvr_device_features_4_V_2_51 = {
    .has_compute_morton_capable = true,
    .has_compute_overlap = true,
    .has_eight_output_registers = true,
+   .has_fbcdc_algorithm = true,
    .has_gs_rta_support = true,
    .has_isp_max_tiles_in_flight = true,
    .has_isp_samples_per_pixel = true,
@@ -72,6 +73,7 @@ const struct pvr_device_features pvr_device_features_4_V_2_51 = {
    .has_zls_subtile = true,
 
    .common_store_size_in_dwords = 1280U * 4U * 4U,
+   .fbcdc_algorithm = 2,
    .isp_max_tiles_in_flight = 4U,
    .isp_samples_per_pixel = 2U,
    .max_instances_per_pds_task = 32U,
@@ -90,6 +92,8 @@ const struct pvr_device_features pvr_device_features_4_V_2_51 = {
    .uvs_pba_entries = 320U,
    .uvs_vtx_entries = 288U,
    .vdm_cam_size = 256U,
+
+   .has_requires_fb_cdc_zls_setup = true,
 };
 
 const struct pvr_device_enhancements pvr_device_enhancements_4_40_2_51 = {
@@ -203,6 +207,7 @@ const struct pvr_device_features pvr_device_features_36_V_104_796 = {
    .has_common_store_size_in_dwords = true,
    .has_compute = true,
    .has_compute_overlap = true,
+   .has_fbcdc_algorithm = true,
    .has_gpu_multicore_support = true,
    .has_gs_rta_support = true,
    .has_isp_max_tiles_in_flight = true,
@@ -240,6 +245,7 @@ const struct pvr_device_features pvr_device_features_36_V_104_796 = {
    .has_xpu_max_slaves = true,
 
    .common_store_size_in_dwords = 1344U * 4U * 4U,
+   .fbcdc_algorithm = 50U,
    .isp_max_tiles_in_flight = 6U,
    .isp_samples_per_pixel = 4U,
    .max_instances_per_pds_task = 32U,
