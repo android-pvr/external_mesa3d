@@ -27,10 +27,12 @@
 #include <vulkan/vulkan.h>
 #include <xf86drm.h>
 
+#include "drm-uapi/pvr_drm.h"
 #include "pvr_drm.h"
 #include "pvr_drm_job_null.h"
 #include "pvr_winsys.h"
 #include "util/libsync.h"
+#include "vk_alloc.h"
 #include "vk_drm_syncobj.h"
 #include "vk_log.h"
 #include "vk_sync.h"
@@ -41,42 +43,57 @@ VkResult pvr_drm_winsys_null_job_submit(struct pvr_winsys *ws,
                                         uint32_t wait_count,
                                         struct vk_sync *signal_sync)
 {
-   struct pvr_drm_winsys *drm_ws = to_pvr_drm_winsys(ws);
-   struct vk_drm_syncobj *drm_signal_sync;
-   struct vk_drm_syncobj *drm_wait_sync;
-   int out_fd = -1;
+   const struct pvr_drm_winsys *drm_ws = to_pvr_drm_winsys(ws);
+
+   struct drm_pvr_job_null_args job_args = {
+      /* bo_handles is unused and zeroed. */
+      /* num_bo_handles is unused and zeroed. */
+      .flags = 0,
+   };
+
+   struct drm_pvr_ioctl_submit_job_args args = {
+      .job_type = DRM_PVR_JOB_TYPE_NULL,
+      .data = (__u64)&job_args,
+   };
+
+   uint32_t num_syncs = 0;
+   VkResult result;
    int ret;
 
-   for (uint32_t i = 0U; i < wait_count; i++) {
-      int wait_fd;
-
-      if (!waits[i])
-         continue;
-
-      drm_wait_sync = vk_sync_as_drm_syncobj(waits[i]);
-      ret = drmSyncobjExportSyncFile(drm_ws->render_fd,
-                                     drm_wait_sync->syncobj,
-                                     &wait_fd);
-      if (ret) {
-         close(out_fd);
-         return vk_error(NULL, VK_ERROR_OUT_OF_HOST_MEMORY);
-      }
-
-      ret = sync_accumulate("pvr", &out_fd, wait_fd);
-      close(wait_fd);
-      if (ret) {
-         close(out_fd);
-         return vk_error(NULL, VK_ERROR_OUT_OF_HOST_MEMORY);
-      }
-   }
-
-   drm_signal_sync = vk_sync_as_drm_syncobj(signal_sync);
-   ret = drmSyncobjImportSyncFile(drm_ws->render_fd,
-                                  drm_signal_sync->syncobj,
-                                  out_fd);
-   close(out_fd);
-   if (ret)
+   STACK_ARRAY(uint32_t, handles, wait_count);
+   if (!handles)
       return vk_error(NULL, VK_ERROR_OUT_OF_HOST_MEMORY);
 
+   for (uint32_t i = 0; i < wait_count; i++) {
+      struct vk_sync *sync = waits[i];
+
+      if (!sync)
+         continue;
+
+      handles[num_syncs++] = vk_sync_as_drm_syncobj(sync)->syncobj;
+   }
+
+   job_args.in_syncobj_handles = (__u64)handles;
+   job_args.num_in_syncobj_handles = num_syncs;
+
+   job_args.out_syncobj = vk_sync_as_drm_syncobj(signal_sync)->syncobj;
+
+   ret = drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_SUBMIT_JOB, &args);
+   if (ret) {
+      result = vk_errorf(NULL,
+                         VK_ERROR_OUT_OF_DEVICE_MEMORY,
+                         "Failed to submit null job. Errno: %d - %s.",
+                         errno,
+                         strerror(errno));
+      goto err_free_handles;
+   }
+
+   STACK_ARRAY_FINISH(handles);
+
    return VK_SUCCESS;
+
+err_free_handles:
+   STACK_ARRAY_FINISH(handles);
+
+   return result;
 }
