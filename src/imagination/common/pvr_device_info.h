@@ -343,6 +343,7 @@ struct pvr_device_quirks {
    bool has_brn47727 : 1;
    bool has_brn48492 : 1;
    bool has_brn48545 : 1;
+   bool has_brn48754 : 1;
    bool has_brn49032 : 1;
    bool has_brn49927 : 1;
    bool has_brn51025 : 1;
@@ -351,9 +352,12 @@ struct pvr_device_quirks {
    bool has_brn52354 : 1;
    bool has_brn52942 : 1;
    bool has_brn58839 : 1;
+   bool has_brn60227 : 1;
    bool has_brn62269 : 1;
    bool has_brn66011 : 1;
    bool has_brn70165 : 1;
+   bool has_brn72310 : 1;
+   bool has_brn72311 : 1;
 };
 
 struct pvr_device_info {
