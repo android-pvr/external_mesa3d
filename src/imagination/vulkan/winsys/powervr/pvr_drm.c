@@ -518,30 +518,6 @@ err_pvr_drm_heap_finish_all_heaps:
    return result;
 }
 
-static bool pvr_is_firmware_supported(struct pvr_drm_winsys *drm_ws)
-{
-   uint64_t fw_version = 0;
-   int ret;
-
-   ret = pvr_drm_get_param(drm_ws, DRM_PVR_PARAM_FW_VERSION, &fw_version);
-   if (ret) {
-      vk_error(NULL, VK_ERROR_INITIALIZATION_FAILED);
-      return false;
-   }
-
-   /* For now we only support 1.17 firmware version. */
-   if (fw_version != PVR_DRM_PACK_FW_VERSION(1U, 17U)) {
-      vk_errorf(NULL,
-                VK_ERROR_INCOMPATIBLE_DRIVER,
-                "Unsupported firmware version (%u.%u)",
-                PVR_DRM_UNPACK_FW_VERSION_MAJOR(fw_version),
-                PVR_DRM_UNPACK_FW_VERSION_MINOR(fw_version));
-      return false;
-   }
-
-   return true;
-}
-
 struct pvr_winsys *pvr_drm_winsys_create(int master_fd,
                                          int render_fd,
                                          const VkAllocationCallbacks *alloc)
@@ -568,9 +544,6 @@ struct pvr_winsys *pvr_drm_winsys_create(int master_fd,
    drm_ws->master_fd = master_fd;
    drm_ws->render_fd = render_fd;
    drm_ws->alloc = alloc;
-
-   if (!pvr_is_firmware_supported(drm_ws))
-      goto err_vk_free_drm_ws;
 
    ret = pvr_drm_get_param(drm_ws, DRM_PVR_PARAM_GPU_ID, &drm_ws->bvnc);
    if (ret) {
