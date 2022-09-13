@@ -466,7 +466,7 @@ VkResult pvr_drm_winsys_render_submit(
    }
 
    handles = vk_alloc(drm_ws->alloc,
-                      sizeof(*handles) * submit_info->wait_count * 2,
+                      sizeof(*handles) * (submit_info->wait_count + 1) * 2,
                       8,
                       VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
    if (!handles)
@@ -488,6 +488,20 @@ VkResult pvr_drm_winsys_render_submit(
             vk_sync_as_drm_syncobj(sync)->syncobj;
          submit_info->stage_flags[i] &= ~PVR_PIPELINE_STAGE_FRAG_BIT;
       }
+   }
+
+   if (submit_info->barrier_geom) {
+      struct vk_drm_syncobj *drm_sync =
+         vk_sync_as_drm_syncobj(submit_info->barrier_geom);
+
+      handles[num_geom_syncs++] = drm_sync->syncobj;
+   }
+
+   if (submit_info->barrier_frag) {
+      struct vk_drm_syncobj *drm_sync =
+         vk_sync_as_drm_syncobj(submit_info->barrier_frag);
+
+      handles[submit_info->wait_count + num_frag_syncs++] = drm_sync->syncobj;
    }
 
    args.in_syncobj_handles = (__u64)handles;
