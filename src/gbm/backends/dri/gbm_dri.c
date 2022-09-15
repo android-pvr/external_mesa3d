@@ -293,7 +293,6 @@ static struct dri_extension_match dri_core_extensions[] = {
 
 static struct dri_extension_match gbm_dri_device_extensions[] = {
    { __DRI_CORE, 1, offsetof(struct gbm_dri_device, core), false },
-   { __DRI_MESA, 1, offsetof(struct gbm_dri_device, mesa), false },
    { __DRI_DRI2, 4, offsetof(struct gbm_dri_device, dri2), false },
 };
 
@@ -335,7 +334,6 @@ dri_screen_create_for_driver(struct gbm_dri_device *dri, char *driver_name)
    bool swrast = driver_name == NULL; /* If it's pure swrast, not just swkms. */
 
    dri->driver_name = swrast ? strdup("swrast") : driver_name;
-
    const __DRIextension **extensions = dri_open_driver(dri);
    if (!extensions)
       goto fail;
@@ -358,10 +356,17 @@ dri_screen_create_for_driver(struct gbm_dri_device *dri, char *driver_name)
 
    dri->driver_extensions = extensions;
    dri->loader_extensions = gbm_dri_screen_extensions;
-   dri->screen = dri->mesa->createNewScreen(0, swrast ? -1 : dri->base.v0.fd,
+   if (dri->dri2 != NULL && dri->dri2->base.version >= 4) {
+      dri->screen = dri->dri2->createNewScreen2(0, dri->base.v0.fd,
                                             dri->loader_extensions,
                                             dri->driver_extensions,
                                             &dri->driver_configs, dri);
+   } else {
+      dri->screen = dri->mesa->createNewScreen(0, swrast ? -1 : dri->base.v0.fd,
+                                            dri->loader_extensions,
+                                            dri->driver_extensions,
+                                            &dri->driver_configs, dri);
+   }
    if (dri->screen == NULL)
       goto close_driver;
 

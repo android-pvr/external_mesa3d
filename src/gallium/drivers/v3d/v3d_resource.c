@@ -849,7 +849,16 @@ v3d_resource_create_with_modifiers(struct pipe_screen *pscreen,
 
         v3d_setup_slices(rsc, 0, tmpl->bind & PIPE_BIND_SHARED);
 
-        if (screen->ro && (tmpl->bind & PIPE_BIND_SCANOUT)) {
+        /* If we're in a renderonly setup, use the other device to perform our
+         * allocation and just import it to v3d.  The other device may be
+         * using CMA, and V3D can import from CMA but doesn't do CMA
+         * allocations on its own.
+         *
+         * We always allocate this way for SHARED, because get_handle will
+         * need a resource on the display fd.
+         */
+        if (screen->ro && (tmpl->bind & (PIPE_BIND_SCANOUT |
+                                         PIPE_BIND_SHARED))) {
                 struct winsys_handle handle;
                 struct pipe_resource scanout_tmpl = {
                         .target = prsc->target,
@@ -920,7 +929,7 @@ v3d_resource_from_handle(struct pipe_screen *pscreen,
                 rsc->tiled = true;
                 break;
         case DRM_FORMAT_MOD_INVALID:
-                rsc->tiled = screen->ro == NULL;
+                rsc->tiled = false;
                 break;
         default:
                 switch(fourcc_mod_broadcom_mod(whandle->modifier)) {

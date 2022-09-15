@@ -30,6 +30,7 @@
 #include "compiler/nir/nir_serialize.h"
 #include "util/blob.h"
 #include "util/u_upload_mgr.h"
+#include "util/build_id.h"
 
 #ifdef ENABLE_SHADER_CACHE
 

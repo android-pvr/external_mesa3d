@@ -672,7 +672,7 @@ gc_context(const void *parent)
    return ctx;
 }
 
-static_assert(UINT32_MAX >= MAX_FREELIST_SIZE, "Freelist sizes use uint32_t");
+//static_assert(UINT32_MAX >= MAX_FREELIST_SIZE, "Freelist sizes use uint32_t");
 
 static uint32_t
 gc_bucket_obj_size(uint32_t bucket)
@@ -686,7 +686,7 @@ gc_bucket_for_size(uint32_t size)
    return (size - 1) / FREELIST_ALIGNMENT;
 }
 
-static_assert(UINT32_MAX >= SLAB_SIZE, "SLAB_SIZE use uint32_t");
+//static_assert(UINT32_MAX >= SLAB_SIZE, "SLAB_SIZE use uint32_t");
 
 static uint32_t
 gc_bucket_num_objs(uint32_t bucket)

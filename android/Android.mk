@@ -43,7 +43,7 @@ LOCAL_SHARED_LIBRARIES := libc libdl libdrm libm liblog libcutils libz libc++ li
 LOCAL_STATIC_LIBRARIES := libexpat libarect libelf
 LOCAL_HEADER_LIBRARIES := libnativebase_headers hwvulkan_headers libbacktrace_headers
 MESON_GEN_PKGCONFIGS := backtrace cutils expat hardware libdrm:$(LIBDRM_VERSION) nativewindow sync zlib:1.2.11 libelf
-LOCAL_CFLAGS += $(BOARD_MESA3D_CFLAGS)
+LOCAL_CFLAGS += $(BOARD_MESA3D_CFLAGS) -DHAVE_DRI -DHAVE_DRI2 -DMAJOR_IN_SYSMACROS -DHAVE_FUNC_ATTRIBUTE_PACKED
 
 ifneq ($(filter swrast,$(BOARD_MESA3D_GALLIUM_DRIVERS) $(BOARD_MESA3D_VULKAN_DRIVERS)),)
 ifeq ($(BOARD_MESA3D_FORCE_SOFTPIPE),)
@@ -139,50 +139,34 @@ LOCAL_PREBUILT_MODULE_FILE := $($4)
 LOCAL_MULTILIB := first
 LOCAL_CHECK_ELF_FILES := false
 LOCAL_MODULE_SUFFIX := .so
-LOCAL_MODULE_SYMLINKS := $1$2
+LOCAL_MODULE_SYMLINKS := $2
 LOCAL_SHARED_LIBRARIES := $(__MY_SHARED_LIBRARIES)
 LOCAL_EXPORT_C_INCLUDE_DIRS := $5
 include $(BUILD_PREBUILT)
-
-ifdef TARGET_2ND_ARCH
-include $(CLEAR_VARS)
-LOCAL_MODULE_CLASS := SHARED_LIBRARIES
-LOCAL_MODULE := $1
-LOCAL_VENDOR_MODULE := true
-LOCAL_MODULE_RELATIVE_PATH := $3
-LOCAL_PREBUILT_MODULE_FILE := $(2ND_$4)
-LOCAL_MULTILIB := 32
-LOCAL_CHECK_ELF_FILES := false
-LOCAL_MODULE_SUFFIX := .so
-LOCAL_MODULE_SYMLINKS := $1$2
-LOCAL_SHARED_LIBRARIES := $(__MY_SHARED_LIBRARIES)
-LOCAL_EXPORT_C_INCLUDE_DIRS := $5
-include $(BUILD_PREBUILT)
-endif
 endef
 
 ifneq ($(strip $(BOARD_MESA3D_GALLIUM_DRIVERS)),)
 # Module 'libgallium_dri', produces '/vendor/lib{64}/dri/libgallium_dri.so'
 # This module also trigger DRI symlinks creation process
-$(eval $(call mesa3d-lib,libgallium_dri,.so.0,dri,MESA3D_GALLIUM_DRI_BIN))
+$(eval $(call mesa3d-lib,libgallium_dri,vc4_dri.so v3d_dri.so,dri,MESA3D_GALLIUM_DRI_BIN))
 # Module 'libglapi', produces '/vendor/lib{64}/libglapi.so'
-$(eval $(call mesa3d-lib,libglapi,.so.0,,MESA3D_LIBGLAPI_BIN))
+$(eval $(call mesa3d-lib,libglapi,libglapi.so.0,,MESA3D_LIBGLAPI_BIN))
 
 # Module 'libEGL_mesa', produces '/vendor/lib{64}/egl/libEGL_mesa.so'
-$(eval $(call mesa3d-lib,libEGL_mesa,.so.1,egl,MESA3D_LIBEGL_BIN))
+$(eval $(call mesa3d-lib,libEGL_mesa,,egl,MESA3D_LIBEGL_BIN))
 # Module 'libGLESv1_CM_mesa', produces '/vendor/lib{64}/egl/libGLESv1_CM_mesa.so'
-$(eval $(call mesa3d-lib,libGLESv1_CM_mesa,.so.1,egl,MESA3D_LIBGLESV1_BIN))
+$(eval $(call mesa3d-lib,libGLESv1_CM_mesa,,egl,MESA3D_LIBGLESV1_BIN))
 # Module 'libGLESv2_mesa', produces '/vendor/lib{64}/egl/libGLESv2_mesa.so'
-$(eval $(call mesa3d-lib,libGLESv2_mesa,.so.2,egl,MESA3D_LIBGLESV2_BIN))
+$(eval $(call mesa3d-lib,libGLESv2_mesa,,egl,MESA3D_LIBGLESV2_BIN))
 endif
 
 # Modules 'vulkan.{driver_name}', produces '/vendor/lib{64}/hw/vulkan.{driver_name}.so' HAL
 $(foreach driver,$(BOARD_MESA3D_VULKAN_DRIVERS), \
-    $(eval $(call mesa3d-lib,vulkan.$(MESA_VK_LIB_SUFFIX_$(driver)),.so.0,hw,MESA3D_VULKAN_$(driver)_BIN)))
+    $(eval $(call mesa3d-lib,vulkan.$(MESA_VK_LIB_SUFFIX_$(driver)),,hw,MESA3D_VULKAN_$(driver)_BIN)))
 
 ifneq ($(filter true, $(BOARD_MESA3D_BUILD_LIBGBM)),)
 # Modules 'libgbm', produces '/vendor/lib{64}/libgbm.so'
-$(eval $(call mesa3d-lib,$(MESA_LIBGBM_NAME),.so.1,,MESA3D_LIBGBM_BIN,$(MESA3D_TOP)/src/gbm/main))
+$(eval $(call mesa3d-lib,$(MESA_LIBGBM_NAME),,,MESA3D_LIBGBM_BIN,$(MESA3D_TOP)/src/gbm/main))
 endif
 
 #-------------------------------------------------------------------------------
