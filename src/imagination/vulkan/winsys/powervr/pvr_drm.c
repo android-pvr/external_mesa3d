@@ -378,11 +378,12 @@ static VkResult pvr_drm_setup_heaps(struct pvr_drm_winsys *const drm_ws)
    bool pds_heap_present = false;
    bool usc_heap_present = false;
    struct drm_pvr_heap heap_info;
+   uint64_t num_heaps = 0;
    VkResult result;
    int ret;
 
    /* First, get the number of heaps. */
-   ret = drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_GET_HEAP_INFO, &args);
+   ret = pvr_drm_get_param(drm_ws, DRM_PVR_PARAM_NUM_HEAPS, &num_heaps);
    if (ret) {
       return vk_errorf(NULL,
                        VK_ERROR_INITIALIZATION_FAILED,
@@ -396,7 +397,7 @@ static VkResult pvr_drm_setup_heaps(struct pvr_drm_winsys *const drm_ws)
 
    /* Now get the information for each heap. */
    args.data = (__u64)&heap_info;
-   for (uint32_t i = 0; i < args.nr_heaps; i++) {
+   for (uint32_t i = 0; i < (uint32_t)num_heaps; i++) {
       struct pvr_winsys_static_data_offsets static_data_offsets;
       struct pvr_drm_winsys_heap *drm_heap;
       bool *heap_present_ptr;
