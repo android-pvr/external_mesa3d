@@ -431,7 +431,6 @@ VkResult pvr_drm_winsys_render_submit(
       &submit_info->fragment;
    const struct pvr_drm_winsys_rt_dataset *drm_rt_dataset =
       to_pvr_drm_winsys_rt_dataset(submit_info->rt_dataset);
-   struct drm_pvr_bo_ref *bo_refs = NULL;
 
    struct drm_pvr_job_render_args job_args = {
       .geom_stream = (__u64)&geom_state->fw_stream[0],
@@ -501,33 +500,6 @@ VkResult pvr_drm_winsys_render_submit(
    job_args.out_syncobj_frag =
       vk_sync_as_drm_syncobj(signal_sync_frag)->syncobj;
 
-   if (submit_info->bo_count > 0U) {
-      bo_refs = vk_alloc(drm_ws->alloc,
-                         sizeof(*bo_refs) * submit_info->bo_count,
-                         8U,
-                         VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
-      if (!bo_refs) {
-         result = vk_error(NULL, VK_ERROR_OUT_OF_HOST_MEMORY);
-         goto err_free_handles;
-      }
-
-      for (uint32_t i = 0U; i < submit_info->bo_count; i++) {
-         const struct pvr_winsys_job_bo *job_bo = &submit_info->bos[i];
-         const struct pvr_drm_winsys_bo *drm_bo =
-            to_pvr_drm_winsys_bo(job_bo->bo);
-
-         bo_refs[i].handle = drm_bo->handle;
-
-         if (job_bo->flags & PVR_WINSYS_JOB_BO_FLAG_WRITE)
-            bo_refs[i].flags = DRM_PVR_BO_REF_WRITE;
-         else
-            bo_refs[i].flags = DRM_PVR_BO_REF_READ;
-      }
-
-      job_args.bo_handles = (__u64)bo_refs;
-      job_args.num_bo_handles = submit_info->bo_count;
-   }
-
    ret = drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_SUBMIT_JOB, &args);
    if (ret) {
       /* Returns VK_ERROR_OUT_OF_DEVICE_MEMORY to match pvrsrv. */
@@ -536,16 +508,12 @@ VkResult pvr_drm_winsys_render_submit(
                          "Failed to submit render job. Errno: %d - %s.",
                          errno,
                          strerror(errno));
-      goto err_free_bo_refs;
+      goto err_free_handles;
    }
 
-   vk_free(drm_ws->alloc, bo_refs);
    vk_free(drm_ws->alloc, handles);
 
    return VK_SUCCESS;
-
-err_free_bo_refs:
-   vk_free(drm_ws->alloc, bo_refs);
 
 err_free_handles:
    vk_free(drm_ws->alloc, handles);
