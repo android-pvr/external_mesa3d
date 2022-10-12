@@ -491,9 +491,9 @@ VkResult pvr_drm_winsys_render_submit(
       }
    }
 
-   job_args.in_syncobj_handles_geom = (__u64)handles;
+   args.in_syncobj_handles = (__u64)handles;
    job_args.in_syncobj_handles_frag = (__u64)&handles[submit_info->wait_count];
-   job_args.num_in_syncobj_handles_geom = num_geom_syncs;
+   args.num_in_syncobj_handles = num_geom_syncs;
    job_args.num_in_syncobj_handles_frag = num_frag_syncs;
 
    job_args.out_syncobj_geom =

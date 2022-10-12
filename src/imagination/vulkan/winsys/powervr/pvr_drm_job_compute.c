@@ -203,8 +203,8 @@ VkResult pvr_drm_winsys_compute_submit(
       }
    }
 
-   job_args.in_syncobj_handles = (__u64)handles;
-   job_args.num_in_syncobj_handles = num_syncs;
+   args.in_syncobj_handles = (__u64)handles;
+   args.num_in_syncobj_handles = num_syncs;
 
    job_args.out_syncobj = vk_sync_as_drm_syncobj(signal_sync)->syncobj;
 
