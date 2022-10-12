@@ -976,14 +976,6 @@ struct drm_pvr_job_render_args {
 	__u32 frag_ext_stream_len;
 
 	/**
-	 * @in_syncobj_handles_geom: [IN] Pointer to array of drm_syncobj handles for
-	 *                                input fences for geometry job.
-	 *
-	 * This array must be &num_in_syncobj_handles_geom entries large.
-	 */
-	__u64 in_syncobj_handles_geom;
-
-	/**
 	 * @in_syncobj_handles_frag: [IN] Pointer to array of drm_syncobj handles for
 	 *                                input fences for fragment job.
 	 *
@@ -997,11 +989,6 @@ struct drm_pvr_job_render_args {
 	 * This array must be &num_bo_handles entries large.
 	 */
 	__u64 bo_handles;
-
-	/**
-	 * @num_in_syncobj_handles_geom: [IN] Number of input syncobj handles for geometry job.
-	 */
-	__u32 num_in_syncobj_handles_geom;
 
 	/**
 	 * @num_in_syncobj_handles_frag: [IN] Number of input syncobj handles for fragment job.
@@ -1102,23 +1089,11 @@ struct drm_pvr_job_compute_args {
 	__u32 ext_stream_len;
 
 	/**
-	 * @in_syncobj_handles: [IN] Pointer to array of drm_syncobj handles for input fences.
-	 *
-	 * This array must be &num_in_syncobj_handles entries large.
-	 */
-	__u64 in_syncobj_handles;
-
-	/**
 	 * @bo_handles: [IN] Pointer to array of struct drm_pvr_bo_ref.
 	 *
 	 * This array must be &num_bo_handles entries large.
 	 */
 	__u64 bo_handles;
-
-	/**
-	 * @num_in_syncobj_handles: [IN] Number of input syncobj handles.
-	 */
-	__u32 num_in_syncobj_handles;
 
 	/**
 	 * @num_bo_handles: [IN] Number of DRM Buffer Objects.
@@ -1175,23 +1150,11 @@ struct drm_pvr_job_transfer_args {
 	__u32 ext_stream_len;
 
 	/**
-	 * @in_syncobj_handles: [IN] Pointer to array of drm_syncobj handles for input fences.
-	 *
-	 * This array must be &num_in_syncobj_handles entries large.
-	 */
-	__u64 in_syncobj_handles;
-
-	/**
 	 * @bo_handles: [IN] Pointer to array of struct drm_pvr_bo_ref.
 	 *
 	 * This array must be &num_bo_handles entries large.
 	 */
 	__u64 bo_handles;
-
-	/**
-	 * @num_in_syncobj_handles: [IN] Number of input syncobj handles.
-	 */
-	__u32 num_in_syncobj_handles;
 
 	/**
 	 * @num_bo_handles: [IN] Number of DRM Buffer Objects.
@@ -1220,18 +1183,6 @@ struct drm_pvr_job_transfer_args {
  * struct drm_pvr_job_null_args - Arguments for %DRM_PVR_JOB_TYPE_NULL
  */
 struct drm_pvr_job_null_args {
-	/**
-	 * @in_syncobj_handles: [IN] Pointer to array of drm_syncobj handles for input fences.
-	 *
-	 * This array must be &num_in_syncobj_handles entries large.
-	 */
-	__u64 in_syncobj_handles;
-
-	/**
-	 * @num_in_syncobj_handles: [IN] Number of input syncobj handles.
-	 */
-	__u32 num_in_syncobj_handles;
-
 	/**
 	 * @flags: [IN] Flags for command.
 	 */
@@ -1277,6 +1228,18 @@ struct drm_pvr_ioctl_submit_job_args {
 
 	/** @data: [IN] User pointer to job type specific arguments. */
 	__u64 data;
+
+	/**
+	 * @in_syncobj_handles: [IN] Pointer to array of drm_syncobj handles for input fences.
+	 *
+	 * This array must be &num_in_syncobj_handles entries large.
+	 */
+	__u64 in_syncobj_handles;
+
+	/**
+	 * @num_in_syncobj_handles: [IN] Number of input syncobj handles.
+	 */
+	__u32 num_in_syncobj_handles;
 };
 
 #if defined(__cplusplus)
