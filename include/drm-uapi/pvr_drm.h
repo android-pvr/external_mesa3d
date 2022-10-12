@@ -829,27 +829,6 @@ struct drm_pvr_ioctl_vm_unmap_args {
 };
 
 /**
- * DOC: Flags for &struct drm_pvr_bo_ref.flags
- *
- * DRM_PVR_BO_REF_READ - This buffer object will be read by the device.
- *
- * DRM_PVR_BO_REF_WRITE - This buffer object will be written to by the device.
- */
-#define DRM_PVR_BO_REF_READ _BITUL(0)
-#define DRM_PVR_BO_REF_WRITE _BITUL(1)
-
-/**
- * struct drm_pvr_bo_ref - structure representing a DRM buffer object
- */
-struct drm_pvr_bo_ref {
-	/** @handle: DRM buffer object handle. */
-	__u32 handle;
-
-	/** @flags: Flags for this buffer object. Must be a combination of %DRM_PVR_BO_REF_*. */
-	__u32 flags;
-};
-
-/**
  * DOC: Flags for SUBMIT_JOB ioctl geometry command.
  *
  * Operations
@@ -984,23 +963,9 @@ struct drm_pvr_job_render_args {
 	__u64 in_syncobj_handles_frag;
 
 	/**
-	 * @bo_handles: [IN] Pointer to array of struct drm_pvr_bo_ref.
-	 *
-	 * This array must be &num_bo_handles entries large.
-	 */
-	__u64 bo_handles;
-
-	/**
 	 * @num_in_syncobj_handles_frag: [IN] Number of input syncobj handles for fragment job.
 	 */
 	__u32 num_in_syncobj_handles_frag;
-
-	/**
-	 * @num_bo_handles: [IN] Number of DRM Buffer Objects.
-	 *
-	 * This detemines the size of the array &bo_handles points to.
-	 */
-	__u32 num_bo_handles;
 
 	/**
 	 * @out_syncobj_geom: [OUT] drm_syncobj handle for geometry output fence
@@ -1089,20 +1054,6 @@ struct drm_pvr_job_compute_args {
 	__u32 ext_stream_len;
 
 	/**
-	 * @bo_handles: [IN] Pointer to array of struct drm_pvr_bo_ref.
-	 *
-	 * This array must be &num_bo_handles entries large.
-	 */
-	__u64 bo_handles;
-
-	/**
-	 * @num_bo_handles: [IN] Number of DRM Buffer Objects.
-	 *
-	 * This detemines the size of the array &bo_handles points to.
-	 */
-	__u32 num_bo_handles;
-
-	/**
 	 * @flags: [IN] Flags for command.
 	 */
 	__u32 flags;
@@ -1148,20 +1099,6 @@ struct drm_pvr_job_transfer_args {
 	 * @ext_stream_len: [IN] Length of transfer command extension stream, in bytes.
 	 */
 	__u32 ext_stream_len;
-
-	/**
-	 * @bo_handles: [IN] Pointer to array of struct drm_pvr_bo_ref.
-	 *
-	 * This array must be &num_bo_handles entries large.
-	 */
-	__u64 bo_handles;
-
-	/**
-	 * @num_bo_handles: [IN] Number of DRM Buffer Objects.
-	 *
-	 * This detemines the size of the array &bo_handles points to.
-	 */
-	__u32 num_bo_handles;
 
 	/**
 	 * @flags: [IN] Flags for command.
