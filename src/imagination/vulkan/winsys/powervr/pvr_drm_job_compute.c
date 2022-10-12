@@ -171,8 +171,6 @@ VkResult pvr_drm_winsys_compute_submit(
    struct drm_pvr_ioctl_submit_job_args args = {
       .job_type = DRM_PVR_JOB_TYPE_COMPUTE,
       .context_handle = drm_ctx->handle,
-      .ext_job_ref = submit_info->job_num,
-      .frame_num = submit_info->frame_num,
       .data = (__u64)&job_args,
    };
 
