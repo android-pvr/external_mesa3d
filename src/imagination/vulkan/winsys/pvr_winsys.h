@@ -298,16 +298,10 @@ struct pvr_winsys_compute_submit_info {
    struct vk_sync *wait;
 
    /* Firmware stream buffer. This is the maximum possible size taking into
-    * consideration all HW features.
+    * consideration all HW features, quirks and enhancements.
     */
-   uint8_t fw_stream[92];
+   uint8_t fw_stream[100];
    uint32_t fw_stream_len;
-
-   /* Firmware extension stream buffer. This is the maximum possible size taking
-    * into considation all quirks and enhancements.
-    */
-   uint8_t fw_ext_stream[8];
-   uint32_t fw_ext_stream_len;
 
    /* Must be 0 or a combination of PVR_WINSYS_COMPUTE_FLAG_* flags. */
    uint32_t flags;
@@ -336,16 +330,10 @@ struct pvr_winsys_render_submit_info {
 
    struct pvr_winsys_geometry_state {
       /* Firmware stream buffer. This is the maximum possible size taking into
-       * consideration all HW features.
+       * consideration all HW features, quirks and enhancements.
        */
-      uint8_t fw_stream[52];
+      uint8_t fw_stream[64];
       uint32_t fw_stream_len;
-
-      /* Firmware extension stream buffer. This is the maximum possible size
-       * taking into considation all quirks and enhancements.
-       */
-      uint8_t fw_ext_stream[12];
-      uint32_t fw_ext_stream_len;
 
       /* Must be 0 or a combination of PVR_WINSYS_GEOM_FLAG_* flags. */
       uint32_t flags;
@@ -355,16 +343,10 @@ struct pvr_winsys_render_submit_info {
 
    struct pvr_winsys_fragment_state {
       /* Firmware stream buffer. This is the maximum possible size taking into
-       * consideration all HW features.
+       * consideration all HW features, quirks and enhancements.
        */
-      uint8_t fw_stream[432];
+      uint8_t fw_stream[440];
       uint32_t fw_stream_len;
-
-      /* Firmware extension stream buffer. This is the maximum possible size
-       * taking into considation all quirks and enhancements.
-       */
-      uint8_t fw_ext_stream[8];
-      uint32_t fw_ext_stream_len;
 
       /* Must be 0 or a combination of PVR_WINSYS_FRAG_FLAG_* flags. */
       uint32_t flags;
