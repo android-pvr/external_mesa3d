@@ -433,10 +433,10 @@ VkResult pvr_drm_winsys_render_submit(
       to_pvr_drm_winsys_rt_dataset(submit_info->rt_dataset);
 
    struct drm_pvr_job_render_args job_args = {
-      .geom_stream = (__u64)&geom_state->fw_stream[0],
-      .geom_stream_len = geom_state->fw_stream_len,
-      .frag_stream = (__u64)&frag_state->fw_stream[0],
-      .frag_stream_len = frag_state->fw_stream_len,
+      .geom_cmd_stream = (__u64)&geom_state->fw_stream[0],
+      .geom_cmd_stream_len = geom_state->fw_stream_len,
+      .frag_cmd_stream = (__u64)&frag_state->fw_stream[0],
+      .frag_cmd_stream_len = frag_state->fw_stream_len,
       .hwrt_data_set_handle = drm_rt_dataset->handle,
       .hwrt_data_index = submit_info->rt_data_idx,
       .geom_flags = pvr_winsys_geom_flags_to_drm(geom_state->flags),
@@ -454,16 +454,6 @@ VkResult pvr_drm_winsys_render_submit(
    uint32_t *handles;
    VkResult result;
    int ret;
-
-   if (geom_state->fw_ext_stream_len) {
-      job_args.geom_ext_stream = (__u64)&geom_state->fw_ext_stream[0];
-      job_args.geom_ext_stream_len = geom_state->fw_ext_stream_len;
-   }
-
-   if (frag_state->fw_ext_stream_len) {
-      job_args.frag_ext_stream = (__u64)&frag_state->fw_ext_stream[0];
-      job_args.frag_ext_stream_len = frag_state->fw_ext_stream_len;
-   }
 
    handles = vk_alloc(drm_ws->alloc,
                       sizeof(*handles) * (submit_info->wait_count + 1) * 2,

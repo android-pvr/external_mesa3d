@@ -160,8 +160,8 @@ VkResult pvr_drm_winsys_compute_submit(
       to_pvr_drm_winsys_compute_ctx(ctx);
 
    struct drm_pvr_job_compute_args job_args = {
-      .stream = (__u64)&submit_info->fw_stream[0],
-      .stream_len = submit_info->fw_stream_len,
+      .cmd_stream = (__u64)&submit_info->fw_stream[0],
+      .cmd_stream_len = submit_info->fw_stream_len,
       /* bo_handles is unused and zeroed. */
       /* num_bo_handles is unused and zeroed. */
       .flags = pvr_winsys_compute_flags_to_drm(submit_info->flags),
@@ -177,11 +177,6 @@ VkResult pvr_drm_winsys_compute_submit(
    uint32_t *handles;
    VkResult result;
    int ret;
-
-   if (submit_info->fw_ext_stream_len) {
-      job_args.ext_stream = (__u64)&submit_info->fw_ext_stream[0];
-      job_args.ext_stream_len = submit_info->fw_ext_stream_len;
-   }
 
    handles = vk_alloc(drm_ws->alloc,
                       sizeof(*handles) * (submit_info->wait_count + 1),
