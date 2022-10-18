@@ -413,14 +413,15 @@ void pvr_drm_winsys_heap_free(struct pvr_winsys_vma *vma)
 {
    struct pvr_drm_winsys *drm_ws = to_pvr_drm_winsys(vma->heap->ws);
    struct pvr_drm_winsys_vma *drm_vma = to_pvr_drm_winsys_vma(vma);
-   const uint64_t reserved_addr = vma->heap->reserved_addr.addr;
+   const uint64_t carveout_addr = vma->heap->static_data_carveout_addr.addr;
 
    /* A vma with an existing device mapping should not be freed. */
    assert(!drm_vma->base.bo);
 
-   /* Check if we are dealing with reserved address range. */
-   if (vma->dev_addr.addr >= reserved_addr &&
-       vma->dev_addr.addr < (reserved_addr + vma->heap->reserved_size)) {
+   /* Check if we are dealing with carveout address range. */
+   if (vma->dev_addr.addr >= carveout_addr &&
+       vma->dev_addr.addr <
+          (carveout_addr + vma->heap->static_data_carveout_size)) {
       /* For the reserved addresses just decrement the reference count. */
       p_atomic_dec(&vma->heap->ref_count);
    } else {

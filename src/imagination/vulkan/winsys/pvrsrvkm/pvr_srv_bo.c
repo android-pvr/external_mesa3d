@@ -395,7 +395,7 @@ pvr_srv_heap_alloc_reserved(struct pvr_winsys_heap *heap,
     */
    if (reserved_dev_addr.addr < heap->base_addr.addr ||
        reserved_dev_addr.addr + size >
-          heap->base_addr.addr + heap->reserved_size ||
+          heap->base_addr.addr + heap->static_data_carveout_size ||
        reserved_dev_addr.addr & ((srv_ws->base.page_size) - 1))
       goto err_vk_free_srv_vma;
 
@@ -477,10 +477,10 @@ void pvr_srv_winsys_heap_free(struct pvr_winsys_vma *vma)
    /* Remove mapping handle and underlying reservation. */
    pvr_srv_int_unreserve_addr(srv_ws->render_fd, srv_vma->reservation);
 
-   /* Check if we are dealing with reserved address range. */
+   /* Check if we are dealing with carveout address range. */
    if (vma->dev_addr.addr <
-       (vma->heap->base_addr.addr + vma->heap->reserved_size)) {
-      /* For the reserved addresses just decrement the reference count. */
+       (vma->heap->base_addr.addr + vma->heap->static_data_carveout_size)) {
+      /* For the carveout addresses just decrement the reference count. */
       p_atomic_dec(&vma->heap->ref_count);
    } else {
       /* Free allocated virtual space. */
