@@ -63,46 +63,46 @@ int pvr_winsys_helper_display_buffer_destroy(int master_fd, uint32_t handle)
    return drmIoctl(master_fd, DRM_IOCTL_MODE_DESTROY_DUMB, &args);
 }
 
-/* reserved_size can be 0 when no reserved area is needed. reserved_address must
- * be 0 if reserved_size is 0.
+/* carveout_size can be 0 when no carveout is needed. carveout_address must
+ * be 0 if carveout_size is 0.
  */
 VkResult pvr_winsys_helper_winsys_heap_init(
    struct pvr_winsys *const ws,
    pvr_dev_addr_t base_address,
    uint64_t size,
-   pvr_dev_addr_t reserved_address,
-   uint64_t reserved_size,
+   pvr_dev_addr_t carveout_address,
+   uint64_t carveout_size,
    uint32_t log2_page_size,
    const struct pvr_winsys_static_data_offsets *const static_data_offsets,
    struct pvr_winsys_heap *const heap)
 {
-   const bool reserved_area_bottom_of_heap = reserved_address.addr ==
+   const bool carveout_area_bottom_of_heap = carveout_address.addr ==
                                              base_address.addr;
    const pvr_dev_addr_t vma_heap_begin_addr =
-      reserved_area_bottom_of_heap
-         ? PVR_DEV_ADDR_OFFSET(base_address, reserved_size)
+      carveout_area_bottom_of_heap
+         ? PVR_DEV_ADDR_OFFSET(base_address, carveout_size)
          : base_address;
-   const uint64_t vma_heap_size = size - reserved_size;
+   const uint64_t vma_heap_size = size - carveout_size;
 
    assert(base_address.addr);
-   assert(reserved_size <= size);
+   assert(carveout_size <= size);
 
-   /* As per the reserved_base powervr-km uapi documentation the reserved
-    * region can only be at the beginning of the heap or at the end.
-    * reserved_address is 0 if there is no reserved region.
+   /* As per the static_data_carveout_base powervr-km uapi documentation the
+    * carveout region can only be at the beginning of the heap or at the end.
+    * carveout_address is 0 if there is no carveout region.
     * pvrsrv-km doesn't explicitly provide this info and it's assumed that it's
     * always at the beginning.
     */
-   assert(reserved_area_bottom_of_heap ||
-          reserved_address.addr + reserved_size == base_address.addr + size ||
-          (!reserved_address.addr && !reserved_size));
+   assert(carveout_area_bottom_of_heap ||
+          carveout_address.addr + carveout_size == base_address.addr + size ||
+          (!carveout_address.addr && !carveout_size));
 
    heap->ws = ws;
    heap->base_addr = base_address;
-   heap->reserved_addr = reserved_address;
+   heap->static_data_carveout_addr = carveout_address;
 
    heap->size = size;
-   heap->reserved_size = reserved_size;
+   heap->static_data_carveout_size = carveout_size;
 
    heap->page_size = 1 << log2_page_size;
    heap->log2_page_size = log2_page_size;
@@ -188,7 +188,7 @@ void pvr_winsys_helper_heap_free(struct pvr_winsys_vma *const vma)
    p_atomic_dec(&heap->ref_count);
 }
 
-/* Note: the function assumes the heap allocation in the reserved memory area
+/* Note: the function assumes the heap allocation in the carveout memory area
  * can be freed with the regular heap allocation free function. The free
  * function gets called on mapping failure.
  */
@@ -279,8 +279,8 @@ VkResult pvr_winsys_helper_allocate_static_memory(
    result = pvr_buffer_create_and_map(ws,
                                       heap_alloc_reserved,
                                       general_heap,
-                                      general_heap->reserved_addr,
-                                      general_heap->reserved_size,
+                                      general_heap->static_data_carveout_addr,
+                                      general_heap->static_data_carveout_size,
                                       general_heap->page_size,
                                       &general_vma);
    if (result != VK_SUCCESS)
@@ -289,8 +289,8 @@ VkResult pvr_winsys_helper_allocate_static_memory(
    result = pvr_buffer_create_and_map(ws,
                                       heap_alloc_reserved,
                                       pds_heap,
-                                      pds_heap->reserved_addr,
-                                      pds_heap->reserved_size,
+                                      pds_heap->static_data_carveout_addr,
+                                      pds_heap->static_data_carveout_size,
                                       pds_heap->page_size,
                                       &pds_vma);
    if (result != VK_SUCCESS)
@@ -299,8 +299,8 @@ VkResult pvr_winsys_helper_allocate_static_memory(
    result = pvr_buffer_create_and_map(ws,
                                       heap_alloc_reserved,
                                       usc_heap,
-                                      usc_heap->reserved_addr,
-                                      pds_heap->reserved_size,
+                                      usc_heap->static_data_carveout_addr,
+                                      pds_heap->static_data_carveout_size,
                                       usc_heap->page_size,
                                       &usc_vma);
    if (result != VK_SUCCESS)

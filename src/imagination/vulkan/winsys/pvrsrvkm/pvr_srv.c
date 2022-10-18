@@ -105,7 +105,8 @@ static VkResult pvr_srv_heap_init(
 
    assert(srv_heap->base.page_size == srv_ws->base.page_size);
    assert(srv_heap->base.log2_page_size == srv_ws->base.log2_page_size);
-   assert(srv_heap->base.reserved_size % PVR_SRV_RESERVED_SIZE_GRANULARITY ==
+   assert(srv_heap->base.static_data_carveout_size %
+             PVR_SRV_CARVEOUT_SIZE_GRANULARITY ==
           0);
 
    /* Create server-side counterpart of Device Memory heap */

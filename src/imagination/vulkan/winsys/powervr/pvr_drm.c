@@ -472,8 +472,8 @@ static VkResult pvr_drm_setup_heaps(struct pvr_drm_winsys *const drm_ws)
          &drm_ws->base,
          (pvr_dev_addr_t){ .addr = heap_info.base },
          heap_info.size,
-         (pvr_dev_addr_t){ .addr = heap_info.reserved_base },
-         heap_info.reserved_size,
+         (pvr_dev_addr_t){ .addr = heap_info.static_data_carveout_base },
+         heap_info.static_data_carveout_size,
          heap_info.page_size_log2,
          &static_data_offsets,
          &drm_heap->base);
