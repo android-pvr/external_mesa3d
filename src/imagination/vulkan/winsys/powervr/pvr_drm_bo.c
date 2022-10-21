@@ -448,7 +448,9 @@ pvr_dev_addr_t pvr_drm_winsys_vma_map(struct pvr_winsys_vma *vma,
                                              .flags = 0U,
                                              .handle = drm_bo->handle,
                                              .offset = phys_page_offset,
-                                             .size = aligned_virt_size };
+                                             .size = aligned_virt_size,
+                                             .vm_context_handle =
+                                                drm_ws->vm_context };
 
    /* Address should not be mapped already. */
    assert(!vma->bo);
@@ -480,8 +482,10 @@ void pvr_drm_winsys_vma_unmap(struct pvr_winsys_vma *vma)
    struct pvr_drm_winsys_vma *const drm_vma = to_pvr_drm_winsys_vma(vma);
    struct pvr_drm_winsys *const drm_ws = to_pvr_drm_winsys(vma->bo->ws);
 
-   struct drm_pvr_ioctl_vm_unmap_args args = { .device_addr =
-                                                  vma->dev_addr.addr };
+   struct drm_pvr_ioctl_vm_unmap_args args = {
+      .device_addr = vma->dev_addr.addr,
+      .vm_context_handle = drm_ws->vm_context
+   };
 
    /* Address should be mapped. */
    assert(drm_vma->base.bo);

@@ -80,6 +80,8 @@ struct pvr_drm_winsys {
    struct pvr_winsys_vma *pds_vma;
    struct pvr_winsys_vma *usc_vma;
    struct pvr_winsys_vma *general_vma;
+
+   uint32_t vm_context;
 };
 
 /*******************************************
