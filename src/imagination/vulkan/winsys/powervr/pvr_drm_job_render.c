@@ -76,14 +76,15 @@ VkResult pvr_drm_winsys_free_list_create(
    struct pvr_winsys_free_list *const parent_free_list,
    struct pvr_winsys_free_list **const free_list_out)
 {
-   struct drm_pvr_ioctl_create_free_list_args args = {
+   struct pvr_drm_winsys *drm_ws = to_pvr_drm_winsys(ws);
+   struct drm_pvr_ioctl_create_free_list_args free_list_args = {
       .free_list_gpu_addr = free_list_vma->dev_addr.addr,
       .initial_num_pages = initial_num_pages,
       .max_num_pages = max_num_pages,
       .grow_num_pages = grow_num_pages,
-      .grow_threshold = grow_threshold
+      .grow_threshold = grow_threshold,
+      .vm_context_handle = drm_ws->vm_context,
    };
-   struct pvr_drm_winsys *drm_ws = to_pvr_drm_winsys(ws);
    struct pvr_drm_winsys_free_list *drm_free_list;
 
    drm_free_list = vk_zalloc(drm_ws->alloc,
@@ -98,7 +99,9 @@ VkResult pvr_drm_winsys_free_list_create(
    if (parent_free_list)
       drm_free_list->parent = to_pvr_drm_winsys_free_list(parent_free_list);
 
-   if (drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_CREATE_FREE_LIST, &args)) {
+   if (drmIoctl(drm_ws->render_fd,
+                DRM_IOCTL_PVR_CREATE_FREE_LIST,
+                &free_list_args)) {
       vk_free(drm_ws->alloc, drm_free_list);
 
       /* Returns VK_ERROR_INITIALIZATION_FAILED to match pvrsrv. */
@@ -109,7 +112,7 @@ VkResult pvr_drm_winsys_free_list_create(
                        strerror(errno));
    }
 
-   drm_free_list->handle = args.handle;
+   drm_free_list->handle = free_list_args.handle;
 
    *free_list_out = &drm_free_list->base;
 
@@ -190,15 +193,16 @@ VkResult pvr_drm_winsys_render_ctx_create(
    struct pvr_winsys_render_ctx **const ctx_out)
 {
    struct rogue_fwif_static_rendercontext_state static_ctx_state;
+   struct pvr_drm_winsys *drm_ws = to_pvr_drm_winsys(ws);
    struct drm_pvr_ioctl_create_context_args ctx_args = {
       .type = DRM_PVR_CTX_TYPE_RENDER,
       .priority = pvr_drm_from_winsys_priority(create_info->priority),
       .static_context_state = (uint64_t)&static_ctx_state,
       .static_context_state_len = sizeof(static_ctx_state),
       .callstack_addr = create_info->vdm_callstack_addr.addr,
+      .vm_context_handle = drm_ws->vm_context,
    };
 
-   struct pvr_drm_winsys *drm_ws = to_pvr_drm_winsys(ws);
    struct pvr_drm_winsys_render_ctx *drm_ctx;
    int ret;
 

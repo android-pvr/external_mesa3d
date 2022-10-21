@@ -89,6 +89,7 @@ static void pvr_drm_finish_heaps(struct pvr_drm_winsys *const drm_ws)
 
 static void pvr_drm_winsys_destroy(struct pvr_winsys *ws)
 {
+   struct drm_pvr_ioctl_destroy_context_args destroy_vm_context_args = { 0 };
    struct pvr_drm_winsys *const drm_ws = to_pvr_drm_winsys(ws);
 
    pvr_winsys_helper_free_static_memory(drm_ws->general_vma,
@@ -96,6 +97,10 @@ static void pvr_drm_winsys_destroy(struct pvr_winsys *ws)
                                         drm_ws->usc_vma);
 
    pvr_drm_finish_heaps(drm_ws);
+
+   drmIoctl(drm_ws->render_fd,
+            DRM_IOCTL_PVR_DESTROY_VM_CONTEXT,
+            &destroy_vm_context_args);
 
    vk_free(drm_ws->alloc, drm_ws);
 }
@@ -533,6 +538,9 @@ struct pvr_winsys *pvr_drm_winsys_create(int master_fd,
                                          int render_fd,
                                          const VkAllocationCallbacks *alloc)
 {
+   struct drm_pvr_ioctl_create_vm_context_args create_vm_context_args = { 0 };
+   struct drm_pvr_ioctl_destroy_vm_context_args destroy_vm_context_args = { 0 };
+
    struct pvr_drm_winsys *drm_ws;
    VkResult result;
    int ret;
@@ -562,9 +570,19 @@ struct pvr_winsys *pvr_drm_winsys_create(int master_fd,
       goto err_vk_free_drm_ws;
    }
 
+   ret = drmIoctl(drm_ws->render_fd,
+                  DRM_IOCTL_PVR_CREATE_VM_CONTEXT,
+                  &create_vm_context_args);
+   if (ret) {
+      vk_error(NULL, VK_ERROR_INITIALIZATION_FAILED);
+      goto err_pvr_destroy_vm_context;
+   }
+
+   drm_ws->vm_context = create_vm_context_args.handle;
+
    result = pvr_drm_setup_heaps(drm_ws);
    if (result != VK_SUCCESS)
-      goto err_vk_free_drm_ws;
+      goto err_pvr_destroy_vm_context;
 
    result =
       pvr_winsys_helper_allocate_static_memory(&drm_ws->base,
@@ -594,6 +612,12 @@ err_pvr_free_static_memory:
 
 err_pvr_heap_finish:
    pvr_drm_finish_heaps(drm_ws);
+
+err_pvr_destroy_vm_context:
+   destroy_vm_context_args.handle = drm_ws->vm_context;
+   drmIoctl(drm_ws->render_fd,
+            DRM_IOCTL_PVR_DESTROY_VM_CONTEXT,
+            &destroy_vm_context_args);
 
 err_vk_free_drm_ws:
    vk_free(alloc, drm_ws);

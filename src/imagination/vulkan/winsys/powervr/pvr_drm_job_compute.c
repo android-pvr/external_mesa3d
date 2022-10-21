@@ -78,14 +78,15 @@ VkResult pvr_drm_winsys_compute_ctx_create(
       },
    };
 
+   struct pvr_drm_winsys *drm_ws = to_pvr_drm_winsys(ws);
    struct drm_pvr_ioctl_create_context_args ctx_args = {
       .type = DRM_PVR_CTX_TYPE_COMPUTE,
       .priority = pvr_drm_from_winsys_priority(create_info->priority),
       .static_context_state = (__u64)&static_ctx_state,
       .static_context_state_len = (__u32)sizeof(static_ctx_state),
+      .vm_context_handle = drm_ws->vm_context,
    };
 
-   struct pvr_drm_winsys *drm_ws = to_pvr_drm_winsys(ws);
    struct pvr_drm_winsys_compute_ctx *drm_ctx;
    int ret;
 
