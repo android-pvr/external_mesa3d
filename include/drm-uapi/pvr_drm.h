@@ -9,12 +9,6 @@
 #include <linux/const.h>
 #include <linux/types.h>
 
-/**
- * DOC: PowerVR UAPI
- *
- * TODO
- */
-
 #if defined(__cplusplus)
 extern "C" {
 #endif
@@ -69,12 +63,6 @@ extern "C" {
 #define DRM_IOCTL_PVR_VM_UNMAP PVR_IOCTL(0x09, DRM_IOW, vm_unmap)
 #define DRM_IOCTL_PVR_SUBMIT_JOB PVR_IOCTL(0x0a, DRM_IOW, submit_job)
 /* clang-format on */
-
-/**
- * DOC: IOCTL CREATE_BO
- *
- * TODO
- */
 
 /**
  * DOC: Flags for CREATE_BO
@@ -145,12 +133,6 @@ struct drm_pvr_ioctl_create_bo_args {
 };
 
 /**
- * DOC: IOCTL GET_BO_MMAP_OFFSET
- *
- * TODO
- */
-
-/**
  * struct drm_pvr_ioctl_get_bo_mmap_offset_args - Arguments for
  * %DRM_IOCTL_PVR_GET_BO_MMAP_OFFSET
  *
@@ -171,14 +153,19 @@ struct drm_pvr_ioctl_get_bo_mmap_offset_args {
 };
 
 /**
- * DOC: IOCTL GET_PARAM
- *
- * TODO
- */
-
-/**
  * DOC: Quirks returned by %DRM_PVR_PARAM_QUIRKS0 and
  *      %DRM_PVR_PARAM_QUIRKS_MUSTHAVE0
+ *
+ * PowerVR quirks come in two classes. "Must-have" quirks have workarounds that
+ * must be present to guarantee correct GPU function. If the client does not
+ * handle any of the "must-have" quirks then it should fail initialisation.
+ *
+ * Other quirks are "opt-in" - the client does not have to handle them, and they
+ * are disabled by default. The exact opt-in mechanism will vary depending on
+ * the quirk, but generally the client will provide additional data during job
+ * submission via the extension stream.
+ *
+ * Only quirks relevant to the UAPI will be included here.
  */
 #define DRM_PVR_QUIRK_BRN47217 0
 #define DRM_PVR_QUIRK_BRN48545 1
@@ -190,6 +177,13 @@ struct drm_pvr_ioctl_get_bo_mmap_offset_args {
 
 /**
  * DOC: Enhancements returned by %DRM_PVR_PARAM_ENHANCEMENTS0
+ *
+ * PowerVR enhancements are handled similarly to "opt-in" quirks. They are
+ * disabled by default. The exact opt-in mechanism will vary depending on
+ * the enhancement, but generally the client will provide additional data during
+ * job submission via the extension stream.
+ *
+ * Only enhancements relevant to the UAPI will be included here.
  */
 #define DRM_PVR_ENHANCEMENT_ERN35421 0
 #define DRM_PVR_ENHANCEMENT_ERN42064 1
@@ -314,7 +308,8 @@ enum drm_pvr_param {
 	DRM_PVR_PARAM_CDM_MAX_LOCAL_MEM_SIZE_REGS,
 
 	/**
-	 * @DRM_PVR_PARAM_NUM_HEAPS: Number of heaps exposed for this device.
+	 * @DRM_PVR_PARAM_NUM_HEAPS: Number of heaps exposed by %DRM_IOCTL_PVR_GET_HEAP_INFO for
+	 * this device.
 	 */
 	DRM_PVR_PARAM_NUM_HEAPS,
 };
@@ -337,12 +332,6 @@ struct drm_pvr_ioctl_get_param_args {
 	/** @value: [OUT] Value for @param. */
 	__u64 value;
 };
-
-/**
- * DOC: IOCTL CREATE_CONTEXT
- *
- * TODO
- */
 
 /**
  * enum drm_pvr_ctx_priority - Arguments for
@@ -437,12 +426,6 @@ struct drm_pvr_ioctl_create_context_args {
 };
 
 /**
- * DOC: IOCTL DESTROY_CONTEXT
- *
- * TODO
- */
-
-/**
  * struct drm_pvr_ioctl_destroy_context_args - Arguments for
  * %DRM_IOCTL_PVR_DESTROY_CONTEXT
  */
@@ -455,12 +438,6 @@ struct drm_pvr_ioctl_destroy_context_args {
 	/** @_padding_4: Reserved. This field must be zeroed. */
 	__u32 _padding_4;
 };
-
-/**
- * DOC: IOCTL CREATE_OBJECT
- *
- * TODO
- */
 
 /* clang-format off */
 
@@ -531,7 +508,7 @@ struct drm_pvr_ioctl_create_free_list_args {
 	__u32 grow_threshold;
 };
 
-struct create_hwrt_geom_data_args {
+struct drm_pvr_create_hwrt_geom_data_args {
 	/** @tpc_dev_addr: [IN] Tail pointer cache GPU virtual address. */
 	__u64 tpc_dev_addr;
 
@@ -548,7 +525,7 @@ struct create_hwrt_geom_data_args {
 	__u64 rtc_dev_addr;
 };
 
-struct create_hwrt_rt_data_args {
+struct drm_pvr_create_hwrt_rt_data_args {
 	/** @pm_mlist_dev_addr: [IN] PM MLIST GPU virtual address. */
 	__u64 pm_mlist_dev_addr;
 
@@ -561,10 +538,10 @@ struct create_hwrt_rt_data_args {
 
 struct drm_pvr_ioctl_create_hwrt_dataset_args {
 	/** @geom_data_args: [IN] Geometry data arguments. */
-	struct create_hwrt_geom_data_args geom_data_args;
+	struct drm_pvr_create_hwrt_geom_data_args geom_data_args;
 
 	/** @rt_data_args: [IN] Array of render target arguments. */
-	struct create_hwrt_rt_data_args rt_data_args[2];
+	struct drm_pvr_create_hwrt_rt_data_args rt_data_args[2];
 
 	/**
 	 * @free_list_args: [IN] Array of free list handles.
@@ -640,12 +617,6 @@ struct drm_pvr_ioctl_create_object_args {
 };
 
 /**
- * DOC: IOCTL DESTROY_OBJECT
- *
- * TODO
- */
-
-/**
  * struct drm_pvr_ioctl_destroy_object_args - Arguments for
  * %DRM_IOCTL_PVR_DESTROY_OBJECT
  */
@@ -660,9 +631,20 @@ struct drm_pvr_ioctl_destroy_object_args {
 };
 
 /**
- * DOC: IOCTL GET_HEAP_INFO
+ * DOC: Heap UAPI
  *
- * TODO
+ * The PowerVR address space is pre-divided into a number of heaps. The exact
+ * number and layout of heaps may vary depending on the exact GPU being used.
+ *
+ * Heaps have the following properties:
+ * - ID: Defines the type of heap. In addition to the general heap, there are a
+ *   number of special purpose heaps.
+ * - Base & size: Defines the heap address range.
+ * - Page size: Defined by the GPU device. This may not be constant across all
+ *   heaps.
+ * - Reserved base & size: Defines the reserved area of the heap address range.
+ *   If the heap does not have a reserved area then base & size will be zero.
+ * - Static data areas: Pre-allocated data areas within the reserved area.
  */
 
 enum drm_pvr_get_heap_info_op {
@@ -692,6 +674,11 @@ enum drm_pvr_heap_id {
 	/** @DRM_PVR_HEAP_TRANSFER_FRAG: Transfer fragment heap. */
 	DRM_PVR_HEAP_TRANSFER_FRAG,
 };
+
+/*
+ * DOC: Flags for heaps returned by GET_HEAP_INFO ioctl command.
+ */
+#define DRM_PVR_HEAP_FLAGS_VALID_MASK 0
 
 struct drm_pvr_heap {
 	/** @id: Heap ID. This must be one of the values defined by &enum drm_pvr_heap_id. */
@@ -769,13 +756,28 @@ struct drm_pvr_ioctl_get_heap_info_args {
 	 *             array of &struct drm_pvr_static_data_area, of size
 	 *             %drm_pvr_heap.nr_static_data_areas elements, when &op ==
 	 *             %DRM_PVR_HEAP_OP_GET_STATIC_DATA_AREAS.
-	 *             May be zero, in which case this ioctl will not write any heap information.
 	 */
 	__u64 data;
 
-	/** @heap_nr: [IN] Number of heap to get information for. Not used if @data is 0. */
+	/** @heap_nr: [IN] Number of heap to get information for. */
 	__u32 heap_nr;
 };
+
+/**
+ * DOC: VM UAPI
+ *
+ * The VM UAPI allows userspace to create buffer object mappings in GPU virtual address space.
+ *
+ * The client is responsible for managing GPU address space. It should allocate mappings within
+ * the heaps returned by %DRM_IOCTL_PVR_GET_HEAP_INFO.
+ *
+ * %DRM_IOCTL_PVR_VM_MAP creates a new mapping. The client provides the target virtual address for
+ * the mapping. Size and offset within the mapped buffer object can be specified, so the client can
+ * partially map a buffer.
+ *
+ * %DRM_IOCTL_PVR_VM_UNMAP removes a mapping. The entire mapping will be removed from GPU address
+ * space. For this reason only the start address is provided by the client.
+ */
 
 /**
  * struct drm_pvr_ioctl_vm_map_args - Arguments for %DRM_IOCTL_PVR_VM_MAP.
@@ -959,6 +961,9 @@ struct drm_pvr_job_render_args {
 	 *                                input fences for fragment job.
 	 *
 	 * This array must be &num_in_syncobj_handles_frag entries large.
+	 *
+	 * drm_syncobj handles for the geometry job are contained in
+	 * &struct drm_pvr_ioctl_submit_job_args.in_syncobj_handles.
 	 */
 	__u64 in_syncobj_handles_frag;
 
@@ -1158,8 +1163,12 @@ struct drm_pvr_ioctl_submit_job_args {
 	/**
 	 * @context: [IN] Context handle.
 	 *
-	 * This must be a valid handle returned by %DRM_IOCTL_PVR_CREATE_CONTEXT. The type of
-	 * context must be compatible with the type of job being submitted.
+	 * When @job_type is %DRM_PVR_JOB_TYPE_RENDER, %DRM_PVR_JOB_TYPE_COMPUTE or
+	 * %DRM_PVR_JOB_TYPE_TRANSFER_FRAG, this must be a valid handle returned by
+	 * %DRM_IOCTL_PVR_CREATE_CONTEXT. The type of context must be compatible with the type of
+	 * job being submitted.
+	 *
+	 * When @job_type is %DRM_PVR_JOB_TYPE_NULL, this must be zero.
 	 */
 	__u32 context_handle;
 
@@ -1177,6 +1186,7 @@ struct drm_pvr_ioctl_submit_job_args {
 	 * @num_in_syncobj_handles: [IN] Number of input syncobj handles.
 	 */
 	__u32 num_in_syncobj_handles;
+
 };
 
 #if defined(__cplusplus)
