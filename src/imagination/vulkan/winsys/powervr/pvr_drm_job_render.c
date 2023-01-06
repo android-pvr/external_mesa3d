@@ -76,16 +76,12 @@ VkResult pvr_drm_winsys_free_list_create(
    struct pvr_winsys_free_list *const parent_free_list,
    struct pvr_winsys_free_list **const free_list_out)
 {
-   struct drm_pvr_ioctl_create_free_list_args free_list_args = {
+   struct drm_pvr_ioctl_create_free_list_args args = {
       .free_list_gpu_addr = free_list_vma->dev_addr.addr,
       .initial_num_pages = initial_num_pages,
       .max_num_pages = max_num_pages,
       .grow_num_pages = grow_num_pages,
       .grow_threshold = grow_threshold
-   };
-   struct drm_pvr_ioctl_create_object_args args = {
-      .type = DRM_PVR_OBJECT_TYPE_FREE_LIST,
-      .data = (__u64)&free_list_args
    };
    struct pvr_drm_winsys *drm_ws = to_pvr_drm_winsys(ws);
    struct pvr_drm_winsys_free_list *drm_free_list;
@@ -102,7 +98,7 @@ VkResult pvr_drm_winsys_free_list_create(
    if (parent_free_list)
       drm_free_list->parent = to_pvr_drm_winsys_free_list(parent_free_list);
 
-   if (drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_CREATE_OBJECT, &args)) {
+   if (drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_CREATE_FREE_LIST, &args)) {
       vk_free(drm_ws->alloc, drm_free_list);
 
       /* Returns VK_ERROR_INITIALIZATION_FAILED to match pvrsrv. */
@@ -125,11 +121,11 @@ void pvr_drm_winsys_free_list_destroy(struct pvr_winsys_free_list *free_list)
    struct pvr_drm_winsys_free_list *const drm_free_list =
       to_pvr_drm_winsys_free_list(free_list);
    struct pvr_drm_winsys *drm_ws = to_pvr_drm_winsys(free_list->ws);
-   struct drm_pvr_ioctl_destroy_object_args args = {
+   struct drm_pvr_ioctl_destroy_free_list_args args = {
       .handle = drm_free_list->handle,
    };
 
-   if (drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_DESTROY_OBJECT, &args)) {
+   if (drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_DESTROY_FREE_LIST, &args)) {
       vk_errorf(NULL,
                 VK_ERROR_UNKNOWN,
                 "Error destroying free list. Errno: %d - %s.",
@@ -268,7 +264,7 @@ VkResult pvr_drm_render_target_dataset_create(
    uint32_t parent_free_list_handle =
       drm_free_list->parent ? drm_free_list->parent->handle : 0;
 
-   struct drm_pvr_ioctl_create_hwrt_dataset_args hwrt_args = {
+   struct drm_pvr_ioctl_create_hwrt_dataset_args args = {
       .geom_data_args = {
          .tpc_dev_addr = create_info->tpc_dev_addr.addr,
          .tpc_size = create_info->tpc_size,
@@ -316,16 +312,11 @@ VkResult pvr_drm_render_target_dataset_create(
       .region_header_size = create_info->rgn_header_size,
    };
 
-   struct drm_pvr_ioctl_create_object_args args = {
-      .type = DRM_PVR_OBJECT_TYPE_HWRT_DATASET,
-      .data = (__u64)&hwrt_args,
-   };
-
    struct pvr_drm_winsys *const drm_ws = to_pvr_drm_winsys(ws);
    struct pvr_drm_winsys_rt_dataset *drm_rt_dataset;
    int ret;
 
-   STATIC_ASSERT(ARRAY_SIZE(hwrt_args.rt_data_args) ==
+   STATIC_ASSERT(ARRAY_SIZE(args.rt_data_args) ==
                  ARRAY_SIZE(create_info->rt_datas));
 
    drm_rt_dataset = vk_zalloc(drm_ws->alloc,
@@ -335,7 +326,7 @@ VkResult pvr_drm_render_target_dataset_create(
    if (!drm_rt_dataset)
       return vk_error(NULL, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   ret = drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_CREATE_OBJECT, &args);
+   ret = drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_CREATE_HWRT_DATASET, &args);
    if (ret) {
       vk_free(drm_ws->alloc, drm_rt_dataset);
 
@@ -362,12 +353,12 @@ void pvr_drm_render_target_dataset_destroy(
    struct pvr_drm_winsys_rt_dataset *const drm_rt_dataset =
       to_pvr_drm_winsys_rt_dataset(rt_dataset);
    struct pvr_drm_winsys *const drm_ws = to_pvr_drm_winsys(rt_dataset->ws);
-   struct drm_pvr_ioctl_destroy_object_args args = {
+   struct drm_pvr_ioctl_destroy_hwrt_dataset_args args = {
       .handle = drm_rt_dataset->handle,
    };
    int ret;
 
-   ret = drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_DESTROY_OBJECT, &args);
+   ret = drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_DESTROY_HWRT_DATASET, &args);
    if (ret) {
       vk_errorf(NULL,
                 VK_ERROR_UNKNOWN,
