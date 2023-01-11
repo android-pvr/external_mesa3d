@@ -411,6 +411,9 @@ static uint32_t pvr_winsys_frag_flags_to_drm(uint32_t ws_flags)
    if (ws_flags & PVR_WINSYS_FRAG_FLAG_PREVENT_CDM_OVERLAP)
       flags |= DRM_PVR_SUBMIT_JOB_FRAG_CMD_PREVENT_CDM_OVERLAP;
 
+   if (ws_flags & PVR_WINSYS_FRAG_FLAG_GET_VIS_RESULTS)
+      flags |= DRM_PVR_SUBMIT_JOB_FRAG_CMD_GET_VIS_RESULTS;
+
    return flags;
 }
 
