@@ -50,6 +50,7 @@
 #include "util/xmlconfig.h"
 
 #include "util/u_cpu_detect.h"
+#include "util/build_id.h"
 
 #ifdef HAVE_LIBDRM
 #include <xf86drm.h>
