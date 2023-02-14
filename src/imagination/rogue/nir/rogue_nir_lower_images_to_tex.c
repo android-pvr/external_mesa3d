@@ -210,7 +210,8 @@ static nir_def *lower_image_intrinsic(nir_builder *b,
       /* TODO: Would be nice to make sure that the trimmed components are all nir_undef. */
       info->write_data = nir_trim_vector(b, info->write_data, fmt_chans);
 
-      nir_def *write_data_packed[4] = { [0 ... 3] = nir_imm_int(b, 0), };
+      nir_def *write_data_packed[4] = { nir_imm_int(b, 0), nir_imm_int(b, 0),
+                                        nir_imm_int(b, 0), nir_imm_int(b, 0) };
 
       /* TODO: commonise this with all the similar code in pvfio/fmt_utils,
        * and probably want vector versions of the scalar pack/unpacks.

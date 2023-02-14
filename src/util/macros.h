@@ -90,7 +90,7 @@
  * Static (compile-time) assertion.
  */
 #define STATIC_ASSERT(cond) do { \
-   static_assert(cond, #cond); \
+   _Static_assert(cond, #cond); \
 } while (0)
 
 /**
@@ -203,6 +203,7 @@ do {                       \
 /* Used to optionally mark structures with misaligned elements or size as
  * packed, to trade off performance for space.
  */
+#define HAVE_FUNC_ATTRIBUTE_PACKED
 #ifdef HAVE_FUNC_ATTRIBUTE_PACKED
 #  if defined(__MINGW32__) || defined(__MINGW64__)
 #    define PACKED __attribute__((gcc_struct,__packed__))
