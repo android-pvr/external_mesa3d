@@ -49,6 +49,7 @@
 #include "util/xmlconfig.h"
 
 #include "util/u_cpu_detect.h"
+#include "util/build_id.h"
 
 static int num_screens = 0;
 bool zink_tracing = false;

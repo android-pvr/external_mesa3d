@@ -79,6 +79,7 @@ struct cache_item_metadata {
 
 struct disk_cache;
 
+#undef HAVE_DLADDR
 #ifdef HAVE_DLADDR
 static inline bool
 disk_cache_get_function_timestamp(void *ptr, uint32_t* timestamp)

@@ -162,6 +162,9 @@ static void pvr_physical_device_get_supported_extensions(
       .EXT_private_data = true,
       .EXT_shader_atomic_float = false,
       .EXT_shader_atomic_float2 = false,
+#ifdef ANDROID
+      .ANDROID_native_buffer = true,
+#endif
    };
    /* clang-format on */
 }
@@ -381,6 +384,7 @@ static VkResult pvr_physical_device_init(struct pvr_physical_device *pdevice,
    char *render_path;
    VkResult result;
 
+#ifndef ANDROID
    if (!getenv("PVR_I_WANT_A_BROKEN_VULKAN_DRIVER")) {
       return vk_errorf(instance,
                        VK_ERROR_INCOMPATIBLE_DRIVER,
@@ -389,6 +393,7 @@ static VkResult pvr_physical_device_init(struct pvr_physical_device *pdevice,
                        "PVR_I_WANT_A_BROKEN_VULKAN_DRIVER=1 if you know "
                        "what you're doing.");
    }
+#endif
 
    render_path = vk_strdup(&instance->vk.alloc,
                            drm_render_device->nodes[DRM_NODE_RENDER],
