@@ -140,11 +140,41 @@ VkResult pvr_CreateImage(VkDevice _device,
     * Refer: pvr_GetImageMemoryRequirements for further details.
     */
    image->alignment = 4096U;
-
+#ifdef ANDROID
+   image->vk.tiling = VK_IMAGE_TILING_LINEAR;
+#endif
    /* Initialize the image using the saved information from pCreateInfo */
    pvr_image_init_memlayout(image);
    pvr_image_init_physical_extent(image);
    pvr_image_setup_mip_levels(image);
+
+#ifdef ANDROID
+   const VkNativeBufferANDROID *native_buffer =
+      vk_find_struct_const(pCreateInfo->pNext, NATIVE_BUFFER_ANDROID);
+
+   int native_buf_fd = -1;
+   int native_buf_stride = 0;
+   int native_buf_size = 0;
+   uint64_t modifier = 0;
+
+   if (native_buffer != NULL) {
+      VkResult result = pvr_gralloc_info(device, native_buffer, &native_buf_fd,
+                                          &native_buf_stride, &native_buf_size,
+                                          &modifier);
+      if (result != VK_SUCCESS)
+         return result;
+
+      image->size  = native_buf_size;
+
+      result = pvr_import_native_buffer_fd(pvr_device_to_handle(device),
+                                                     native_buf_fd, pAllocator,
+                                                     pvr_image_to_handle(image));
+      if (result != VK_SUCCESS) {
+         vk_image_destroy(&device->vk, pAllocator, &image->vk);
+         return result;
+      }
+   }
+#endif
 
    *pImage = pvr_image_to_handle(image);
 

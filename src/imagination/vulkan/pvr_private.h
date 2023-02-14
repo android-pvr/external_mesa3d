@@ -279,6 +279,10 @@ struct pvr_device {
    VkPhysicalDeviceFeatures features;
 
    struct pvr_bo_store *bo_store;
+
+#ifdef ANDROID
+   const void *gralloc;
+#endif
 };
 
 struct pvr_device_memory {
@@ -1497,5 +1501,18 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(pvr_render_pass,
 #else
 #   define pvr_assert(x)
 #endif
-
+#ifdef ANDROID
+VkResult
+pvr_gralloc_info(struct pvr_device *device,
+                  const VkNativeBufferANDROID *native_buffer,
+                  int *out_dmabuf,
+                  int *out_stride,
+                  int *out_size,
+                 uint64_t *out_modifier);
+VkResult
+pvr_import_native_buffer_fd(VkDevice device_h,
+                             int native_buffer_fd,
+                             const VkAllocationCallbacks *alloc,
+                            VkImage image_h);
+#endif
 #endif /* PVR_PRIVATE_H */

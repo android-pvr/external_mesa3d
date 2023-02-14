@@ -70,6 +70,20 @@ static struct {
       .name = "triangle",
       .bvncs = { PVR_GX6250_BVNC, PVR_AXE_1_16M_BVNC, },
    },
+#ifdef ANDROID
+   {
+      .name = "de.saschawillems.vulkanTriangle",
+      .bvncs = { PVR_GX6250_BVNC, PVR_AXE_1_16M_BVNC, },
+   },
+   {
+      .name = "vulkan.samples.T14_init_pipeline",
+      .bvncs = { PVR_GX6250_BVNC, PVR_AXE_1_16M_BVNC, },
+   },
+   {
+      .name = "vulkan.samples.T15_draw_cube",
+      .bvncs = { PVR_GX6250_BVNC, PVR_AXE_1_16M_BVNC, },
+   },
+#endif
 };
 
 static const struct pvr_hard_coding_data {

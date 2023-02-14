@@ -497,10 +497,14 @@ VkResult pvr_drm_winsys_render_submit(
    args.num_in_syncobj_handles = num_geom_syncs;
    job_args.num_in_syncobj_handles_frag = num_frag_syncs;
 
-   job_args.out_syncobj_geom =
-      vk_sync_as_drm_syncobj(signal_sync_geom)->syncobj;
-   job_args.out_syncobj_frag =
-      vk_sync_as_drm_syncobj(signal_sync_frag)->syncobj;
+   if (signal_sync_geom) {
+      job_args.out_syncobj_geom =
+         vk_sync_as_drm_syncobj(signal_sync_geom)->syncobj;
+   }
+   if (signal_sync_frag) {
+      job_args.out_syncobj_frag =
+         vk_sync_as_drm_syncobj(signal_sync_frag)->syncobj;
+   }
 
    ret = drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_SUBMIT_JOB, &args);
    if (ret) {

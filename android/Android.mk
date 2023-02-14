@@ -36,6 +36,7 @@ MESA_VK_LIB_SUFFIX_broadcom := broadcom
 MESA_VK_LIB_SUFFIX_panfrost := panfrost
 MESA_VK_LIB_SUFFIX_virtio-experimental := virtio
 MESA_VK_LIB_SUFFIX_swrast := lvp
+MESA_VK_LIB_SUFFIX_imagination-experimental := powervr_mesa
 
 include $(CLEAR_VARS)
 
@@ -181,5 +182,13 @@ $(eval $(call mesa3d-lib,$(MESA_LIBGBM_NAME),.so.1,,MESA3D_LIBGBM_BIN,$(MESA3D_T
 endif
 
 #-------------------------------------------------------------------------------
+
+ifneq ($(filter imagination-experimental,$(BOARD_MESA3D_VULKAN_DRIVERS)),)
+$(M_TARGET_PREFIX)MESA3D_POWERVR_ROGUE_BIN := $(MESON_OUT_DIR)/install/usr/local/lib/libpowervr_rogue.so
+$(MESON_OUT_DIR)/install/usr/local/lib/libpowervr_rogue.so: $(MESON_OUT_DIR)/install/.install.timestamp
+	touch $(MESON_OUT_DIR)/install/usr/local/lib/libpowervr_rogue.so
+
+$(eval $(call mesa3d-lib,libpowervr_rogue,.so.0,,MESA3D_POWERVR_ROGUE_BIN))
+endif
 
 endif
