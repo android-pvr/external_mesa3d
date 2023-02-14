@@ -109,6 +109,12 @@ if with_imagination_srv
   pvr_flags += '-DPVR_SUPPORT_SERVICES_DRIVER'
 endif
 
+if with_platform_android
+  pvr_deps += dep_android
+  pvr_flags += '-DVK_USE_PLATFORM_ANDROID_KHR'
+  pvr_files += files('pvr_android.c')
+endif
+
 libvulkan_powervr_mesa = shared_library(
   'vulkan_powervr_mesa',
   [pvr_files, pvr_entrypoints],
