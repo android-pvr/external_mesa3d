@@ -44,70 +44,82 @@ VkResult pvr_drm_winsys_null_job_submit(struct pvr_winsys *ws,
                                         struct vk_sync_signal *signal_sync)
 {
    const struct pvr_drm_winsys *drm_ws = to_pvr_drm_winsys(ws);
-
-   struct drm_pvr_job_null_args job_args = {
-      /* bo_handles is unused and zeroed. */
-      /* num_bo_handles is unused and zeroed. */
-      .flags = 0,
-   };
-
-   struct drm_pvr_ioctl_submit_job_args args = {
-      .job_type = DRM_PVR_JOB_TYPE_NULL,
-      .data = (__u64)&job_args,
-   };
-
-   uint32_t num_syncs = 0;
+   uint32_t tmp_syncobj;
    VkResult result;
    int ret;
 
-   STACK_ARRAY(struct drm_pvr_sync_op, sync_ops, wait_count + 1);
-   if (!sync_ops)
-      return vk_error(NULL, VK_ERROR_OUT_OF_HOST_MEMORY);
+   if (wait_count == 1) {
+      struct vk_sync *src_sync = waits[0].sync;
+      struct vk_sync *dst_sync = signal_sync->sync;
 
-   for (uint32_t i = 0; i < wait_count; i++) {
-      struct vk_sync *sync = waits[i].sync;
+      ret = drmSyncobjTransfer(drm_ws->render_fd,
+                               vk_sync_as_drm_syncobj(dst_sync)->syncobj,
+                               signal_sync->signal_value,
+                               vk_sync_as_drm_syncobj(src_sync)->syncobj,
+                               waits[0].wait_value,
+                               0);
+      if (ret) {
+         return vk_errorf(NULL,
+                          VK_ERROR_OUT_OF_DEVICE_MEMORY,
+                          "Failed to submit transfer syncobj. Errno: %d - %s.",
+                          errno,
+                          strerror(errno));
+      }
 
-      if (!sync)
-         continue;
-
-      sync_ops[num_syncs++] = (struct drm_pvr_sync_op){
-         .handle = vk_sync_as_drm_syncobj(sync)->syncobj,
-         .flags = DRM_PVR_SYNC_OP_FLAG_WAIT |
-                  (sync->flags & VK_SYNC_IS_TIMELINE
-                      ? DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_TIMELINE_SYNCOBJ
-                      : DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_SYNCOBJ),
-         .value = waits[i].wait_value,
-      };
+      return VK_SUCCESS;
    }
 
-   sync_ops[num_syncs++] = (struct drm_pvr_sync_op){
-      .handle = vk_sync_as_drm_syncobj(signal_sync->sync)->syncobj,
-      .flags = DRM_PVR_SYNC_OP_FLAG_SIGNAL |
-               (signal_sync->sync->flags & VK_SYNC_IS_TIMELINE
-                   ? DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_TIMELINE_SYNCOBJ
-                   : DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_SYNCOBJ),
-      .value = signal_sync->signal_value,
-   };
+   ret = drmSyncobjCreate(drm_ws->render_fd,
+                          wait_count == 0 ? DRM_SYNCOBJ_CREATE_SIGNALED : 0,
+                          &tmp_syncobj);
+   if (ret) {
+      return vk_errorf(NULL,
+                       VK_ERROR_OUT_OF_DEVICE_MEMORY,
+                       "Failed to create temporary syncobj. Errno: %d - %s.",
+                       errno,
+                       strerror(errno));
+   }
 
-   args.sync_ops =
-      (struct drm_pvr_obj_array)DRM_PVR_OBJ_ARRAY(num_syncs, sync_ops);
+   for (uint32_t i = 0; i < wait_count; i++) {
+      struct vk_sync *src_sync = waits[i].sync;
 
-   ret = drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_SUBMIT_JOB, &args);
+      if (!src_sync)
+         continue;
+
+      ret = drmSyncobjTransfer(drm_ws->render_fd,
+                               tmp_syncobj,
+                               i + 1,
+                               vk_sync_as_drm_syncobj(src_sync)->syncobj,
+                               waits[i].wait_value,
+                               0);
+      if (ret) {
+         result =
+            vk_errorf(NULL,
+                      VK_ERROR_OUT_OF_DEVICE_MEMORY,
+                      "Failed to create temporary syncobj. Errno: %d - %s.",
+                      errno,
+                      strerror(errno));
+         goto out_destroy_tmp_syncobj;
+      }
+   }
+
+   ret = drmSyncobjTransfer(drm_ws->render_fd,
+                            vk_sync_as_drm_syncobj(signal_sync->sync)->syncobj,
+                            signal_sync->signal_value,
+                            tmp_syncobj,
+                            wait_count,
+                            0);
    if (ret) {
       result = vk_errorf(NULL,
                          VK_ERROR_OUT_OF_DEVICE_MEMORY,
-                         "Failed to submit null job. Errno: %d - %s.",
+                         "Syncobj transfer failed. Errno: %d - %s.",
                          errno,
                          strerror(errno));
-      goto err_free_handles;
+   } else {
+      result = VK_SUCCESS;
    }
 
-   STACK_ARRAY_FINISH(sync_ops);
-
-   return VK_SUCCESS;
-
-err_free_handles:
-   STACK_ARRAY_FINISH(sync_ops);
-
+out_destroy_tmp_syncobj:
+   drmSyncobjDestroy(drm_ws->render_fd, tmp_syncobj);
    return result;
 }
