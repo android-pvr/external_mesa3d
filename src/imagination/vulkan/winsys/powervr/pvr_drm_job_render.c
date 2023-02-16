@@ -449,51 +449,25 @@ VkResult pvr_drm_winsys_render_submit(
 
    uint32_t num_geom_syncs = 0;
    uint32_t num_frag_syncs = 0;
-   uint32_t *handles;
-   VkResult result;
+   uint32_t geom_sync_handles[1], frag_sync_handles[1];
    int ret;
 
-   handles = vk_alloc(drm_ws->alloc,
-                      sizeof(*handles) * (submit_info->wait_count + 1) * 2,
-                      8,
-                      VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
-   if (!handles)
-      return vk_error(NULL, VK_ERROR_OUT_OF_HOST_MEMORY);
+   if (submit_info->geometry.wait) {
+      struct vk_sync *sync = submit_info->geometry.wait;
 
-   for (uint32_t i = 0; i < submit_info->wait_count; i++) {
-      struct vk_sync *sync = submit_info->waits[i];
-
-      if (!sync)
-         continue;
-
-      if (submit_info->stage_flags[i] & PVR_PIPELINE_STAGE_GEOM_BIT) {
-         handles[num_geom_syncs++] = vk_sync_as_drm_syncobj(sync)->syncobj;
-         submit_info->stage_flags[i] &= ~PVR_PIPELINE_STAGE_GEOM_BIT;
-      }
-
-      if (submit_info->stage_flags[i] & PVR_PIPELINE_STAGE_FRAG_BIT) {
-         handles[submit_info->wait_count + num_frag_syncs++] =
-            vk_sync_as_drm_syncobj(sync)->syncobj;
-         submit_info->stage_flags[i] &= ~PVR_PIPELINE_STAGE_FRAG_BIT;
-      }
+      geom_sync_handles[num_geom_syncs++] =
+         vk_sync_as_drm_syncobj(sync)->syncobj;
    }
 
-   if (submit_info->barrier_geom) {
-      struct vk_drm_syncobj *drm_sync =
-         vk_sync_as_drm_syncobj(submit_info->barrier_geom);
+   if (submit_info->fragment.wait) {
+      struct vk_sync *sync = submit_info->fragment.wait;
 
-      handles[num_geom_syncs++] = drm_sync->syncobj;
+      frag_sync_handles[num_frag_syncs++] =
+         vk_sync_as_drm_syncobj(sync)->syncobj;
    }
 
-   if (submit_info->barrier_frag) {
-      struct vk_drm_syncobj *drm_sync =
-         vk_sync_as_drm_syncobj(submit_info->barrier_frag);
-
-      handles[submit_info->wait_count + num_frag_syncs++] = drm_sync->syncobj;
-   }
-
-   args.in_syncobj_handles = (__u64)handles;
-   job_args.in_syncobj_handles_frag = (__u64)&handles[submit_info->wait_count];
+   args.in_syncobj_handles = (__u64)geom_sync_handles;
+   job_args.in_syncobj_handles_frag = (__u64)frag_sync_handles;
    args.num_in_syncobj_handles = num_geom_syncs;
    job_args.num_in_syncobj_handles_frag = num_frag_syncs;
 
@@ -505,20 +479,12 @@ VkResult pvr_drm_winsys_render_submit(
    ret = drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_SUBMIT_JOB, &args);
    if (ret) {
       /* Returns VK_ERROR_OUT_OF_DEVICE_MEMORY to match pvrsrv. */
-      result = vk_errorf(NULL,
-                         VK_ERROR_OUT_OF_DEVICE_MEMORY,
-                         "Failed to submit render job. Errno: %d - %s.",
-                         errno,
-                         strerror(errno));
-      goto err_free_handles;
+      return vk_errorf(NULL,
+                       VK_ERROR_OUT_OF_DEVICE_MEMORY,
+                       "Failed to submit render job. Errno: %d - %s.",
+                       errno,
+                       strerror(errno));
    }
 
-   vk_free(drm_ws->alloc, handles);
-
    return VK_SUCCESS;
-
-err_free_handles:
-   vk_free(drm_ws->alloc, handles);
-
-   return result;
 }

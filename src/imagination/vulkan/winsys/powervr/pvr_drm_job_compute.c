@@ -175,34 +175,13 @@ VkResult pvr_drm_winsys_compute_submit(
    };
 
    uint32_t num_syncs = 0;
-   uint32_t *handles;
-   VkResult result;
+   uint32_t handles[1];
    int ret;
 
-   handles = vk_alloc(drm_ws->alloc,
-                      sizeof(*handles) * (submit_info->wait_count + 1),
-                      8,
-                      VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
-   if (!handles)
-      return vk_error(NULL, VK_ERROR_OUT_OF_HOST_MEMORY);
+   if (submit_info->wait) {
+      struct vk_sync *sync = submit_info->wait;
 
-   for (uint32_t i = 0; i < submit_info->wait_count; i++) {
-      struct vk_sync *sync = submit_info->waits[i];
-
-      if (!sync)
-         continue;
-
-      if (submit_info->stage_flags[i] & PVR_PIPELINE_STAGE_COMPUTE_BIT) {
-         handles[num_syncs++] = vk_sync_as_drm_syncobj(sync)->syncobj;
-         submit_info->stage_flags[i] &= ~PVR_PIPELINE_STAGE_COMPUTE_BIT;
-      }
-   }
-
-   if (submit_info->barrier) {
-      struct vk_drm_syncobj *drm_sync =
-         vk_sync_as_drm_syncobj(submit_info->barrier);
-
-      handles[num_syncs++] = drm_sync->syncobj;
+      handles[num_syncs++] = vk_sync_as_drm_syncobj(sync)->syncobj;
    }
 
    args.in_syncobj_handles = (__u64)handles;
@@ -213,20 +192,12 @@ VkResult pvr_drm_winsys_compute_submit(
    ret = drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_SUBMIT_JOB, &args);
    if (ret) {
       /* Returns VK_ERROR_OUT_OF_DEVICE_MEMORY to match pvrsrv. */
-      result = vk_errorf(NULL,
-                         VK_ERROR_OUT_OF_DEVICE_MEMORY,
-                         "Failed to submit compute job. Errno: %d - %s.",
-                         errno,
-                         strerror(errno));
-      goto err_free_handles;
+      return vk_errorf(NULL,
+                       VK_ERROR_OUT_OF_DEVICE_MEMORY,
+                       "Failed to submit compute job. Errno: %d - %s.",
+                       errno,
+                       strerror(errno));
    }
 
-   vk_free(drm_ws->alloc, handles);
-
    return VK_SUCCESS;
-
-err_free_handles:
-   vk_free(drm_ws->alloc, handles);
-
-   return result;
 }

@@ -31,8 +31,8 @@ struct pvr_winsys;
 struct vk_sync;
 
 VkResult pvr_drm_winsys_null_job_submit(struct pvr_winsys *ws,
-                                        struct vk_sync **waits,
+                                        struct vk_sync_wait *waits,
                                         uint32_t wait_count,
-                                        struct vk_sync *signal_sync);
+                                        struct vk_sync_signal *signal_sync);
 
 #endif /* PVR_DRM_JOB_NULL_H */

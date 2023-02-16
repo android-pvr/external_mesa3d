@@ -39,9 +39,9 @@
 #include "vk_util.h"
 
 VkResult pvr_drm_winsys_null_job_submit(struct pvr_winsys *ws,
-                                        struct vk_sync **waits,
+                                        struct vk_sync_wait *waits,
                                         uint32_t wait_count,
-                                        struct vk_sync *signal_sync)
+                                        struct vk_sync_signal *signal_sync)
 {
    const struct pvr_drm_winsys *drm_ws = to_pvr_drm_winsys(ws);
 
@@ -65,18 +65,20 @@ VkResult pvr_drm_winsys_null_job_submit(struct pvr_winsys *ws,
       return vk_error(NULL, VK_ERROR_OUT_OF_HOST_MEMORY);
 
    for (uint32_t i = 0; i < wait_count; i++) {
-      struct vk_sync *sync = waits[i];
+      struct vk_sync *sync = waits[i].sync;
 
       if (!sync)
          continue;
 
+      assert(!(sync->flags & VK_SYNC_IS_TIMELINE));
       handles[num_syncs++] = vk_sync_as_drm_syncobj(sync)->syncobj;
    }
 
    args.in_syncobj_handles = (__u64)handles;
    args.num_in_syncobj_handles = num_syncs;
 
-   job_args.out_syncobj = vk_sync_as_drm_syncobj(signal_sync)->syncobj;
+   assert(!(signal_sync->sync->flags & VK_SYNC_IS_TIMELINE));
+   job_args.out_syncobj = vk_sync_as_drm_syncobj(signal_sync->sync)->syncobj;
 
    ret = drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_SUBMIT_JOB, &args);
    if (ret) {
