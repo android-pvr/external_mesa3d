@@ -60,8 +60,8 @@ VkResult pvr_drm_winsys_null_job_submit(struct pvr_winsys *ws,
    VkResult result;
    int ret;
 
-   STACK_ARRAY(uint32_t, handles, wait_count);
-   if (!handles)
+   STACK_ARRAY(struct drm_pvr_sync_op, sync_ops, wait_count + 1);
+   if (!sync_ops)
       return vk_error(NULL, VK_ERROR_OUT_OF_HOST_MEMORY);
 
    for (uint32_t i = 0; i < wait_count; i++) {
@@ -70,15 +70,27 @@ VkResult pvr_drm_winsys_null_job_submit(struct pvr_winsys *ws,
       if (!sync)
          continue;
 
-      assert(!(sync->flags & VK_SYNC_IS_TIMELINE));
-      handles[num_syncs++] = vk_sync_as_drm_syncobj(sync)->syncobj;
+      sync_ops[num_syncs++] = (struct drm_pvr_sync_op){
+         .handle = vk_sync_as_drm_syncobj(sync)->syncobj,
+         .flags = DRM_PVR_SYNC_OP_FLAG_WAIT |
+                  (sync->flags & VK_SYNC_IS_TIMELINE
+                      ? DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_TIMELINE_SYNCOBJ
+                      : DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_SYNCOBJ),
+         .value = waits[i].wait_value,
+      };
    }
 
-   args.in_syncobj_handles = (__u64)handles;
-   args.num_in_syncobj_handles = num_syncs;
+   sync_ops[num_syncs++] = (struct drm_pvr_sync_op){
+      .handle = vk_sync_as_drm_syncobj(signal_sync->sync)->syncobj,
+      .flags = DRM_PVR_SYNC_OP_FLAG_SIGNAL |
+               (signal_sync->sync->flags & VK_SYNC_IS_TIMELINE
+                   ? DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_TIMELINE_SYNCOBJ
+                   : DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_SYNCOBJ),
+      .value = signal_sync->signal_value,
+   };
 
-   assert(!(signal_sync->sync->flags & VK_SYNC_IS_TIMELINE));
-   job_args.out_syncobj = vk_sync_as_drm_syncobj(signal_sync->sync)->syncobj;
+   args.sync_ops =
+      (struct drm_pvr_obj_array)DRM_PVR_OBJ_ARRAY(num_syncs, sync_ops);
 
    ret = drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_SUBMIT_JOB, &args);
    if (ret) {
@@ -90,12 +102,12 @@ VkResult pvr_drm_winsys_null_job_submit(struct pvr_winsys *ws,
       goto err_free_handles;
    }
 
-   STACK_ARRAY_FINISH(handles);
+   STACK_ARRAY_FINISH(sync_ops);
 
    return VK_SUCCESS;
 
 err_free_handles:
-   STACK_ARRAY_FINISH(handles);
+   STACK_ARRAY_FINISH(sync_ops);
 
    return result;
 }

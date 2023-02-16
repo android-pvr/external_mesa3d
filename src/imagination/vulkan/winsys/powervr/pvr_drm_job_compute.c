@@ -168,26 +168,35 @@ VkResult pvr_drm_winsys_compute_submit(
       .flags = pvr_winsys_compute_flags_to_drm(submit_info->flags),
    };
 
+   struct drm_pvr_sync_op sync_ops[2];
    struct drm_pvr_ioctl_submit_job_args args = {
       .job_type = DRM_PVR_JOB_TYPE_COMPUTE,
       .context_handle = drm_ctx->handle,
       .data = (__u64)&job_args,
+      .sync_ops = DRM_PVR_OBJ_ARRAY(0, sync_ops),
    };
 
-   uint32_t num_syncs = 0;
-   uint32_t handles[1];
    int ret;
 
    if (submit_info->wait) {
       struct vk_sync *sync = submit_info->wait;
 
-      handles[num_syncs++] = vk_sync_as_drm_syncobj(sync)->syncobj;
+      assert(!(sync->flags & VK_SYNC_IS_TIMELINE));
+      sync_ops[args.sync_ops.count++] = (struct drm_pvr_sync_op){
+         .handle = vk_sync_as_drm_syncobj(sync)->syncobj,
+         .flags = DRM_PVR_SYNC_OP_FLAG_WAIT |
+                  DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_SYNCOBJ,
+         .value = 0,
+      };
    }
 
-   args.in_syncobj_handles = (__u64)handles;
-   args.num_in_syncobj_handles = num_syncs;
-
-   job_args.out_syncobj = vk_sync_as_drm_syncobj(signal_sync)->syncobj;
+   assert(!(signal_sync->flags & VK_SYNC_IS_TIMELINE));
+   sync_ops[args.sync_ops.count++] = (struct drm_pvr_sync_op){
+      .handle = vk_sync_as_drm_syncobj(signal_sync)->syncobj,
+      .flags = DRM_PVR_SYNC_OP_FLAG_SIGNAL |
+               DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_SYNCOBJ,
+      .value = 0,
+   };
 
    ret = drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_SUBMIT_JOB, &args);
    if (ret) {

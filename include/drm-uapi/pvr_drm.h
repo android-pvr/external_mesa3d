@@ -380,6 +380,35 @@ enum drm_pvr_ctx_type {
 	DRM_PVR_CTX_TYPE_TRANSFER_FRAG,
 };
 
+/**
+ * struct drm_pvr_obj_array - Container used to pass arrays of objects
+ *
+ * It is not unusual to have to extend objects to pass new parameters, and the DRM
+ * ioctl infrastructure is supporting that by padding ioctl arguments with zeros
+ * when the data passed by userspace is smaller than the struct defined in the
+ * drm_ioctl_desc, thus keeping things backward compatible. This drm_pvr_obj_array
+ * is just applying the same concepts to indirect objects passed through arrays
+ * referenced from the main ioctl arguments structure: the stride basically defines
+ * the size of the object passed by userspace, which allows the kernel driver to
+ * pad things with zeros when it's smaller than the size of the object it expects.
+ *
+ * Use DRM_PVR_OBJ_ARRAY() to fill object array fields, unless you have a very
+ * good reason not to.
+ */
+struct drm_pvr_obj_array {
+	/** @stride: Stride of object struct. Used for versioning. */
+	__u32 stride;
+
+	/** @count: Number of objects in the array. */
+	__u32 count;
+
+	/** @array: User pointer to an array of objects. */
+	__u64 array;
+};
+
+#define DRM_PVR_OBJ_ARRAY(cnt, ptr) \
+	{ .stride = sizeof((ptr)[0]), .count = (cnt), .array = (__u64)(uintptr_t)(ptr) }
+
 /* clang-format on */
 
 /**
@@ -919,6 +948,58 @@ struct drm_pvr_ioctl_vm_unmap_args {
 };
 
 /**
+ * DOC: Flags for the drm_pvr_sync_op object.
+ *
+ * Operations
+ * ~~~~~~~~~~
+ * .. c:macro:: DRM_PVR_SYNC_OP_HANDLE_TYPE_MASK
+ *
+ *    Handle type mask for the drm_pvr_sync_op::flags field.
+ *
+ * .. c:macro:: DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_SYNCOBJ
+ *
+ *    Indicates the handle passed in drm_pvr_sync_op::handle is a syncobj handle.
+ *    This is the default type.
+ *
+ * .. c:macro:: DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_TIMELINE_SYNCOBJ
+ *
+ *    Indicates the handle passed in drm_pvr_sync_op::handle is a timeline syncobj handle.
+ *
+ * .. c:macro:: DRM_PVR_SYNC_OP_FLAG_SIGNAL
+ *
+ *    Signal operation requested. The out-fence bound to the job will be attached to
+ *    the syncobj whose handle is passed in drm_pvr_sync_op::handle.
+ *
+ * .. c:macro:: DRM_PVR_SYNC_OP_FLAG_WAIT
+ *
+ *    Wait operation requested. The job will wait for this particular syncobj or syncobj
+ *    point to be signaled before being started.
+ *    This is the default operation.
+ */
+#define DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_MASK 0xf
+#define DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_SYNCOBJ 0
+#define DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_TIMELINE_SYNCOBJ 1
+#define DRM_PVR_SYNC_OP_FLAG_SIGNAL _BITULL(31)
+#define DRM_PVR_SYNC_OP_FLAG_WAIT 0
+
+#define DRM_PVR_SYNC_OP_FLAGS_MASK (DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_MASK | \
+				    DRM_PVR_SYNC_OP_FLAG_SIGNAL)
+
+/**
+ * struct drm_pvr_sync_op - Object describing a sync operation
+ */
+struct drm_pvr_sync_op {
+	/** @handle: Handle of sync object. */
+	__u32 handle;
+
+	/** @flags: Combination of DRM_PVR_SYNC_OP_FLAG_ flags. */
+	__u32 flags;
+
+	/** @value: Timeline value for this drm_syncobj. MBZ for a binary syncobj. */
+	__u64 value;
+};
+
+/**
  * DOC: Flags for SUBMIT_JOB ioctl geometry command.
  *
  * Operations
@@ -1016,31 +1097,8 @@ struct drm_pvr_job_render_args {
 	 */
 	__u32 frag_cmd_stream_len;
 
-	/**
-	 * @in_syncobj_handles_frag: [IN] Pointer to array of drm_syncobj handles for
-	 *                                input fences for fragment job.
-	 *
-	 * This array must be &num_in_syncobj_handles_frag entries large.
-	 *
-	 * drm_syncobj handles for the geometry job are contained in
-	 * &struct drm_pvr_ioctl_submit_job_args.in_syncobj_handles.
-	 */
-	__u64 in_syncobj_handles_frag;
-
-	/**
-	 * @num_in_syncobj_handles_frag: [IN] Number of input syncobj handles for fragment job.
-	 */
-	__u32 num_in_syncobj_handles_frag;
-
-	/**
-	 * @out_syncobj_geom: [OUT] drm_syncobj handle for geometry output fence
-	 */
-	__u32 out_syncobj_geom;
-
-	/**
-	 * @out_syncobj_frag: [OUT] drm_syncobj handle for fragment output fence
-	 */
-	__u32 out_syncobj_frag;
+	/** @frag_sync_ops: Fragment sync operations. */
+	struct drm_pvr_obj_array frag_sync_ops;
 
 	/**
 	 * @hwrt_data_set_handle: [IN] Handle for HWRT data set.
@@ -1063,9 +1121,6 @@ struct drm_pvr_job_render_args {
 	 * @flags: [IN] Flags for fragment command.
 	 */
 	__u32 frag_flags;
-
-	/** @_padding_54: Reserved. This field must be zeroed. */
-	__u32 _padding_54;
 };
 
 /**
@@ -1107,11 +1162,6 @@ struct drm_pvr_job_compute_args {
 	 * @flags: [IN] Flags for command.
 	 */
 	__u32 flags;
-
-	/**
-	 * @out_syncobj: [OUT] drm_syncobj handle for output fence
-	 */
-	__u32 out_syncobj;
 };
 
 /**
@@ -1139,11 +1189,6 @@ struct drm_pvr_job_transfer_args {
 	 * @flags: [IN] Flags for command.
 	 */
 	__u32 flags;
-
-	/**
-	 * @out_syncobj: [OUT] drm_syncobj handle for output fence
-	 */
-	__u32 out_syncobj;
 };
 
 /*
@@ -1160,13 +1205,8 @@ struct drm_pvr_job_null_args {
 	 */
 	__u32 flags;
 
-	/**
-	 * @out_syncobj: [OUT] drm_syncobj handle for output fence
-	 */
-	__u32 out_syncobj;
-
-	/** @_padding_14: Reserved. This field must be zeroed. */
-	__u32 _padding_14;
+	/** @_padding_4: Reserved. This field must be zeroed. */
+	__u32 _padding_4;
 };
 
 /**
@@ -1205,18 +1245,8 @@ struct drm_pvr_ioctl_submit_job_args {
 	/** @data: [IN] User pointer to job type specific arguments. */
 	__u64 data;
 
-	/**
-	 * @in_syncobj_handles: [IN] Pointer to array of drm_syncobj handles for input fences.
-	 *
-	 * This array must be &num_in_syncobj_handles entries large.
-	 */
-	__u64 in_syncobj_handles;
-
-	/**
-	 * @num_in_syncobj_handles: [IN] Number of input syncobj handles.
-	 */
-	__u32 num_in_syncobj_handles;
-
+	/** @sync_ops: Fragment sync operations. */
+	struct drm_pvr_obj_array sync_ops;
 };
 
 #if defined(__cplusplus)
