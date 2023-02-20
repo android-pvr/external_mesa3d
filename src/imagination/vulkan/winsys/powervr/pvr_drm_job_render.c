@@ -430,25 +430,38 @@ VkResult pvr_drm_winsys_render_submit(
    const struct pvr_drm_winsys_rt_dataset *drm_rt_dataset =
       to_pvr_drm_winsys_rt_dataset(submit_info->rt_dataset);
 
-   struct drm_pvr_sync_op geom_sync_ops[2], frag_sync_ops[2];
+   struct drm_pvr_sync_op geom_sync_ops[2], frag_sync_ops[3];
+   unsigned num_geom_syncs = 0, num_frag_syncs = 0;
 
-   struct drm_pvr_job_render_args job_args = {
-      .geom_cmd_stream = (__u64)&geom_state->fw_stream[0],
-      .geom_cmd_stream_len = geom_state->fw_stream_len,
-      .frag_cmd_stream = (__u64)&frag_state->fw_stream[0],
-      .frag_cmd_stream_len = frag_state->fw_stream_len,
-      .hwrt_data_set_handle = drm_rt_dataset->handle,
-      .hwrt_data_index = submit_info->rt_data_idx,
-      .geom_flags = pvr_winsys_geom_flags_to_drm(geom_state->flags),
-      .frag_flags = pvr_winsys_frag_flags_to_drm(frag_state->flags),
-      .frag_sync_ops = DRM_PVR_OBJ_ARRAY(0, frag_sync_ops),
+   struct drm_pvr_job jobs_args[] = {
+      {
+         .type = DRM_PVR_JOB_TYPE_GEOMETRY,
+         .cmd_stream = (__u64)&geom_state->fw_stream[0],
+         .cmd_stream_len = geom_state->fw_stream_len,
+         .context_handle = drm_ctx->handle,
+         .flags = pvr_winsys_geom_flags_to_drm(geom_state->flags),
+         .sync_ops = DRM_PVR_OBJ_ARRAY(0, geom_sync_ops),
+	 .hwrt = {
+            .set_handle = drm_rt_dataset->handle,
+            .data_index = submit_info->rt_data_idx,
+         },
+      },
+      {
+         .type = DRM_PVR_JOB_TYPE_FRAGMENT,
+         .cmd_stream = (__u64)&frag_state->fw_stream[0],
+         .cmd_stream_len = frag_state->fw_stream_len,
+         .context_handle = drm_ctx->handle,
+         .flags = pvr_winsys_frag_flags_to_drm(frag_state->flags),
+         .sync_ops = DRM_PVR_OBJ_ARRAY(0, frag_sync_ops),
+	 .hwrt = {
+            .set_handle = drm_rt_dataset->handle,
+            .data_index = submit_info->rt_data_idx,
+         },
+      },
    };
 
-   struct drm_pvr_ioctl_submit_job_args args = {
-      .job_type = DRM_PVR_JOB_TYPE_RENDER,
-      .context_handle = drm_ctx->handle,
-      .data = (__u64)&job_args,
-      .sync_ops = DRM_PVR_OBJ_ARRAY(0, geom_sync_ops),
+   struct drm_pvr_ioctl_submit_jobs_args args = {
+      .jobs = DRM_PVR_OBJ_ARRAY(ARRAY_SIZE(jobs_args), jobs_args),
    };
 
    int ret;
@@ -457,7 +470,7 @@ VkResult pvr_drm_winsys_render_submit(
       struct vk_sync *sync = submit_info->geometry.wait;
 
       assert(!(sync->flags & VK_SYNC_IS_TIMELINE));
-      geom_sync_ops[args.sync_ops.count++] = (struct drm_pvr_sync_op){
+      geom_sync_ops[num_geom_syncs++] = (struct drm_pvr_sync_op){
          .handle = vk_sync_as_drm_syncobj(sync)->syncobj,
          .flags = DRM_PVR_SYNC_OP_FLAG_WAIT |
                   DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_SYNCOBJ,
@@ -469,7 +482,7 @@ VkResult pvr_drm_winsys_render_submit(
       struct vk_sync *sync = submit_info->fragment.wait;
 
       assert(!(sync->flags & VK_SYNC_IS_TIMELINE));
-      frag_sync_ops[job_args.frag_sync_ops.count++] = (struct drm_pvr_sync_op){
+      frag_sync_ops[num_frag_syncs++] = (struct drm_pvr_sync_op){
          .handle = vk_sync_as_drm_syncobj(sync)->syncobj,
          .flags = DRM_PVR_SYNC_OP_FLAG_WAIT |
                   DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_SYNCOBJ,
@@ -478,22 +491,33 @@ VkResult pvr_drm_winsys_render_submit(
    }
 
    assert(!(signal_sync_geom->flags & VK_SYNC_IS_TIMELINE));
-   geom_sync_ops[args.sync_ops.count++] = (struct drm_pvr_sync_op){
+   geom_sync_ops[num_geom_syncs++] = (struct drm_pvr_sync_op){
       .handle = vk_sync_as_drm_syncobj(signal_sync_geom)->syncobj,
       .flags = DRM_PVR_SYNC_OP_FLAG_SIGNAL |
                DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_SYNCOBJ,
       .value = 0,
    };
 
+   /* geometry -> fragment dep. */
+   frag_sync_ops[num_frag_syncs++] = (struct drm_pvr_sync_op){
+      .handle = vk_sync_as_drm_syncobj(signal_sync_geom)->syncobj,
+      .flags = DRM_PVR_SYNC_OP_FLAG_WAIT |
+               DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_SYNCOBJ,
+      .value = 0,
+   };
+
    assert(!(signal_sync_frag->flags & VK_SYNC_IS_TIMELINE));
-   frag_sync_ops[job_args.frag_sync_ops.count++] = (struct drm_pvr_sync_op){
+   frag_sync_ops[num_frag_syncs++] = (struct drm_pvr_sync_op){
       .handle = vk_sync_as_drm_syncobj(signal_sync_frag)->syncobj,
       .flags = DRM_PVR_SYNC_OP_FLAG_SIGNAL |
                DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_SYNCOBJ,
       .value = 0,
    };
 
-   ret = drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_SUBMIT_JOB, &args);
+   jobs_args[0].sync_ops.count = num_geom_syncs;
+   jobs_args[1].sync_ops.count = num_frag_syncs;
+
+   ret = drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_SUBMIT_JOBS, &args);
    if (ret) {
       /* Returns VK_ERROR_OUT_OF_DEVICE_MEMORY to match pvrsrv. */
       return vk_errorf(NULL,

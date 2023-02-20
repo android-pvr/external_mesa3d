@@ -160,20 +160,20 @@ VkResult pvr_drm_winsys_compute_submit(
    const struct pvr_drm_winsys_compute_ctx *drm_ctx =
       to_pvr_drm_winsys_compute_ctx(ctx);
 
-   struct drm_pvr_job_compute_args job_args = {
+   struct drm_pvr_sync_op sync_ops[2];
+   struct drm_pvr_job job_args = {
+      .type = DRM_PVR_JOB_TYPE_COMPUTE,
+      .context_handle = drm_ctx->handle,
       .cmd_stream = (__u64)&submit_info->fw_stream[0],
       .cmd_stream_len = submit_info->fw_stream_len,
       /* bo_handles is unused and zeroed. */
       /* num_bo_handles is unused and zeroed. */
       .flags = pvr_winsys_compute_flags_to_drm(submit_info->flags),
+      .sync_ops = DRM_PVR_OBJ_ARRAY(0, sync_ops),
    };
 
-   struct drm_pvr_sync_op sync_ops[2];
-   struct drm_pvr_ioctl_submit_job_args args = {
-      .job_type = DRM_PVR_JOB_TYPE_COMPUTE,
-      .context_handle = drm_ctx->handle,
-      .data = (__u64)&job_args,
-      .sync_ops = DRM_PVR_OBJ_ARRAY(0, sync_ops),
+   struct drm_pvr_ioctl_submit_jobs_args args = {
+      .jobs = DRM_PVR_OBJ_ARRAY(1, &job_args),
    };
 
    int ret;
@@ -182,7 +182,7 @@ VkResult pvr_drm_winsys_compute_submit(
       struct vk_sync *sync = submit_info->wait;
 
       assert(!(sync->flags & VK_SYNC_IS_TIMELINE));
-      sync_ops[args.sync_ops.count++] = (struct drm_pvr_sync_op){
+      sync_ops[job_args.sync_ops.count++] = (struct drm_pvr_sync_op){
          .handle = vk_sync_as_drm_syncobj(sync)->syncobj,
          .flags = DRM_PVR_SYNC_OP_FLAG_WAIT |
                   DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_SYNCOBJ,
@@ -191,14 +191,14 @@ VkResult pvr_drm_winsys_compute_submit(
    }
 
    assert(!(signal_sync->flags & VK_SYNC_IS_TIMELINE));
-   sync_ops[args.sync_ops.count++] = (struct drm_pvr_sync_op){
+   sync_ops[job_args.sync_ops.count++] = (struct drm_pvr_sync_op){
       .handle = vk_sync_as_drm_syncobj(signal_sync)->syncobj,
       .flags = DRM_PVR_SYNC_OP_FLAG_SIGNAL |
                DRM_PVR_SYNC_OP_FLAG_HANDLE_TYPE_SYNCOBJ,
       .value = 0,
    };
 
-   ret = drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_SUBMIT_JOB, &args);
+   ret = drmIoctl(drm_ws->render_fd, DRM_IOCTL_PVR_SUBMIT_JOBS, &args);
    if (ret) {
       /* Returns VK_ERROR_OUT_OF_DEVICE_MEMORY to match pvrsrv. */
       return vk_errorf(NULL,
