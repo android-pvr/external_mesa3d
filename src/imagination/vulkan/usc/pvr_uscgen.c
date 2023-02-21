@@ -22,10 +22,13 @@
  */
 
 #include "pvr_job_transfer.h"
+#include "pvr_private.h"
 #include "pvr_uscgen.h"
 #include "rogue/rogue.h"
 #include "rogue/rogue_builder.h"
+#include "util/bitscan.h"
 #include "util/u_dynarray.h"
+#include "vulkan/util/vk_format.h"
 
 #include <stdbool.h>
 
@@ -69,6 +72,54 @@ void pvr_uscgen_eot(const char *name,
    rogue_encode_shader(NULL, shader, binary);
 
    *temps_used = rogue_count_used_regs(shader, ROGUE_REG_CLASS_TEMP);
+
+   ralloc_free(shader);
+}
+
+void pvr_uscgen_load_op(struct util_dynarray *binary,
+                        const struct pvr_load_op *load_op)
+{
+   rogue_builder b;
+   rogue_reg *dst;
+   rogue_reg *src;
+   rogue_shader *shader = rogue_shader_create(NULL, MESA_SHADER_NONE);
+   rogue_set_shader_name(shader, "load_op");
+   rogue_builder_init(&b, shader);
+   rogue_push_block(&b);
+
+   /* Clears. */
+   assert(load_op->clears_loads_state.rt_clear_mask == 1);
+   u_foreach_bit (rt_clear, load_op->clears_loads_state.rt_clear_mask) {
+      VkFormat fmt = load_op->clears_loads_state.dest_vk_format[rt_clear];
+
+      /* TODO: Calculate/ingest the proper offsets when
+       * supporting additional clears.
+       */
+      dst = rogue_pixout_reg(shader, rt_clear);
+      src = rogue_shared_reg(shader, rt_clear);
+
+      switch (vk_format_get_blocksizebits(fmt)) {
+      case 32:
+         rogue_MOV(&b, rogue_ref_reg(dst), rogue_ref_reg(src));
+         break;
+
+      default:
+         unreachable("Unsupported format block size.");
+      }
+   }
+
+   /* Loads. */
+   /* TODO: Implement. */
+   assert(load_op->clears_loads_state.rt_load_mask == 0);
+
+   /* TODO: Unsupported options. */
+   assert(load_op->clears_loads_state.unresolved_msaa_mask == 0);
+   assert(load_op->clears_loads_state.depth_clear_to_reg == -1);
+
+   rogue_END(&b);
+
+   rogue_shader_passes(shader);
+   rogue_encode_shader(NULL, shader, binary);
 
    ralloc_free(shader);
 }

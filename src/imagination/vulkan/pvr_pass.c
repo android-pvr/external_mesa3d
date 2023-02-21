@@ -32,7 +32,7 @@
 #include "pvr_pds.h"
 #include "pvr_private.h"
 #include "pvr_types.h"
-#include "pvr_usc_fragment_shader.h"
+#include "pvr_uscgen.h"
 #include "util/macros.h"
 #include "rogue/rogue.h"
 #include "vk_alloc.h"
@@ -321,11 +321,15 @@ pvr_generate_load_op_shader(struct pvr_device *device,
    const struct pvr_device_info *dev_info = &device->pdevice->dev_info;
    const uint32_t cache_line_size = rogue_get_slc_cache_line_size(dev_info);
 
+   struct util_dynarray load_op_bin;
+   pvr_uscgen_load_op(&load_op_bin, load_op);
+
    VkResult result = pvr_gpu_upload_usc(device,
-                                        pvr_usc_fragment_shader,
-                                        sizeof(pvr_usc_fragment_shader),
+                                        util_dynarray_begin(&load_op_bin),
+                                        load_op_bin.size,
                                         cache_line_size,
                                         &load_op->usc_frag_prog_bo);
+   util_dynarray_fini(&load_op_bin);
    if (result != VK_SUCCESS)
       return result;
 

@@ -135,6 +135,8 @@ struct pvr_tq_frag_sh_reg_layout {
    uint8_t compiler_out_total;
 };
 
+struct pvr_load_op;
+
 /* TODO: Shader caching (not pipeline caching) support. */
 
 void pvr_uscgen_eot(const char *name,
@@ -142,6 +144,9 @@ void pvr_uscgen_eot(const char *name,
                     const uint32_t *emit_state,
                     unsigned *temps_used,
                     struct util_dynarray *binary);
+
+void pvr_uscgen_load_op(struct util_dynarray *binary,
+                        const struct pvr_load_op *load_op);
 
 void pvr_uscgen_nop(struct util_dynarray *binary);
 
