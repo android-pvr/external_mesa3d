@@ -119,11 +119,4 @@ void pvr_hard_code_graphics_get_build_info(
    rogue_build_data *const build_data,
    struct pvr_explicit_constant_usage *const explicit_const_usage);
 
-void pvr_hard_code_get_passthrough_vertex_shader(
-   const struct pvr_device_info *const dev_info,
-   struct util_dynarray *program_out);
-void pvr_hard_code_get_passthrough_rta_vertex_shader(
-   const struct pvr_device_info *const dev_info,
-   struct util_dynarray *program_out);
-
 #endif /* PVR_HARDCODE_SHADERS_H */

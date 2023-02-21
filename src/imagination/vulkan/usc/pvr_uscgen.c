@@ -76,6 +76,41 @@ void pvr_uscgen_eot(const char *name,
    ralloc_free(shader);
 }
 
+void pvr_uscgen_passthrough_vtx(struct util_dynarray *binary, bool rta)
+{
+   rogue_builder b;
+   rogue_reg *dst;
+   rogue_reg *src;
+   rogue_shader *shader = rogue_shader_create(NULL, MESA_SHADER_NONE);
+   rogue_set_shader_name(shader,
+                         rta ? "passthrough vertex (RTA)"
+                             : "passthrough vertex");
+   rogue_builder_init(&b, shader);
+   rogue_push_block(&b);
+
+   for (unsigned u = 0; u < 3; ++u) {
+      dst = rogue_vtxout_reg(b.shader, u);
+      src = rogue_vtxin_reg(b.shader, u);
+      rogue_MOV(&b, rogue_ref_reg(dst), rogue_ref_reg(src));
+   }
+
+   if (rta) {
+      dst = rogue_vtxout_reg(b.shader, 4);
+      src = rogue_vtxin_reg(b.shader, 3);
+      rogue_MOV(&b, rogue_ref_reg(dst), rogue_ref_reg(src));
+   }
+
+   dst = rogue_vtxout_reg(b.shader, 3);
+   rogue_MOV(&b, rogue_ref_reg(dst), rogue_ref_imm_f(1.0f));
+
+   rogue_END(&b);
+
+   rogue_shader_passes(shader);
+   rogue_encode_shader(NULL, shader, binary);
+
+   ralloc_free(shader);
+}
+
 void pvr_uscgen_load_op(struct util_dynarray *binary,
                         const struct pvr_load_op *load_op)
 {

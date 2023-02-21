@@ -32,6 +32,7 @@
 #include "pvr_shader_factory.h"
 #include "pvr_static_shaders.h"
 #include "pvr_types.h"
+#include "pvr_uscgen.h"
 #include "vk_alloc.h"
 #include "vk_log.h"
 
@@ -500,11 +501,7 @@ VkResult pvr_device_init_graphics_static_clear_state(struct pvr_device *device)
 
    if (PVR_HAS_FEATURE(dev_info, gs_rta_support)) {
       struct util_dynarray passthrough_rta_vert_shader;
-
-      util_dynarray_init(&passthrough_rta_vert_shader, NULL);
-      pvr_hard_code_get_passthrough_rta_vertex_shader(
-         dev_info,
-         &passthrough_rta_vert_shader);
+      pvr_uscgen_passthrough_vtx(&passthrough_rta_vert_shader, true);
 
       result = pvr_gpu_upload_usc(device,
                                   passthrough_rta_vert_shader.data,
@@ -521,9 +518,7 @@ VkResult pvr_device_init_graphics_static_clear_state(struct pvr_device *device)
       state->usc_multi_layer_vertex_shader_bo = NULL;
    }
 
-   util_dynarray_init(&passthrough_vert_shader, NULL);
-   pvr_hard_code_get_passthrough_vertex_shader(dev_info,
-                                               &passthrough_vert_shader);
+   pvr_uscgen_passthrough_vtx(&passthrough_vert_shader, false);
 
    result = pvr_gpu_upload_usc(device,
                                passthrough_vert_shader.data,

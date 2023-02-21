@@ -154,6 +154,8 @@ void pvr_uscgen_eot(const char *name,
                     unsigned *temps_used,
                     struct util_dynarray *binary);
 
+void pvr_uscgen_passthrough_vtx(struct util_dynarray *binary, bool rta);
+
 void pvr_uscgen_load_op(struct util_dynarray *binary,
                         const struct pvr_load_op *load_op);
 

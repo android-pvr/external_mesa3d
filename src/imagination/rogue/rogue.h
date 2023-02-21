@@ -766,6 +766,14 @@ static inline rogue_ref rogue_ref_imm(uint32_t imm)
    };
 }
 
+static inline rogue_ref rogue_ref_imm_f(float imm)
+{
+   return (rogue_ref){
+      .type = ROGUE_REF_TYPE_IMM,
+      .imm.imm.f32 = imm,
+   };
+}
+
 static inline rogue_ref rogue_ref_io(enum rogue_io io)
 {
    return (rogue_ref){

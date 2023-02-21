@@ -327,28 +327,3 @@ void pvr_hard_code_graphics_get_build_info(
       unreachable("Unsupported stage.");
    }
 }
-
-void pvr_hard_code_get_passthrough_vertex_shader(
-   const struct pvr_device_info *const dev_info,
-   struct util_dynarray *program_out)
-{
-   static const uint8_t shader[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-
-   mesa_loge(
-      "No hard coded passthrough vertex shader. Returning empty shader.");
-
-   util_dynarray_append_mem(program_out, ARRAY_SIZE(shader), &shader[0]);
-};
-
-/* Render target array (RTA). */
-void pvr_hard_code_get_passthrough_rta_vertex_shader(
-   const struct pvr_device_info *const dev_info,
-   struct util_dynarray *program_out)
-{
-   uint32_t shader[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-
-   util_dynarray_append_mem(program_out, ARRAY_SIZE(shader), &shader);
-
-   mesa_loge("No hard coded passthrough rta vertex shader. Returning "
-             "empty shader.");
-}
