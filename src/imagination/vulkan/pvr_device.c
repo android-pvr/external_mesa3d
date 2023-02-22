@@ -1407,17 +1407,22 @@ static VkResult pvr_device_init_compute_idfwdf_state(struct pvr_device *device)
    struct util_dynarray usc_program;
    struct pvr_texture_state_info tex_info;
    uint32_t *dword_ptr;
-   uint32_t usc_shareds;
    uint32_t usc_temps;
    VkResult result;
 
-   util_dynarray_init(&usc_program, NULL);
-   pvr_hard_code_get_idfwdf_program(&device->pdevice->dev_info,
-                                    &usc_program,
-                                    &usc_shareds,
-                                    &usc_temps);
+   struct pvr_smp_layout smp = {
+      .coords_idx = 0,
+      .lod_idx = 2,
+      .img_state_idx = 4,
+      .smp_state_idx = 8,
 
-   device->idfwdf_state.usc_shareds = usc_shareds;
+      .total = 12,
+   };
+
+   util_dynarray_init(&usc_program, NULL);
+   pvr_uscgen_idfwdf(&usc_program, &smp, &usc_temps);
+
+   device->idfwdf_state.usc_shareds = smp.total;
 
    /* FIXME: Figure out the define for alignment of 16. */
    result = pvr_gpu_upload_usc(device,
@@ -1443,7 +1448,7 @@ static VkResult pvr_device_init_compute_idfwdf_state(struct pvr_device *device)
 
    result = pvr_bo_alloc(device,
                          device->heaps.general_heap,
-                         usc_shareds * ROGUE_REG_SIZE_BYTES,
+                         smp.total * ROGUE_REG_SIZE_BYTES,
                          ROGUE_REG_SIZE_BYTES,
                          PVR_BO_ALLOC_FLAG_CPU_MAPPED,
                          &device->idfwdf_state.shareds_bo);
@@ -1496,23 +1501,24 @@ static VkResult pvr_device_init_compute_idfwdf_state(struct pvr_device *device)
     * assuming there's always 12 and this is how they should be setup?
     */
 
-   dword_ptr[0] = HIGH_32(device->idfwdf_state.store_bo->vma->dev_addr.addr);
-   dword_ptr[1] = LOW_32(device->idfwdf_state.store_bo->vma->dev_addr.addr);
+   dword_ptr[smp.coords_idx + 0] =
+      HIGH_32(device->idfwdf_state.store_bo->vma->dev_addr.addr);
+   dword_ptr[smp.coords_idx + 1] =
+      LOW_32(device->idfwdf_state.store_bo->vma->dev_addr.addr);
 
    /* Pad the shareds as the texture/sample state words are 128 bit aligned. */
-   dword_ptr[2] = 0U;
-   dword_ptr[3] = 0U;
+   dword_ptr[smp.lod_idx + 0] = 0U;
+   dword_ptr[smp.lod_idx + 1] = 0U;
 
-   dword_ptr[4] = LOW_32(image_state[0]);
-   dword_ptr[5] = HIGH_32(image_state[0]);
-   dword_ptr[6] = LOW_32(image_state[1]);
-   dword_ptr[7] = HIGH_32(image_state[1]);
+   dword_ptr[smp.img_state_idx + 0] = LOW_32(image_state[0]);
+   dword_ptr[smp.img_state_idx + 1] = HIGH_32(image_state[0]);
+   dword_ptr[smp.img_state_idx + 2] = LOW_32(image_state[1]);
+   dword_ptr[smp.img_state_idx + 3] = HIGH_32(image_state[1]);
 
-   dword_ptr[8] = LOW_32(sampler_state[0]);
-   dword_ptr[9] = HIGH_32(sampler_state[0]);
-   dword_ptr[10] = LOW_32(sampler_state[1]);
-   dword_ptr[11] = HIGH_32(sampler_state[1]);
-   assert(11 + 1 == usc_shareds);
+   dword_ptr[smp.smp_state_idx + 0] = LOW_32(sampler_state[0]);
+   dword_ptr[smp.smp_state_idx + 1] = HIGH_32(sampler_state[0]);
+   dword_ptr[smp.smp_state_idx + 2] = LOW_32(sampler_state[1]);
+   dword_ptr[smp.smp_state_idx + 3] = HIGH_32(sampler_state[1]);
 
 #undef HIGH_32
 #undef LOW_32
@@ -1524,7 +1530,7 @@ static VkResult pvr_device_init_compute_idfwdf_state(struct pvr_device *device)
    result = pvr_pds_idfwdf_programs_create_and_upload(
       device,
       device->idfwdf_state.usc->dev_addr,
-      usc_shareds,
+      smp.total,
       usc_temps,
       device->idfwdf_state.shareds_bo->vma->dev_addr,
       &device->idfwdf_state.pds,

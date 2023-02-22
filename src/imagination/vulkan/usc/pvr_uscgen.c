@@ -124,6 +124,107 @@ void pvr_uscgen_load_op(struct util_dynarray *binary,
    ralloc_free(shader);
 }
 
+void pvr_uscgen_idfwdf(struct util_dynarray *binary,
+                       struct pvr_smp_layout *layout,
+                       unsigned *temps_used)
+{
+   rogue_builder b;
+   rogue_backend_instr *be;
+   rogue_shader *shader = rogue_shader_create(NULL, MESA_SHADER_NONE);
+   rogue_set_shader_name(shader, "NOP");
+   rogue_builder_init(&b, shader);
+   rogue_push_block(&b);
+
+   unsigned coords_lo_idx = 0;
+   unsigned coords_hi_idx = 1;
+   unsigned st_src_idx = 2;
+   unsigned smp_dst_idx = 3;
+
+   rogue_regarray *coords_lo =
+      rogue_shared_regarray(shader, 1, layout->coords_idx);
+   rogue_regarray *coords_hi =
+      rogue_shared_regarray(shader, 1, layout->coords_idx + 1);
+   rogue_regarray *shared_lod =
+      rogue_shared_regarray(shader, 2, layout->lod_idx);
+   rogue_regarray *image_state =
+      rogue_shared_regarray(shader, 4, layout->img_state_idx);
+   rogue_regarray *sampler_state =
+      rogue_shared_regarray(shader, 4, layout->smp_state_idx);
+
+   rogue_regarray *coords_64 = rogue_temp_regarray(shader, 2, coords_lo_idx);
+   rogue_regarray *coords_2x32[2] = {
+      rogue_temp_regarray(shader, 1, coords_lo_idx),
+      rogue_temp_regarray(shader, 1, coords_hi_idx),
+   };
+
+   rogue_reg *st_src = rogue_temp_reg(shader, st_src_idx);
+   rogue_reg *smp_dst = rogue_temp_reg(shader, smp_dst_idx);
+
+   /* Do a memory store and a texture read to fence any loads/texture writes
+    * from previous kernels.
+    */
+
+   /* r0 = sh1 */
+   rogue_MOV(&b,
+             rogue_ref_regarray(coords_2x32[0]),
+             rogue_ref_regarray(coords_hi));
+
+   /* r1 = sh0 */
+   rogue_MOV(&b,
+             rogue_ref_regarray(coords_2x32[1]),
+             rogue_ref_regarray(coords_lo));
+
+   /* r2 = c0 */
+   rogue_MOV(&b, rogue_ref_reg(st_src), rogue_ref_imm(0));
+
+   /* MEM[r[0..1]] = r2 */
+   be = rogue_ST(&b,
+                 rogue_ref_reg(st_src),
+                 rogue_ref_val(2),
+                 rogue_ref_drc(0),
+                 rogue_ref_val(1),
+                 rogue_ref_regarray(coords_64),
+                 rogue_ref_io(ROGUE_IO_NONE));
+   rogue_set_backend_op_mod(be, ROGUE_BACKEND_OP_MOD_SLCWRITEBACK);
+   rogue_set_backend_op_mod(be, ROGUE_BACKEND_OP_MOD_WRITETHROUGH);
+   rogue_set_backend_op_mod(be, ROGUE_BACKEND_OP_MOD_NOWDF);
+
+   /* idf drc0, r0 */
+   /* wdf drc0 */
+   rogue_IDF(&b, rogue_ref_drc(0), rogue_ref_regarray(coords_64));
+
+   /* Fence any texture writes from the preceding kernel, and
+    * do a block of reads to flush the MADD cache through. */
+   for (unsigned y = 0; y < 2; ++y) {
+      for (unsigned x = 0; x < 4; ++x) {
+         rogue_MOV(&b, rogue_ref_regarray(coords_2x32[0]), rogue_ref_imm(x));
+         rogue_MOV(&b, rogue_ref_regarray(coords_2x32[1]), rogue_ref_imm(y));
+         be = rogue_SMP2D(&b,
+                          rogue_ref_reg(smp_dst),
+                          rogue_ref_drc(0),
+                          rogue_ref_regarray(image_state),
+                          rogue_ref_regarray(coords_64),
+                          rogue_ref_regarray(sampler_state),
+                          rogue_ref_regarray(shared_lod),
+                          rogue_ref_val(1));
+
+         rogue_set_backend_op_mod(be, ROGUE_BACKEND_OP_MOD_SLCWRITEBACK);
+         rogue_set_backend_op_mod(be, ROGUE_BACKEND_OP_MOD_FCNORM);
+         rogue_set_backend_op_mod(be, ROGUE_BACKEND_OP_MOD_REPLACE);
+         rogue_add_instr_commentf(&be->instr, "Sample %u,%u", x, y);
+      }
+   }
+
+   rogue_END(&b);
+
+   rogue_shader_passes(shader);
+   rogue_encode_shader(NULL, shader, binary);
+
+   *temps_used = rogue_count_used_regs(shader, ROGUE_REG_CLASS_TEMP);
+
+   ralloc_free(shader);
+}
+
 void pvr_uscgen_nop(struct util_dynarray *binary)
 {
    rogue_builder b;

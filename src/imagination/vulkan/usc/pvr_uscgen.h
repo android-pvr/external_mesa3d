@@ -139,6 +139,15 @@ struct pvr_load_op;
 
 /* TODO: Shader caching (not pipeline caching) support. */
 
+struct pvr_smp_layout {
+   unsigned coords_idx; /** Sampler coords reg index. */
+   unsigned img_state_idx; /** Image state reg index. */
+   unsigned smp_state_idx; /** Sampler state reg index. */
+   unsigned lod_idx; /** Shared level of depth reg index. */
+
+   unsigned total; /** Total shareds used. */
+};
+
 void pvr_uscgen_eot(const char *name,
                     uint32_t emit_count,
                     const uint32_t *emit_state,
@@ -147,6 +156,10 @@ void pvr_uscgen_eot(const char *name,
 
 void pvr_uscgen_load_op(struct util_dynarray *binary,
                         const struct pvr_load_op *load_op);
+
+void pvr_uscgen_idfwdf(struct util_dynarray *binary,
+                       struct pvr_smp_layout *layout,
+                       unsigned *temps_used);
 
 void pvr_uscgen_nop(struct util_dynarray *binary);
 

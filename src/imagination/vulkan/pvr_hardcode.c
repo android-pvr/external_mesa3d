@@ -328,22 +328,6 @@ void pvr_hard_code_graphics_get_build_info(
    }
 }
 
-void pvr_hard_code_get_idfwdf_program(
-   const struct pvr_device_info *const dev_info,
-   struct util_dynarray *program_out,
-   uint32_t *usc_shareds_out,
-   uint32_t *usc_temps_out)
-{
-   static const uint8_t shader[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-
-   mesa_loge("No hard coded idfwdf program. Returning empty program.");
-
-   util_dynarray_append_mem(program_out, ARRAY_SIZE(shader), &shader[0]);
-
-   *usc_shareds_out = 12U;
-   *usc_temps_out = 4U;
-}
-
 void pvr_hard_code_get_passthrough_vertex_shader(
    const struct pvr_device_info *const dev_info,
    struct util_dynarray *program_out)
