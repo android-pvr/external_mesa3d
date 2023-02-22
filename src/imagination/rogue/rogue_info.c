@@ -248,6 +248,7 @@ const rogue_ctrl_op_mod_info rogue_ctrl_op_mod_infos[ROGUE_CTRL_OP_MOD_COUNT] = 
    [ROGUE_CTRL_OP_MOD_ALLINST] = { .str = "allinst", .exclude = OM(ANYINST) },
    [ROGUE_CTRL_OP_MOD_ANYINST] = { .str = "anyinst", .exclude = OM(ALLINST) },
    [ROGUE_CTRL_OP_MOD_END] = { .str = "end", },
+   [ROGUE_CTRL_OP_MOD_NOWDF] = { .str = "nowdf", },
 };
 #undef OM
 
@@ -328,7 +329,7 @@ const rogue_backend_op_info rogue_backend_op_infos[ROGUE_BACKEND_OP_COUNT] = {
    [ROGUE_BACKEND_OP_ST] = { .str = "st", .num_srcs = 6,
       .phase_io = { .src[0] = IO(S3), .src[4] = IO(S0), },
       .supported_op_mods = OM(TILED) | OM(WRITETHROUGH) | OM(WRITEBACK) | OM(LAZYWRITEBACK) |
-         OM(SLCBYPASS) | OM(SLCWRITEBACK) | OM(SLCWRITETHROUGH) | OM(SLCNOALLOC),
+         OM(SLCBYPASS) | OM(SLCWRITEBACK) | OM(SLCWRITETHROUGH) | OM(SLCNOALLOC) | OM(NOWDF),
       .supported_src_types = {
          [0] = T(REG) | T(REGARRAY),
          [1] = T(VAL),
@@ -494,6 +495,7 @@ const rogue_backend_op_mod_info rogue_backend_op_mod_infos[ROGUE_BACKEND_OP_MOD_
    [ROGUE_BACKEND_OP_MOD_F16]  = { .str = "f16", },
    [ROGUE_BACKEND_OP_MOD_SAT]  = { .str = "sat", },
    [ROGUE_BACKEND_OP_MOD_FREEP] = { .str = "freep", },
+   [ROGUE_BACKEND_OP_MOD_NOWDF] = { .str = "nowdf", },
 };
 #undef OM
 

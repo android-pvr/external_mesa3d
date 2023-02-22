@@ -33,10 +33,31 @@
  * \brief Contains the rogue_schedule_wdf pass.
  */
 
+static bool rogue_instr_is_no_wdf(rogue_instr *instr)
+{
+   switch (instr->type) {
+   case ROGUE_INSTR_TYPE_BACKEND:
+      return rogue_backend_op_mod_is_set(rogue_instr_as_backend(instr),
+                                         ROGUE_BACKEND_OP_MOD_NOWDF);
+
+   case ROGUE_INSTR_TYPE_CTRL:
+      return rogue_ctrl_op_mod_is_set(rogue_instr_as_ctrl(instr),
+                                      ROGUE_CTRL_OP_MOD_NOWDF);
+
+   default:
+      break;
+   }
+
+   return false;
+}
+
 static bool
 rogue_insert_wdf(rogue_builder *b, rogue_drc_trxn *drc_trxn, unsigned num)
 {
    assert(drc_trxn->acquire);
+
+   if (rogue_instr_is_no_wdf(drc_trxn->acquire))
+      return false;
 
    if (drc_trxn->release)
       return false;
