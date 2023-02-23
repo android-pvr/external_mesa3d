@@ -1047,6 +1047,10 @@ enum rogue_alu_op {
 
    ROGUE_ALU_OP_ADD64,
 
+   ROGUE_ALU_OP_ADD64_32,
+   ROGUE_ALU_OP_MADD32,
+   ROGUE_ALU_OP_MADD64,
+
    ROGUE_ALU_OP_TST,
    ROGUE_ALU_OP_MOVC,
 
@@ -1094,6 +1098,8 @@ enum rogue_alu_op_mod {
    ROGUE_ALU_OP_MOD_S8,
    ROGUE_ALU_OP_MOD_U32,
    ROGUE_ALU_OP_MOD_S32,
+
+   ROGUE_ALU_OP_MOD_S, /** Signed. */
 
    ROGUE_ALU_OP_MOD_COUNT,
 };

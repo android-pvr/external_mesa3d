@@ -588,9 +588,16 @@ static void rogue_calc_alu_instrs_size(rogue_instr_group *group,
       break;
 
    case ROGUE_ALU_OP_ADD64:
+   case ROGUE_ALU_OP_ADD64_32:
+   case ROGUE_ALU_OP_MADD32:
+   case ROGUE_ALU_OP_MADD64: {
       group->size.instrs[phase] = 1;
 
-      if (rogue_ref_is_io_p0(&alu->src[4].ref) ||
+      unsigned p0_src = 3;
+      if (alu->op == ROGUE_ALU_OP_ADD64 || alu->op == ROGUE_ALU_OP_MADD64)
+         p0_src = 4;
+
+      if (rogue_ref_is_io_p0(&alu->src[p0_src].ref) ||
           rogue_alu_src_mod_is_set(alu, 0, SM(ABS)) ||
           rogue_alu_src_mod_is_set(alu, 0, SM(NEG)) ||
           rogue_alu_src_mod_is_set(alu, 1, SM(ABS)) ||
@@ -598,6 +605,7 @@ static void rogue_calc_alu_instrs_size(rogue_instr_group *group,
           rogue_alu_src_mod_is_set(alu, 2, SM(ABS)))
          group->size.instrs[phase] = 2;
       break;
+   }
 
    default:
       unreachable("Unsupported alu op.");

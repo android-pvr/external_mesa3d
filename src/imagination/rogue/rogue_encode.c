@@ -418,12 +418,40 @@ static void rogue_encode_alu_instr(const rogue_alu_instr *alu,
       break;
 
    case ROGUE_ALU_OP_ADD64:
+   case ROGUE_ALU_OP_ADD64_32:
+   case ROGUE_ALU_OP_MADD32:
+   case ROGUE_ALU_OP_MADD64: {
       instr_encoding->alu.op = ALUOP_INT32_64;
 
-      instr_encoding->alu.int32_64.int32_64_op = INT32_64_OP_ADD64_NMX;
+      unsigned p0_src;
+      switch (alu->op) {
+      case ROGUE_ALU_OP_ADD64:
+         instr_encoding->alu.int32_64.int32_64_op = INT32_64_OP_ADD64_NMX;
+         p0_src = 4;
+         break;
+
+      case ROGUE_ALU_OP_ADD64_32:
+         instr_encoding->alu.int32_64.int32_64_op = INT32_64_OP_ADD6432;
+         p0_src = 3;
+         break;
+
+      case ROGUE_ALU_OP_MADD32:
+         instr_encoding->alu.int32_64.int32_64_op = INT32_64_OP_MADD32;
+         p0_src = 3;
+         break;
+
+      case ROGUE_ALU_OP_MADD64:
+         instr_encoding->alu.int32_64.int32_64_op = INT32_64_OP_MADD64;
+         p0_src = 4;
+         break;
+
+      default:
+         unreachable("Unsupported alu op.");
+      }
+
       instr_encoding->alu.int32_64.s2neg =
          rogue_alu_src_mod_is_set(alu, 2, SM(NEG));
-      instr_encoding->alu.int32_64.s = 0;
+      instr_encoding->alu.int32_64.s = rogue_alu_op_mod_is_set(alu, OM(S));
 
       if (instr_size == 2) {
          instr_encoding->alu.int32_64.ext = 1;
@@ -438,9 +466,10 @@ static void rogue_encode_alu_instr(const rogue_alu_instr *alu,
          instr_encoding->alu.int32_64.s1neg =
             rogue_alu_src_mod_is_set(alu, 1, SM(NEG));
          instr_encoding->alu.int32_64.cin =
-            rogue_ref_is_io_p0(&alu->src[4].ref);
+            rogue_ref_is_io_p0(&alu->src[p0_src].ref);
       }
       break;
+   }
 
    default:
       unreachable("Unsupported alu op.");
