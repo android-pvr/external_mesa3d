@@ -595,13 +595,27 @@ static void validate_block(rogue_validation_state *state,
       }
    }
 
-   if (!block_ends || block_ends > 1)
-      validate_log(state,
-                   "Block must end with a single control flow instruction.");
-   else if (block_end != last)
+   if (!block_ends) {
+      /* Special case: if the following block is the last block and contains a
+       * single instruction (which is implied to be an end instruction,
+       * otherwise its own validation check will fail).
+       */
+      rogue_block *next_block = list_entry(block->link.next, rogue_block, link);
+      rogue_block *last_block =
+         list_last_entry(&block->shader->blocks, rogue_block, link);
+      bool single_instr = list_is_singular(&next_block->instrs);
+
+      if (next_block != last_block || !single_instr) {
+         validate_log(state,
+                      "Block does not end with a control flow instruction.");
+      }
+   } else if (block_ends > 1) {
+      validate_log(state, "Block contains multiple control flow instruction.");
+   } else if (block_end != last) {
       validate_log(
          state,
          "Control flow instruction is present prior to the end of the block.");
+   }
 
    state->ctx.block = NULL;
 }
