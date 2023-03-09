@@ -963,6 +963,11 @@ void rogue_link_instr_use(rogue_instr *instr)
             rogue_regarray_use *use = &bitwise->src_use[i].regarray;
             rogue_regarray *regarray = bitwise->src[i].ref.regarray;
             rogue_link_instr_use_regarray(instr, use, regarray, i);
+         } else if (rogue_ref_is_imm(&bitwise->src[i].ref)) {
+            rogue_link_imm_use(instr->block->shader,
+                               instr,
+                               i,
+                               rogue_ref_get_imm(&bitwise->src[i].ref));
          } else if (rogue_ref_is_drc(&bitwise->src[i].ref)) {
             rogue_link_drc_trxn(instr->block->shader,
                                 instr,
@@ -1196,6 +1201,9 @@ void rogue_unlink_instr_use(rogue_instr *instr)
          } else if (rogue_ref_is_regarray(&bitwise->src[i].ref)) {
             rogue_regarray_use *use = &bitwise->src_use[i].regarray;
             rogue_unlink_instr_use_regarray(instr, use);
+         } else if (rogue_ref_is_imm(&bitwise->src[i].ref)) {
+            rogue_unlink_imm_use(instr,
+                                 &rogue_ref_get_imm(&bitwise->src[i].ref)->use);
          } else if (rogue_ref_is_drc(&bitwise->src[i].ref)) {
             rogue_unlink_drc_trxn(instr->block->shader,
                                   instr,

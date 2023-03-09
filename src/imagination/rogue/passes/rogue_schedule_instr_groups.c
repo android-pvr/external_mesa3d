@@ -43,6 +43,10 @@ static inline void rogue_set_io_sel(rogue_instr_group_io_sel *map,
    if (rogue_ref_is_io_none(ref))
       return;
 
+   /* Skip replacing values with I/O. */
+   if (rogue_ref_is_val(ref))
+      return;
+
    /* Early skip I/Os that have already been assigned (e.g. for grouping). */
    if (rogue_ref_is_io(ref) && rogue_ref_get_io(ref) == io)
       return;
