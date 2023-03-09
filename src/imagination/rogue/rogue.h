@@ -85,6 +85,9 @@ enum rogue_reg_class {
    ROGUE_REG_CLASS_VTXIN, /** Vertex input register. */
    ROGUE_REG_CLASS_VTXOUT, /** Vertex output register. */
 
+   ROGUE_REG_CLASS_IDX0, /** Index register 0. */
+   ROGUE_REG_CLASS_IDX1, /** Index register 1. */
+
    ROGUE_REG_CLASS_COUNT,
 } PACKED;
 
@@ -96,25 +99,6 @@ typedef struct rogue_reg_info {
 } rogue_reg_info;
 
 extern const rogue_reg_info rogue_reg_infos[ROGUE_REG_CLASS_COUNT];
-
-static inline enum reg_bank rogue_reg_bank_encoding(enum rogue_reg_class class)
-{
-   switch (class) {
-   case ROGUE_REG_CLASS_TEMP:
-      return BANK_TEMP;
-   case ROGUE_REG_CLASS_COEFF:
-      return BANK_COEFF;
-   case ROGUE_REG_CLASS_SHARED:
-      return BANK_SHARED;
-   case ROGUE_REG_CLASS_SPECIAL:
-      return BANK_SPECIAL;
-   case ROGUE_REG_CLASS_VTXIN:
-      return BANK_VTXIN;
-
-   default:
-      unreachable("Unsupported register class.");
-   }
-}
 
 /* TODO: Do this dynamically by iterating
  * through regarrays and matching sizes.
@@ -697,6 +681,12 @@ typedef struct rogue_imm {
    rogue_imm_use use;
 } rogue_imm;
 
+enum rogue_idx {
+   ROGUE_IDX_NONE,
+   ROGUE_IDX_0,
+   ROGUE_IDX_1,
+};
+
 typedef struct rogue_ref {
    enum rogue_ref_type type;
 
@@ -708,6 +698,8 @@ typedef struct rogue_ref {
       enum rogue_io io;
       rogue_drc drc;
    };
+
+   enum rogue_idx idx;
 } rogue_ref;
 
 static inline bool rogue_ref_type_supported(enum rogue_ref_type type,
@@ -741,6 +733,22 @@ static inline rogue_ref rogue_ref_reg(rogue_reg *reg)
    return (rogue_ref){
       .type = ROGUE_REF_TYPE_REG,
       .reg = reg,
+   };
+}
+
+/**
+ * \brief Returns a reference to an indexed register.
+ *
+ * \param[in] reg The register.
+ * \param[in] idx The index register.
+ * \return The reference.
+ */
+static inline rogue_ref rogue_ref_reg_indexed(rogue_reg *reg, unsigned idx)
+{
+   return (rogue_ref){
+      .type = ROGUE_REF_TYPE_REG,
+      .reg = reg,
+      .idx = ROGUE_IDX_0 + !!idx,
    };
 }
 
@@ -817,7 +825,19 @@ static inline bool rogue_ref_is_val(const rogue_ref *ref)
 
 static inline bool rogue_ref_is_reg(const rogue_ref *ref)
 {
-   return ref->type == ROGUE_REF_TYPE_REG;
+   return ref->type == ROGUE_REF_TYPE_REG && ref->idx == ROGUE_IDX_NONE;
+}
+
+static inline bool rogue_ref_is_reg_indexed(const rogue_ref *ref)
+{
+   return ref->type == ROGUE_REF_TYPE_REG && ref->idx != ROGUE_IDX_NONE;
+}
+
+static inline bool rogue_ref_is_idx_reg(const rogue_ref *ref)
+{
+   return ref->type == ROGUE_REF_TYPE_REG &&
+          (ref->reg->class == ROGUE_REG_CLASS_IDX0 ||
+           ref->reg->class == ROGUE_REG_CLASS_IDX0);
 }
 
 static inline bool rogue_ref_is_special_reg(const rogue_ref *ref)
@@ -850,24 +870,6 @@ static inline bool rogue_ref_is_null(const rogue_ref *ref)
    return ref->type == ROGUE_REF_TYPE_INVALID;
 }
 
-static inline enum rogue_reg_class rogue_ref_get_reg_class(const rogue_ref *ref)
-{
-   if (rogue_ref_is_regarray(ref))
-      return ref->regarray->regs[0]->class;
-   else if (rogue_ref_is_reg(ref))
-      return ref->reg->class;
-   unreachable("Ref is not a reg/regarray.");
-}
-
-static inline unsigned rogue_ref_get_reg_index(const rogue_ref *ref)
-{
-   if (rogue_ref_is_regarray(ref))
-      return ref->regarray->regs[0]->index;
-   else if (rogue_ref_is_reg(ref))
-      return ref->reg->index;
-   unreachable("Ref is not a reg/regarray.");
-}
-
 static inline unsigned rogue_ref_get_regarray_size(const rogue_ref *ref)
 {
    if (rogue_ref_is_regarray(ref))
@@ -887,22 +889,25 @@ static inline bool rogue_ref_is_pixout(rogue_ref *ref)
    enum rogue_reg_class class;
    unsigned index;
 
-   if (!rogue_ref_is_reg(ref) && !rogue_ref_is_regarray(ref))
+   if (rogue_ref_is_regarray(ref)) {
+      class = ref->regarray->regs[0]->class;
+      index = ref->regarray->regs[0]->index;
+   } else if (rogue_ref_is_reg(ref)) {
+      class = ref->reg->class;
+      index = ref->reg->index;
+   } else {
       return false;
-
-   class = rogue_ref_get_reg_class(ref);
+   }
 
    if (class == ROGUE_REG_CLASS_PIXOUT)
       return true;
-   else if (class != ROGUE_REG_CLASS_SPECIAL)
-      return false;
+   else if (class == ROGUE_REG_CLASS_SPECIAL)
+      return (index >= ROGUE_PIXOUT0_OFFSET &&
+              index < (ROGUE_PIXOUT0_OFFSET + ROGUE_PIXOUT_GROUP)) ||
+             (index >= ROGUE_PIXOUT4_OFFSET &&
+              index < (ROGUE_PIXOUT4_OFFSET + ROGUE_PIXOUT_GROUP));
 
-   index = rogue_ref_get_reg_index(ref);
-
-   return (index >= ROGUE_PIXOUT0_OFFSET &&
-           index < (ROGUE_PIXOUT0_OFFSET + ROGUE_PIXOUT_GROUP)) ||
-          (index >= ROGUE_PIXOUT4_OFFSET &&
-           index < (ROGUE_PIXOUT4_OFFSET + ROGUE_PIXOUT_GROUP));
+   return false;
 }
 
 static inline enum rogue_io rogue_ref_get_io(const rogue_ref *ref)
@@ -969,7 +974,7 @@ static inline bool rogue_refs_equal(rogue_ref *a, rogue_ref *b)
       return a->val == b->val;
 
    case ROGUE_REF_TYPE_REG:
-      return a->reg == b->reg;
+      return a->reg == b->reg && a->idx == b->idx;
 
    case ROGUE_REF_TYPE_REGARRAY:
       return a->regarray == b->regarray;
@@ -988,6 +993,97 @@ static inline bool rogue_refs_equal(rogue_ref *a, rogue_ref *b)
    }
 
    return false;
+}
+
+static inline enum reg_bank rogue_reg_bank_encoding(const rogue_ref *ref)
+{
+   enum rogue_reg_class class;
+
+   if (rogue_ref_is_regarray(ref)) {
+      class = ref->regarray->regs[0]->class;
+   } else if (rogue_ref_is_reg(ref)) {
+      class = ref->reg->class;
+   } else if (rogue_ref_is_reg_indexed(ref)) {
+      class = ref->idx == ROGUE_IDX_0 ? ROGUE_REG_CLASS_IDX0
+                                      : ROGUE_REG_CLASS_IDX1;
+   } else {
+      unreachable("Ref is not a reg/regarray.");
+   }
+
+   switch (class) {
+   case ROGUE_REG_CLASS_TEMP:
+      return BANK_TEMP;
+   case ROGUE_REG_CLASS_COEFF:
+      return BANK_COEFF;
+   case ROGUE_REG_CLASS_SHARED:
+      return BANK_SHARED;
+   case ROGUE_REG_CLASS_SPECIAL:
+      return BANK_SPECIAL;
+   case ROGUE_REG_CLASS_VTXIN:
+      return BANK_VTXIN;
+   case ROGUE_REG_CLASS_IDX0:
+      return BANK_IDX0;
+   case ROGUE_REG_CLASS_IDX1:
+      return BANK_IDX1;
+
+   default:
+      break;
+   }
+
+   unreachable("Unsupported register class.");
+}
+
+static inline enum idx_bank rogue_idx_bank_encoding(const rogue_ref *ref)
+{
+   enum rogue_reg_class class;
+
+   if (rogue_ref_is_idx_reg(ref) || rogue_ref_is_reg_indexed(ref))
+      class = ref->reg->class;
+   else
+      unreachable("Ref is not an index(ed) register.");
+
+   switch (class) {
+   case ROGUE_REG_CLASS_TEMP:
+      return IDX_BANK_TEMP;
+
+   case ROGUE_REG_CLASS_COEFF:
+      return IDX_BANK_COEFF;
+
+   case ROGUE_REG_CLASS_SHARED:
+      return IDX_BANK_SHARED;
+
+   case ROGUE_REG_CLASS_VTXIN:
+      return IDX_BANK_VTXIN;
+
+   case ROGUE_REG_CLASS_PIXOUT:
+      return IDX_BANK_PIXOUT;
+
+   case ROGUE_REG_CLASS_IDX0:
+   case ROGUE_REG_CLASS_IDX1:
+      return IDX_BANK_IDX;
+
+   default:
+      break;
+   }
+
+   unreachable("Unsupported register class.");
+}
+
+static inline unsigned rogue_reg_index_encoding(const rogue_ref *ref)
+{
+   if (rogue_ref_is_reg_indexed(ref) || rogue_ref_is_idx_reg(ref)) {
+      return (rogue_idx_offset){
+         .bank = rogue_idx_bank_encoding(ref),
+         .offset = ref->reg->index,
+      }
+         ._;
+   } else if (rogue_ref_is_reg(ref)) {
+      return ref->reg->index;
+   } else if (rogue_ref_is_regarray(ref)) {
+      return ref->regarray->regs[0]->index;
+   }
+
+   unreachable("Ref is not a reg/regarray.");
 }
 
 typedef struct rogue_instr_dst {
@@ -1926,6 +2022,8 @@ rogue_reg *rogue_special_reg(rogue_shader *shader, unsigned index);
 rogue_reg *rogue_vtxin_reg(rogue_shader *shader, unsigned index);
 
 rogue_reg *rogue_vtxout_reg(rogue_shader *shader, unsigned index);
+
+rogue_reg *rogue_index_reg(rogue_shader *shader, unsigned index);
 
 rogue_reg *
 rogue_ssa_vec_reg(rogue_shader *shader, unsigned index, unsigned component);

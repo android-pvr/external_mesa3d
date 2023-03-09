@@ -513,6 +513,16 @@ rogue_backend_get_slccachemode(const rogue_backend_instr *backend)
    return SLCCACHEMODE_BYPASS;
 }
 
+static inline unsigned rogue_ref_get_vtxout_index(const rogue_ref *ref)
+{
+   assert(rogue_ref_is_reg(ref));
+
+   rogue_reg *reg = ref->reg;
+   assert(reg->class == ROGUE_REG_CLASS_VTXOUT);
+
+   return reg->index;
+}
+
 static void rogue_encode_backend_instr(const rogue_backend_instr *backend,
                                        unsigned instr_size,
                                        rogue_instr_encoding *instr_encoding)
@@ -547,7 +557,7 @@ static void rogue_encode_backend_instr(const rogue_backend_instr *backend,
       instr_encoding->backend.uvsw.writeop = UVSW_WRITEOP_WRITE;
       instr_encoding->backend.uvsw.imm = 1;
       instr_encoding->backend.uvsw.imm_src.imm_addr =
-         rogue_ref_get_reg_index(&backend->dst[0].ref);
+         rogue_ref_get_vtxout_index(&backend->dst[0].ref);
       break;
 
    case ROGUE_BACKEND_OP_UVSW_EMIT:
@@ -570,7 +580,7 @@ static void rogue_encode_backend_instr(const rogue_backend_instr *backend,
       instr_encoding->backend.uvsw.writeop = UVSW_WRITEOP_WRITE_EMIT_END;
       instr_encoding->backend.uvsw.imm = 1;
       instr_encoding->backend.uvsw.imm_src.imm_addr =
-         rogue_ref_get_reg_index(&backend->dst[0].ref);
+         rogue_ref_get_vtxout_index(&backend->dst[0].ref);
       break;
 
    case ROGUE_BACKEND_OP_LD: {
@@ -958,27 +968,24 @@ static void rogue_encode_source_map(const rogue_instr_group *group,
    rogue_sA sA = { 0 };
 
    if (!rogue_ref_is_null(&io_sel->srcs[base + 0])) {
-      sbA._ = rogue_reg_bank_encoding(
-         rogue_ref_get_reg_class(&io_sel->srcs[base + 0]));
-      sA._ = rogue_ref_get_reg_index(&io_sel->srcs[base + 0]);
+      sbA._ = rogue_reg_bank_encoding(&io_sel->srcs[base + 0]);
+      sA._ = rogue_reg_index_encoding(&io_sel->srcs[base + 0]);
    }
 
    rogue_sbB sbB = { 0 };
    rogue_sB sB = { 0 };
 
    if (!rogue_ref_is_null(&io_sel->srcs[base + 1])) {
-      sbB._ = rogue_reg_bank_encoding(
-         rogue_ref_get_reg_class(&io_sel->srcs[base + 1]));
-      sB._ = rogue_ref_get_reg_index(&io_sel->srcs[base + 1]);
+      sbB._ = rogue_reg_bank_encoding(&io_sel->srcs[base + 1]);
+      sB._ = rogue_reg_index_encoding(&io_sel->srcs[base + 1]);
    }
 
    rogue_sbC sbC = { 0 };
    rogue_sC sC = { 0 };
 
    if (!rogue_ref_is_null(&io_sel->srcs[base + 2])) {
-      sbC._ = rogue_reg_bank_encoding(
-         rogue_ref_get_reg_class(&io_sel->srcs[base + 2]));
-      sC._ = rogue_ref_get_reg_index(&io_sel->srcs[base + 2]);
+      sbC._ = rogue_reg_bank_encoding(&io_sel->srcs[base + 2]);
+      sC._ = rogue_reg_index_encoding(&io_sel->srcs[base + 2]);
    }
 
    /* Byte 0 is common for all encodings. */
@@ -1125,9 +1132,8 @@ static void rogue_encode_dest_map(const rogue_instr_group *group,
                                     ? &io_sel->dsts[0]
                                     : &io_sel->dsts[1];
 
-      rogue_dbN dbN = { ._ = rogue_reg_bank_encoding(
-                           rogue_ref_get_reg_class(dst_ref)) };
-      rogue_dN dN = { ._ = rogue_ref_get_reg_index(dst_ref) };
+      rogue_dbN dbN = { ._ = rogue_reg_bank_encoding(dst_ref) };
+      rogue_dN dN = { ._ = rogue_reg_index_encoding(dst_ref) };
 
       switch (info->bytes) {
       case 2:
@@ -1149,12 +1155,10 @@ static void rogue_encode_dest_map(const rogue_instr_group *group,
       break;
    }
    case 2: {
-      rogue_db0 db0 = { ._ = rogue_reg_bank_encoding(
-                           rogue_ref_get_reg_class(&io_sel->dsts[0])) };
-      rogue_d0 d0 = { ._ = rogue_ref_get_reg_index(&io_sel->dsts[0]) };
-      rogue_db1 db1 = { ._ = rogue_reg_bank_encoding(
-                           rogue_ref_get_reg_class(&io_sel->dsts[1])) };
-      rogue_d1 d1 = { ._ = rogue_ref_get_reg_index(&io_sel->dsts[1]) };
+      rogue_db0 db0 = { ._ = rogue_reg_bank_encoding(&io_sel->dsts[0]) };
+      rogue_d0 d0 = { ._ = rogue_reg_index_encoding(&io_sel->dsts[0]) };
+      rogue_db1 db1 = { ._ = rogue_reg_bank_encoding(&io_sel->dsts[1]) };
+      rogue_d1 d1 = { ._ = rogue_reg_index_encoding(&io_sel->dsts[1]) };
 
       switch (info->bytes) {
       case 4:

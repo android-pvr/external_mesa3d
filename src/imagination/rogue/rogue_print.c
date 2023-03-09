@@ -131,12 +131,28 @@ static inline void rogue_print_val(FILE *fp, unsigned val)
    RESET(fp);
 }
 
-static inline void rogue_print_reg(FILE *fp, const rogue_reg *reg)
+static inline void
+rogue_print_reg(FILE *fp, const rogue_reg *reg, enum rogue_idx idx)
 {
    const rogue_reg_info *info = &rogue_reg_infos[reg->class];
    YELLOW(fp);
-   fprintf(fp, "%s%" PRIu32, info->str, reg->index);
+   fputs(info->str, fp);
+   if (info->num != 1)
+      fprintf(fp, "%" PRIu32, reg->index);
    RESET(fp);
+
+   switch (idx) {
+   case ROGUE_IDX_NONE:
+      break;
+
+   case ROGUE_IDX_0:
+      fputs("[idx0]", fp);
+      break;
+
+   case ROGUE_IDX_1:
+      fputs("[idx1]", fp);
+      break;
+   }
 }
 
 static inline void rogue_print_regarray(FILE *fp,
@@ -186,7 +202,7 @@ static inline void rogue_print_ref(FILE *fp, const rogue_ref *ref)
       break;
 
    case ROGUE_REF_TYPE_REG:
-      rogue_print_reg(fp, ref->reg);
+      rogue_print_reg(fp, ref->reg, ref->idx);
       break;
 
    case ROGUE_REF_TYPE_REGARRAY:
@@ -480,14 +496,16 @@ rogue_print_instr_group_io_sel(FILE *fp, const rogue_instr_group_io_sel *io_sel)
       rogue_print_io(fp, ROGUE_IO_S0 + i);
       fputs("=", fp);
 
-      if (rogue_ref_is_reg(&io_sel->srcs[i]))
-         rogue_print_reg(fp, io_sel->srcs[i].reg);
-      else if (rogue_ref_is_regarray(&io_sel->srcs[i]))
+      if (rogue_ref_is_reg(&io_sel->srcs[i]) ||
+          rogue_ref_is_reg_indexed(&io_sel->srcs[i])) {
+         rogue_print_reg(fp, io_sel->srcs[i].reg, io_sel->srcs[i].idx);
+      } else if (rogue_ref_is_regarray(&io_sel->srcs[i])) {
          rogue_print_regarray(fp, io_sel->srcs[i].regarray);
-      else if (rogue_ref_is_io(&io_sel->srcs[i]))
+      } else if (rogue_ref_is_io(&io_sel->srcs[i])) {
          rogue_print_io(fp, io_sel->srcs[i].io);
-      else
+      } else {
          unreachable("Unsupported src map.");
+      }
    }
    if (present)
       fputs(" ", fp);
@@ -506,14 +524,16 @@ rogue_print_instr_group_io_sel(FILE *fp, const rogue_instr_group_io_sel *io_sel)
       rogue_print_io(fp, ROGUE_IO_IS0 + i);
       fputs("=", fp);
 
-      if (rogue_ref_is_reg(&io_sel->iss[i]))
-         rogue_print_reg(fp, io_sel->iss[i].reg);
-      else if (rogue_ref_is_regarray(&io_sel->iss[i]))
+      if (rogue_ref_is_reg(&io_sel->iss[i]) ||
+          rogue_ref_is_reg_indexed(&io_sel->iss[i])) {
+         rogue_print_reg(fp, io_sel->iss[i].reg, io_sel->iss[i].idx);
+      } else if (rogue_ref_is_regarray(&io_sel->iss[i])) {
          rogue_print_regarray(fp, io_sel->iss[i].regarray);
-      else if (rogue_ref_is_io(&io_sel->iss[i]))
+      } else if (rogue_ref_is_io(&io_sel->iss[i])) {
          rogue_print_io(fp, io_sel->iss[i].io);
-      else
+      } else {
          unreachable("Unsupported iss map.");
+      }
    }
    if (present)
       fputs(" ", fp);
@@ -532,14 +552,16 @@ rogue_print_instr_group_io_sel(FILE *fp, const rogue_instr_group_io_sel *io_sel)
       rogue_print_io(fp, ROGUE_IO_W0 + i);
       fputs("=", fp);
 
-      if (rogue_ref_is_reg(&io_sel->dsts[i]))
-         rogue_print_reg(fp, io_sel->dsts[i].reg);
-      else if (rogue_ref_is_regarray(&io_sel->dsts[i]))
+      if (rogue_ref_is_reg(&io_sel->dsts[i]) ||
+          rogue_ref_is_reg_indexed(&io_sel->dsts[i])) {
+         rogue_print_reg(fp, io_sel->dsts[i].reg, io_sel->dsts[i].idx);
+      } else if (rogue_ref_is_regarray(&io_sel->dsts[i])) {
          rogue_print_regarray(fp, io_sel->dsts[i].regarray);
-      else if (rogue_ref_is_io(&io_sel->dsts[i]))
+      } else if (rogue_ref_is_io(&io_sel->dsts[i])) {
          rogue_print_io(fp, io_sel->dsts[i].io);
-      else
+      } else {
          unreachable("Unsupported dst map.");
+      }
    }
    if (present)
       fputs(" ", fp);
@@ -692,7 +714,7 @@ void rogue_print_reg_writes(FILE *fp, const rogue_shader *shader)
       rogue_foreach_reg (reg, shader, class) {
          bool unused = true;
 
-         rogue_print_reg(fp, reg);
+         rogue_print_reg(fp, reg, ROGUE_IDX_NONE);
          fputs(":", fp);
 
          rogue_foreach_reg_write (write, reg) {
@@ -759,7 +781,7 @@ void rogue_print_reg_uses(FILE *fp, const rogue_shader *shader)
       rogue_foreach_reg (reg, shader, class) {
          bool unused = true;
 
-         rogue_print_reg(fp, reg);
+         rogue_print_reg(fp, reg, ROGUE_IDX_NONE);
          fputs(":", fp);
 
          rogue_foreach_reg_use (use, reg) {

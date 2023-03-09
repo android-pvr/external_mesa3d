@@ -389,6 +389,14 @@ rogue_reg *rogue_vtxout_reg(rogue_shader *shader, unsigned index)
 }
 
 PUBLIC
+rogue_reg *rogue_index_reg(rogue_shader *shader, unsigned index)
+{
+   return rogue_reg_cached(shader,
+                           !index ? ROGUE_REG_CLASS_IDX0 : ROGUE_REG_CLASS_IDX1,
+                           0);
+}
+
+PUBLIC
 rogue_reg *
 rogue_ssa_vec_reg(rogue_shader *shader, unsigned index, unsigned component)
 {
@@ -851,6 +859,7 @@ void rogue_link_instr_use(rogue_instr *instr)
             rogue_reg_use *use = &alu->src_use[i].reg;
             rogue_reg *reg = alu->src[i].ref.reg;
             rogue_link_instr_use_reg(instr, use, reg, i);
+         } else if (rogue_ref_is_reg_indexed(&alu->src[i].ref)) {
          } else if (rogue_ref_is_regarray(&alu->src[i].ref)) {
             rogue_regarray_use *use = &alu->src_use[i].regarray;
             rogue_regarray *regarray = alu->src[i].ref.regarray;
@@ -880,6 +889,7 @@ void rogue_link_instr_use(rogue_instr *instr)
             rogue_reg_use *use = &backend->src_use[i].reg;
             rogue_reg *reg = backend->src[i].ref.reg;
             rogue_link_instr_use_reg(instr, use, reg, i);
+         } else if (rogue_ref_is_reg_indexed(&backend->src[i].ref)) {
          } else if (rogue_ref_is_regarray(&backend->src[i].ref)) {
             rogue_regarray_use *use = &backend->src_use[i].regarray;
             rogue_regarray *regarray = backend->src[i].ref.regarray;
@@ -917,6 +927,7 @@ void rogue_link_instr_use(rogue_instr *instr)
             rogue_reg_use *use = &ctrl->src_use[i].reg;
             rogue_reg *reg = ctrl->src[i].ref.reg;
             rogue_link_instr_use_reg(instr, use, reg, i);
+         } else if (rogue_ref_is_reg_indexed(&ctrl->src[i].ref)) {
          } else if (rogue_ref_is_regarray(&ctrl->src[i].ref)) {
             rogue_regarray_use *use = &ctrl->src_use[i].regarray;
             rogue_regarray *regarray = ctrl->src[i].ref.regarray;
@@ -947,6 +958,7 @@ void rogue_link_instr_use(rogue_instr *instr)
             rogue_reg_use *use = &bitwise->src_use[i].reg;
             rogue_reg *reg = bitwise->src[i].ref.reg;
             rogue_link_instr_use_reg(instr, use, reg, i);
+         } else if (rogue_ref_is_reg_indexed(&bitwise->src[i].ref)) {
          } else if (rogue_ref_is_regarray(&bitwise->src[i].ref)) {
             rogue_regarray_use *use = &bitwise->src_use[i].regarray;
             rogue_regarray *regarray = bitwise->src[i].ref.regarray;
@@ -990,6 +1002,7 @@ void rogue_unlink_instr_write(rogue_instr *instr)
          if (rogue_ref_is_reg(&alu->dst[i].ref)) {
             rogue_reg_write *write = &alu->dst_write[i].reg;
             rogue_unlink_instr_write_reg(instr, write);
+         } else if (rogue_ref_is_reg_indexed(&alu->dst[i].ref)) {
          } else if (rogue_ref_is_regarray(&alu->dst[i].ref)) {
             rogue_regarray_write *write = &alu->dst_write[i].regarray;
             rogue_unlink_instr_write_regarray(instr, write);
@@ -1011,6 +1024,7 @@ void rogue_unlink_instr_write(rogue_instr *instr)
          if (rogue_ref_is_reg(&backend->dst[i].ref)) {
             rogue_reg_write *write = &backend->dst_write[i].reg;
             rogue_unlink_instr_write_reg(instr, write);
+         } else if (rogue_ref_is_reg_indexed(&backend->dst[i].ref)) {
          } else if (rogue_ref_is_regarray(&backend->dst[i].ref)) {
             rogue_regarray_write *write = &backend->dst_write[i].regarray;
             rogue_unlink_instr_write_regarray(instr, write);
@@ -1033,6 +1047,7 @@ void rogue_unlink_instr_write(rogue_instr *instr)
          if (rogue_ref_is_reg(&ctrl->dst[i].ref)) {
             rogue_reg_write *write = &ctrl->dst_write[i].reg;
             rogue_unlink_instr_write_reg(instr, write);
+         } else if (rogue_ref_is_reg_indexed(&ctrl->dst[i].ref)) {
          } else if (rogue_ref_is_regarray(&ctrl->dst[i].ref)) {
             rogue_regarray_write *write = &ctrl->dst_write[i].regarray;
             rogue_unlink_instr_write_regarray(instr, write);
@@ -1054,6 +1069,7 @@ void rogue_unlink_instr_write(rogue_instr *instr)
          if (rogue_ref_is_reg(&bitwise->dst[i].ref)) {
             rogue_reg_write *write = &bitwise->dst_write[i].reg;
             rogue_unlink_instr_write_reg(instr, write);
+         } else if (rogue_ref_is_reg_indexed(&bitwise->dst[i].ref)) {
          } else if (rogue_ref_is_regarray(&bitwise->dst[i].ref)) {
             rogue_regarray_write *write = &bitwise->dst_write[i].regarray;
             rogue_unlink_instr_write_regarray(instr, write);
@@ -1087,6 +1103,7 @@ void rogue_unlink_instr_use(rogue_instr *instr)
          if (rogue_ref_is_reg(&alu->src[i].ref)) {
             rogue_reg_use *use = &alu->src_use[i].reg;
             rogue_unlink_instr_use_reg(instr, use);
+         } else if (rogue_ref_is_reg_indexed(&alu->src[i].ref)) {
          } else if (rogue_ref_is_regarray(&alu->src[i].ref)) {
             rogue_regarray_use *use = &alu->src_use[i].regarray;
             rogue_unlink_instr_use_regarray(instr, use);
@@ -1112,6 +1129,7 @@ void rogue_unlink_instr_use(rogue_instr *instr)
          if (rogue_ref_is_reg(&backend->src[i].ref)) {
             rogue_reg_use *use = &backend->src_use[i].reg;
             rogue_unlink_instr_use_reg(instr, use);
+         } else if (rogue_ref_is_reg_indexed(&backend->src[i].ref)) {
          } else if (rogue_ref_is_regarray(&backend->src[i].ref)) {
             rogue_regarray_use *use = &backend->src_use[i].regarray;
             rogue_unlink_instr_use_regarray(instr, use);
@@ -1145,6 +1163,7 @@ void rogue_unlink_instr_use(rogue_instr *instr)
          if (rogue_ref_is_reg(&ctrl->src[i].ref)) {
             rogue_reg_use *use = &ctrl->src_use[i].reg;
             rogue_unlink_instr_use_reg(instr, use);
+         } else if (rogue_ref_is_reg_indexed(&ctrl->src[i].ref)) {
          } else if (rogue_ref_is_regarray(&ctrl->src[i].ref)) {
             rogue_regarray_use *use = &ctrl->src_use[i].regarray;
             rogue_unlink_instr_use_regarray(instr, use);
@@ -1173,6 +1192,7 @@ void rogue_unlink_instr_use(rogue_instr *instr)
          if (rogue_ref_is_reg(&bitwise->src[i].ref)) {
             rogue_reg_use *use = &bitwise->src_use[i].reg;
             rogue_unlink_instr_use_reg(instr, use);
+         } else if (rogue_ref_is_reg_indexed(&bitwise->src[i].ref)) {
          } else if (rogue_ref_is_regarray(&bitwise->src[i].ref)) {
             rogue_regarray_use *use = &bitwise->src_use[i].regarray;
             rogue_unlink_instr_use_regarray(instr, use);

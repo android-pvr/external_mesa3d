@@ -399,6 +399,9 @@ typedef struct rogue_idx_dim_offset {
 static_assert(sizeof(rogue_idx_dim_offset) == 2,
               "sizeof(rogue_idx_dim_offset) != 2");
 
+#define IDX_BANK_BITS 3
+#define IDX_INDEX_BITS 11
+
 enum reg_bank {
    BANK_SPECIAL = 0b000,
    BANK_TEMP = 0b001,

@@ -344,31 +344,19 @@ static void rogue_lower_regs(rogue_shader *shader)
 
 static unsigned rogue_reg_bank_bits(const rogue_ref *ref)
 {
-   const rogue_reg *reg;
+   if (rogue_ref_is_reg_indexed(ref))
+      return IDX_BANK_BITS;
 
-   if (rogue_ref_is_reg(ref))
-      reg = ref->reg;
-   else if (rogue_ref_is_regarray(ref))
-      reg = ref->regarray->regs[0];
-   else
-      unreachable("Non-register reference.");
-
-   unsigned bits = util_last_bit(rogue_reg_bank_encoding(reg->class));
+   unsigned bits = util_last_bit(rogue_reg_bank_encoding(ref));
    return !bits ? 1 : bits;
 }
 
 static unsigned rogue_reg_index_bits(const rogue_ref *ref)
 {
-   const rogue_reg *reg;
+   if (rogue_ref_is_reg_indexed(ref))
+      return IDX_INDEX_BITS;
 
-   if (rogue_ref_is_reg(ref))
-      reg = ref->reg;
-   else if (rogue_ref_is_regarray(ref))
-      reg = ref->regarray->regs[0];
-   else
-      unreachable("Non-register reference.");
-
-   unsigned bits = util_last_bit(reg->index);
+   unsigned bits = util_last_bit(rogue_reg_index_encoding(ref));
    return !bits ? 1 : bits;
 }
 

@@ -45,6 +45,8 @@ const rogue_reg_info rogue_reg_infos[ROGUE_REG_CLASS_COUNT] = {
    [ROGUE_REG_CLASS_PIXOUT] = { .name = "pixout", .str = "po", .num = 8, .supported_io_srcs = S(0) | S(2) | S(3), },
    [ROGUE_REG_CLASS_VTXIN] = { .name = "vtxin", .str = "vi", .num = 248, },
    [ROGUE_REG_CLASS_VTXOUT] = { .name = "vtxout", .str = "vo", .num = 256, },
+   [ROGUE_REG_CLASS_IDX0] = { .name = "index0", .str = "idx0", .num = 1, },
+   [ROGUE_REG_CLASS_IDX1] = { .name = "index1", .str = "idx1", .num = 1, },
 };
 #undef S
 
