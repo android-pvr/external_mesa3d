@@ -610,6 +610,16 @@ rogue_shared_regarray(rogue_shader *shader, unsigned size, unsigned start_index)
 }
 
 PUBLIC
+rogue_regarray *
+rogue_vtxin_regarray(rogue_shader *shader, unsigned size, unsigned start_index)
+{
+   return rogue_regarray_cached(shader,
+                                size,
+                                ROGUE_REG_CLASS_VTXIN,
+                                start_index);
+}
+
+PUBLIC
 rogue_regarray *rogue_ssa_vec_regarray(rogue_shader *shader,
                                        unsigned size,
                                        unsigned start_index,

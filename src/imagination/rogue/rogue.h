@@ -2043,6 +2043,9 @@ rogue_regarray *rogue_shared_regarray(rogue_shader *shader,
                                       unsigned size,
                                       unsigned start_index);
 
+rogue_regarray *
+rogue_vtxin_regarray(rogue_shader *shader, unsigned size, unsigned start_index);
+
 rogue_regarray *rogue_ssa_vec_regarray(rogue_shader *shader,
                                        unsigned size,
                                        unsigned start_index,
