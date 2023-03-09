@@ -124,6 +124,25 @@ static inline rogue_block *rogue_push_block(rogue_builder *b)
                                rogue_ref src1,   \
                                rogue_ref src2);
 
+#define ROGUE_BUILDER_DEFINE_ALU24(op)           \
+   rogue_alu_instr *rogue_##op(rogue_builder *b, \
+                               rogue_ref dst0,   \
+                               rogue_ref dst1,   \
+                               rogue_ref src0,   \
+                               rogue_ref src1,   \
+                               rogue_ref src2,   \
+                               rogue_ref src3);
+
+#define ROGUE_BUILDER_DEFINE_ALU25(op)           \
+   rogue_alu_instr *rogue_##op(rogue_builder *b, \
+                               rogue_ref dst0,   \
+                               rogue_ref dst1,   \
+                               rogue_ref src0,   \
+                               rogue_ref src1,   \
+                               rogue_ref src2,   \
+                               rogue_ref src3,   \
+                               rogue_ref src4);
+
 #define ROGUE_BUILDER_DEFINE_ALU35(op)           \
    rogue_alu_instr *rogue_##op(rogue_builder *b, \
                                rogue_ref dst0,   \
