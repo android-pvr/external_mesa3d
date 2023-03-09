@@ -166,7 +166,7 @@ void pvr_uscgen_idfwdf(struct util_dynarray *binary,
    rogue_builder b;
    rogue_backend_instr *be;
    rogue_shader *shader = rogue_shader_create(NULL, MESA_SHADER_NONE);
-   rogue_set_shader_name(shader, "NOP");
+   rogue_set_shader_name(shader, "idfwdf");
    rogue_builder_init(&b, shader);
    rogue_push_block(&b);
 
