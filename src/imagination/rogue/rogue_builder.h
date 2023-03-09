@@ -200,6 +200,25 @@ static inline rogue_block *rogue_push_block(rogue_builder *b)
 #include "rogue_ctrl_instrs.def"
 
 /* Bitwise instructions. */
+#define ROGUE_BUILDER_DEFINE_BITWISE11(op)           \
+   rogue_bitwise_instr *rogue_##op(rogue_builder *b, \
+                                   rogue_ref dst0,   \
+                                   rogue_ref src0);
+
+#define ROGUE_BUILDER_DEFINE_BITWISE12(op)           \
+   rogue_bitwise_instr *rogue_##op(rogue_builder *b, \
+                                   rogue_ref dst0,   \
+                                   rogue_ref src0,   \
+                                   rogue_ref src1);
+
+#define ROGUE_BUILDER_DEFINE_BITWISE14(op)           \
+   rogue_bitwise_instr *rogue_##op(rogue_builder *b, \
+                                   rogue_ref dst0,   \
+                                   rogue_ref src0,   \
+                                   rogue_ref src1,   \
+                                   rogue_ref src2,   \
+                                   rogue_ref src3);
+
 #define ROGUE_BUILDER_DEFINE_BITWISE22(op)           \
    rogue_bitwise_instr *rogue_##op(rogue_builder *b, \
                                    rogue_ref dst0,   \

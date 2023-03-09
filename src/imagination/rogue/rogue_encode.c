@@ -849,10 +849,28 @@ static void rogue_encode_bitwise_instr(const rogue_bitwise_instr *bitwise,
                                        rogue_instr_encoding *instr_encoding)
 {
    switch (bitwise->op) {
+   case ROGUE_BITWISE_OP_LSL:
+      instr_encoding->bitwise.phase0 = 1;
+      instr_encoding->bitwise.ph0.shft = SHFT1_LSL;
+      break;
+
+   case ROGUE_BITWISE_OP_SHR:
+      instr_encoding->bitwise.ph2.shft = SHFT2_SHR;
+      break;
+
+   case ROGUE_BITWISE_OP_AND:
+      instr_encoding->bitwise.phase1 = 1;
+      instr_encoding->bitwise.ph1.op = PH1OP_AND;
+      instr_encoding->bitwise.ph1.mska =
+         !rogue_ref_is_io_none(&bitwise->src[0].ref);
+      instr_encoding->bitwise.ph1.mskb =
+         !rogue_ref_is_io_none(&bitwise->src[2].ref);
+      break;
+
    case ROGUE_BITWISE_OP_BYP0: {
       instr_encoding->bitwise.phase0 = 1;
-      instr_encoding->bitwise.ph0.shft = SHFT1_BYP;
       instr_encoding->bitwise.ph0.cnt_byp = 1;
+      instr_encoding->bitwise.ph0.shft = SHFT1_BYP;
 
       rogue_imm32 imm32;
       if (rogue_ref_is_val(&bitwise->src[1].ref))
@@ -872,6 +890,11 @@ static void rogue_encode_bitwise_instr(const rogue_bitwise_instr *bitwise,
 
       break;
    }
+
+   case ROGUE_BITWISE_OP_BYP1:
+      instr_encoding->bitwise.phase0 = 1;
+      instr_encoding->bitwise.ph0.shft = SHFT1_BYP;
+      break;
 
    default:
       unreachable("Invalid bitwise op.");

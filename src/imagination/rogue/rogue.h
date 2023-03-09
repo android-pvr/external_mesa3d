@@ -1672,7 +1672,14 @@ enum rogue_bitwise_op {
    ROGUE_BITWISE_OP_INVALID = 0,
 
    /* Real instructions. */
+   ROGUE_BITWISE_OP_LSL,
+   ROGUE_BITWISE_OP_SHR,
+
+   ROGUE_BITWISE_OP_AND,
+
+   /* TODO: Merge the two, just using different phases. */
    ROGUE_BITWISE_OP_BYP0,
+   ROGUE_BITWISE_OP_BYP1,
 
    /* Pseudo-instructions. */
    ROGUE_BITWISE_OP_PSEUDO,
@@ -2676,6 +2683,11 @@ static inline bool rogue_src_imm_replace(rogue_imm_use *imm_use,
    case ROGUE_INSTR_TYPE_CTRL:
       ref = &rogue_instr_as_ctrl(instr)->src[src_index].ref;
       reg_use = &rogue_instr_as_ctrl(instr)->src_use[src_index].reg;
+      break;
+
+   case ROGUE_INSTR_TYPE_BITWISE:
+      ref = &rogue_instr_as_bitwise(instr)->src[src_index].ref;
+      reg_use = &rogue_instr_as_bitwise(instr)->src_use[src_index].reg;
       break;
 
    default:

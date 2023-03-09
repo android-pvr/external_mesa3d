@@ -521,6 +521,41 @@ const rogue_bitwise_op_mod_info
 #define T(type) BITFIELD64_BIT(ROGUE_REF_TYPE_##type - 1)
 const rogue_bitwise_op_info rogue_bitwise_op_infos[ROGUE_BITWISE_OP_COUNT] = {
    [ROGUE_BITWISE_OP_INVALID] = { .str = "", },
+   [ROGUE_BITWISE_OP_LSL] = { .str = "lsl", .num_dsts = 1, .num_srcs = 2,
+      .supported_phases = P(0_SHIFT1),
+      .phase_io[PH(0_SHIFT1)] = { .dst[0] = IO(FT2), .src[0] = IO(S2), .src[1] = IO(S1), },
+      .supported_dst_types = {
+         [0] = T(REG) | T(REGARRAY) | T(IO),
+      },
+      .supported_src_types = {
+         [0] = T(REG) | T(REGARRAY) | T(IO),
+         [1] = T(REG) | T(REGARRAY) | T(IO) | T(IMM),
+      },
+   },
+   [ROGUE_BITWISE_OP_SHR] = { .str = "shr", .num_dsts = 1, .num_srcs = 2,
+      .supported_phases = P(2_SHIFT2),
+      .phase_io[PH(2_SHIFT2)] = { .dst[0] = IO(FT5), .src[0] = IO(FT4), .src[1] = IO(S4), },
+      .supported_dst_types = {
+         [0] = T(REG) | T(REGARRAY) | T(IO),
+      },
+      .supported_src_types = {
+         [0] = T(REG) | T(REGARRAY) | T(IO),
+         [1] = T(REG) | T(REGARRAY) | T(IO) | T(IMM),
+      },
+   },
+   [ROGUE_BITWISE_OP_AND] = { .str = "and", .num_dsts = 1, .num_srcs = 4,
+      .supported_phases = P(1_LOGICAL),
+      .phase_io[PH(1_LOGICAL)] = { .dst[0] = IO(FT4), .src[1] = IO(FT2), .src[3] = IO(S3), },
+      .supported_dst_types = {
+         [0] = T(REG) | T(REGARRAY) | T(IO),
+      },
+      .supported_src_types = {
+         [0] = T(REG) | T(REGARRAY) | T(IO),
+         [1] = T(REG) | T(REGARRAY) | T(IO),
+         [2] = T(REG) | T(REGARRAY) | T(IO),
+         [3] = T(REG) | T(REGARRAY) | T(IO) | T(IMM),
+      },
+   },
    [ROGUE_BITWISE_OP_BYP0] = { .str = "byp", .num_dsts = 2, .num_srcs = 2,
       .supported_phases = P(0_BITMASK),
       .phase_io[PH(0_BITMASK)] = { .dst[1] = IO(FT1), },
@@ -531,6 +566,16 @@ const rogue_bitwise_op_info rogue_bitwise_op_infos[ROGUE_BITWISE_OP_COUNT] = {
       .supported_src_types = {
          [0] = T(REG) | T(REGARRAY) | T(IO),
          [1] = T(REG) | T(REGARRAY) | T(IO) | T(VAL),
+      },
+   },
+   [ROGUE_BITWISE_OP_BYP1] = { .str = "byp", .num_dsts = 1, .num_srcs = 1,
+      .supported_phases = P(0_SHIFT1),
+      .phase_io[PH(0_SHIFT1)] = { .dst[0] = IO(FT2), .src[0] = IO(S2) },
+      .supported_dst_types = {
+         [0] = T(REG) | T(REGARRAY) | T(IO),
+      },
+      .supported_src_types = {
+         [0] = T(REG) | T(REGARRAY) | T(IO),
       },
    },
 };

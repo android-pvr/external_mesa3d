@@ -570,6 +570,43 @@ static inline rogue_bitwise_instr *rogue_build_bitwise(rogue_builder *b,
 }
 
 static inline rogue_bitwise_instr *
+rogue_build_bitwise11(rogue_builder *b,
+                      enum rogue_bitwise_op op,
+                      rogue_ref dst0,
+                      rogue_ref src0)
+{
+   rogue_ref dsts[] = { dst0 };
+   rogue_ref srcs[] = { src0 };
+   return rogue_build_bitwise(b, op, 1, dsts, 1, srcs);
+}
+
+static inline rogue_bitwise_instr *
+rogue_build_bitwise12(rogue_builder *b,
+                      enum rogue_bitwise_op op,
+                      rogue_ref dst0,
+                      rogue_ref src0,
+                      rogue_ref src1)
+{
+   rogue_ref dsts[] = { dst0 };
+   rogue_ref srcs[] = { src0, src1 };
+   return rogue_build_bitwise(b, op, 1, dsts, 2, srcs);
+}
+
+static inline rogue_bitwise_instr *
+rogue_build_bitwise14(rogue_builder *b,
+                      enum rogue_bitwise_op op,
+                      rogue_ref dst0,
+                      rogue_ref src0,
+                      rogue_ref src1,
+                      rogue_ref src2,
+                      rogue_ref src3)
+{
+   rogue_ref dsts[] = { dst0 };
+   rogue_ref srcs[] = { src0, src1, src2, src3 };
+   return rogue_build_bitwise(b, op, 1, dsts, 4, srcs);
+}
+
+static inline rogue_bitwise_instr *
 rogue_build_bitwise22(rogue_builder *b,
                       enum rogue_bitwise_op op,
                       rogue_ref dst0,
@@ -581,6 +618,49 @@ rogue_build_bitwise22(rogue_builder *b,
    rogue_ref srcs[] = { src0, src1 };
    return rogue_build_bitwise(b, op, 2, dsts, 2, srcs);
 }
+
+#define ROGUE_BUILDER_DEFINE_BITWISE11(op)                                 \
+   PUBLIC                                                                  \
+   rogue_bitwise_instr *rogue_##op(rogue_builder *b,                       \
+                                   rogue_ref dst0,                         \
+                                   rogue_ref src0)                         \
+   {                                                                       \
+      assert(rogue_bitwise_op_infos[ROGUE_BITWISE_OP_##op].num_dsts == 1); \
+      assert(rogue_bitwise_op_infos[ROGUE_BITWISE_OP_##op].num_srcs == 1); \
+      return rogue_build_bitwise11(b, ROGUE_BITWISE_OP_##op, dst0, src0);  \
+   }
+
+#define ROGUE_BUILDER_DEFINE_BITWISE12(op)                                      \
+   PUBLIC                                                                       \
+   rogue_bitwise_instr *rogue_##op(rogue_builder *b,                            \
+                                   rogue_ref dst0,                              \
+                                   rogue_ref src0,                              \
+                                   rogue_ref src1)                              \
+   {                                                                            \
+      assert(rogue_bitwise_op_infos[ROGUE_BITWISE_OP_##op].num_dsts == 1);      \
+      assert(rogue_bitwise_op_infos[ROGUE_BITWISE_OP_##op].num_srcs == 2);      \
+      return rogue_build_bitwise12(b, ROGUE_BITWISE_OP_##op, dst0, src0, src1); \
+   }
+
+#define ROGUE_BUILDER_DEFINE_BITWISE14(op)                                 \
+   PUBLIC                                                                  \
+   rogue_bitwise_instr *rogue_##op(rogue_builder *b,                       \
+                                   rogue_ref dst0,                         \
+                                   rogue_ref src0,                         \
+                                   rogue_ref src1,                         \
+                                   rogue_ref src2,                         \
+                                   rogue_ref src3)                         \
+   {                                                                       \
+      assert(rogue_bitwise_op_infos[ROGUE_BITWISE_OP_##op].num_dsts == 1); \
+      assert(rogue_bitwise_op_infos[ROGUE_BITWISE_OP_##op].num_srcs == 4); \
+      return rogue_build_bitwise14(b,                                      \
+                                   ROGUE_BITWISE_OP_##op,                  \
+                                   dst0,                                   \
+                                   src0,                                   \
+                                   src1,                                   \
+                                   src2,                                   \
+                                   src3);                                  \
+   }
 
 #define ROGUE_BUILDER_DEFINE_BITWISE22(op)                                 \
    PUBLIC                                                                  \
