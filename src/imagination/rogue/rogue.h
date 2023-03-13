@@ -790,6 +790,11 @@ static inline rogue_ref rogue_ref_io(enum rogue_io io)
    };
 }
 
+static inline rogue_ref rogue_none(void)
+{
+   return rogue_ref_io(ROGUE_IO_NONE);
+}
+
 static inline rogue_ref rogue_ref_drc(unsigned index)
 {
    return (rogue_ref){
@@ -2801,6 +2806,40 @@ static inline bool rogue_can_replace_reg_use(rogue_reg_use *use,
    }
 
    return can_replace;
+}
+
+typedef struct rogue_ref64 {
+   rogue_ref ref64;
+   rogue_ref lo32;
+   rogue_ref hi32;
+} rogue_ref64;
+
+static struct rogue_ref64 rogue_ssa_ref64(rogue_shader *shader, unsigned index)
+{
+   return (rogue_ref64){
+      .ref64 = rogue_ref_regarray(rogue_ssa_vec_regarray(shader, 2, index, 0)),
+      .lo32 = rogue_ref_regarray(rogue_ssa_vec_regarray(shader, 1, index, 0)),
+      .hi32 = rogue_ref_regarray(rogue_ssa_vec_regarray(shader, 1, index, 1)),
+   };
+}
+
+static struct rogue_ref64 rogue_temp_ref64(rogue_shader *shader, unsigned index)
+{
+   return (rogue_ref64){
+      .ref64 = rogue_ref_regarray(rogue_temp_regarray(shader, 2, index)),
+      .lo32 = rogue_ref_regarray(rogue_temp_regarray(shader, 1, index)),
+      .hi32 = rogue_ref_regarray(rogue_temp_regarray(shader, 1, index + 1)),
+   };
+}
+
+static struct rogue_ref64 rogue_shared_ref64(rogue_shader *shader,
+                                             unsigned index)
+{
+   return (rogue_ref64){
+      .ref64 = rogue_ref_regarray(rogue_shared_regarray(shader, 2, index)),
+      .lo32 = rogue_ref_regarray(rogue_shared_regarray(shader, 1, index)),
+      .hi32 = rogue_ref_regarray(rogue_shared_regarray(shader, 1, index + 1)),
+   };
 }
 
 #define ROGUE_NO_CONST_REG ~0

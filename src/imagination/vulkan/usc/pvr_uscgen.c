@@ -170,8 +170,7 @@ void pvr_uscgen_idfwdf(struct util_dynarray *binary,
    rogue_builder_init(&b, shader);
    rogue_push_block(&b);
 
-   unsigned coords_lo_idx = 0;
-   unsigned coords_hi_idx = 1;
+   unsigned smp_coords_idx = 0; /* 64-bit, so 0 and 1. */
    unsigned st_src_idx = 2;
    unsigned smp_dst_idx = 3;
 
@@ -186,11 +185,7 @@ void pvr_uscgen_idfwdf(struct util_dynarray *binary,
    rogue_regarray *sampler_state =
       rogue_shared_regarray(shader, 4, layout->smp_state_idx);
 
-   rogue_regarray *coords_64 = rogue_temp_regarray(shader, 2, coords_lo_idx);
-   rogue_regarray *coords_2x32[2] = {
-      rogue_temp_regarray(shader, 1, coords_lo_idx),
-      rogue_temp_regarray(shader, 1, coords_hi_idx),
-   };
+   rogue_ref64 smp_coords = rogue_temp_ref64(shader, smp_coords_idx);
 
    rogue_reg *st_src = rogue_temp_reg(shader, st_src_idx);
    rogue_reg *smp_dst = rogue_temp_reg(shader, smp_dst_idx);
@@ -200,14 +195,10 @@ void pvr_uscgen_idfwdf(struct util_dynarray *binary,
     */
 
    /* r0 = sh1 */
-   rogue_MOV(&b,
-             rogue_ref_regarray(coords_2x32[0]),
-             rogue_ref_regarray(coords_hi));
+   rogue_MOV(&b, smp_coords.lo32, rogue_ref_regarray(coords_hi));
 
    /* r1 = sh0 */
-   rogue_MOV(&b,
-             rogue_ref_regarray(coords_2x32[1]),
-             rogue_ref_regarray(coords_lo));
+   rogue_MOV(&b, smp_coords.hi32, rogue_ref_regarray(coords_lo));
 
    /* r2 = c0 */
    rogue_MOV(&b, rogue_ref_reg(st_src), rogue_ref_imm(0));
@@ -218,27 +209,27 @@ void pvr_uscgen_idfwdf(struct util_dynarray *binary,
                  rogue_ref_val(2),
                  rogue_ref_drc(0),
                  rogue_ref_val(1),
-                 rogue_ref_regarray(coords_64),
-                 rogue_ref_io(ROGUE_IO_NONE));
+                 smp_coords.ref64,
+                 rogue_none());
    rogue_set_backend_op_mod(be, ROGUE_BACKEND_OP_MOD_SLCWRITEBACK);
    rogue_set_backend_op_mod(be, ROGUE_BACKEND_OP_MOD_WRITETHROUGH);
    rogue_set_backend_op_mod(be, ROGUE_BACKEND_OP_MOD_NOWDF);
 
    /* idf drc0, r0 */
    /* wdf drc0 */
-   rogue_IDF(&b, rogue_ref_drc(0), rogue_ref_regarray(coords_64));
+   rogue_IDF(&b, rogue_ref_drc(0), smp_coords.ref64);
 
    /* Fence any texture writes from the preceding kernel, and
     * do a block of reads to flush the MADD cache through. */
    for (unsigned y = 0; y < 2; ++y) {
       for (unsigned x = 0; x < 4; ++x) {
-         rogue_MOV(&b, rogue_ref_regarray(coords_2x32[0]), rogue_ref_imm(x));
-         rogue_MOV(&b, rogue_ref_regarray(coords_2x32[1]), rogue_ref_imm(y));
+         rogue_MOV(&b, smp_coords.lo32, rogue_ref_imm(x));
+         rogue_MOV(&b, smp_coords.hi32, rogue_ref_imm(y));
          be = rogue_SMP2D(&b,
                           rogue_ref_reg(smp_dst),
                           rogue_ref_drc(0),
                           rogue_ref_regarray(image_state),
-                          rogue_ref_regarray(coords_64),
+                          smp_coords.ref64,
                           rogue_ref_regarray(sampler_state),
                           rogue_ref_regarray(shared_lod),
                           rogue_ref_val(1));

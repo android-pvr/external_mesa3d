@@ -39,7 +39,7 @@ void pvr_uscgen_tq_frag(const struct pvr_tq_shader_properties *shader_props,
 
    unsigned smp_coord_size = 2;
    unsigned smp_coord_idx = 0;
-   rogue_regarray *smp_coords;
+   rogue_ref64 smp_coords = rogue_ssa_ref64(shader, smp_coord_idx);
 
    unsigned channels = 0;
    unsigned output_idx = 1;
@@ -56,9 +56,6 @@ void pvr_uscgen_tq_frag(const struct pvr_tq_shader_properties *shader_props,
    rogue_set_shader_name(shader, "TQ (fragment)");
    rogue_builder_init(&b, shader);
    rogue_push_block(&b);
-
-   smp_coords =
-      rogue_ssa_vec_regarray(b.shader, smp_coord_size, smp_coord_idx, 0);
 
    /* TODO: Unrestrict. */
    assert(shader_props->full_rate == false);
@@ -88,7 +85,7 @@ void pvr_uscgen_tq_frag(const struct pvr_tq_shader_properties *shader_props,
             rogue_coeff_regarray(b.shader, smp_coord_size * 4, coeff_index);
 
          rogue_instr *instr = &rogue_FITR_PIXEL(&b,
-                                                rogue_ref_regarray(smp_coords),
+                                                smp_coords.ref64,
                                                 rogue_ref_drc(0),
                                                 rogue_ref_regarray(coeffs),
                                                 rogue_ref_val(smp_coord_size))
@@ -166,9 +163,9 @@ void pvr_uscgen_tq_frag(const struct pvr_tq_shader_properties *shader_props,
                           rogue_ref_regarray(outputs),
                           rogue_ref_drc(0),
                           rogue_ref_regarray(image_state),
-                          rogue_ref_regarray(smp_coords),
+                          smp_coords.ref64,
                           rogue_ref_regarray(smp_state),
-                          rogue_ref_io(ROGUE_IO_NONE),
+                          rogue_none(),
                           rogue_ref_val(channels));
       rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_SLCWRITEBACK);
       rogue_add_instr_comment(&smp2d->instr, "pack/blend");

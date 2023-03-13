@@ -77,10 +77,10 @@ static inline bool rogue_lower_MOV(rogue_builder *b, rogue_alu_instr *mov)
       /* If we're loading a special register, use a movc. */
       rogue_alu_instr *alu = rogue_MOVC(b,
                                         mov->dst[0].ref,
-                                        rogue_ref_io(ROGUE_IO_NONE),
-                                        rogue_ref_io(ROGUE_IO_NONE),
+                                        rogue_none(),
+                                        rogue_none(),
                                         mov->src[0].ref,
-                                        rogue_ref_io(ROGUE_IO_NONE));
+                                        rogue_none());
       rogue_set_alu_dst_mod(alu, 0, ROGUE_ALU_DST_MOD_E0);
       rogue_set_alu_dst_mod(alu, 0, ROGUE_ALU_DST_MOD_E1);
       rogue_set_alu_dst_mod(alu, 0, ROGUE_ALU_DST_MOD_E2);
