@@ -118,6 +118,11 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
    NIR_PASS_V(nir, nir_lower_io_to_scalar, nir_var_mem_ubo);
    NIR_PASS_V(nir, rogue_nir_lower_io);
 
+   /* Lower samplers. */
+   NIR_PASS_V(nir, nir_opt_dce);
+   NIR_PASS_V(nir, nir_opt_deref);
+   NIR_PASS_V(nir, nir_lower_samplers);
+
    /* Algebraic opts. */
    do {
       progress = false;

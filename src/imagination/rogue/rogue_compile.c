@@ -141,6 +141,75 @@ static void trans_nir_jump(rogue_builder *b, nir_jump_instr *jump)
    unreachable("Unimplemented NIR jump instruction type.");
 }
 
+static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
+{
+   unsigned channels = nir_dest_num_components(tex->dest);
+   unsigned coord_components = tex->coord_components;
+   rogue_regarray *dst =
+      rogue_ssa_vec_regarray(b->shader, channels, tex->dest.ssa.index, 0);
+   rogue_regarray *smp_coords = NULL;
+   /* TODO NEXT: get from driver. */
+   rogue_regarray *image_state = rogue_shared_regarray(b->shader, 4, 4);
+   rogue_regarray *smp_state = rogue_shared_regarray(b->shader, 4, 0);
+   assert(false);
+
+   assert(channels == 4);
+   assert(coord_components == 2);
+   assert(tex->sampler_dim == GLSL_SAMPLER_DIM_2D);
+   assert(!tex->is_array);
+   assert(!tex->is_shadow);
+   assert(!tex->is_new_style_shadow);
+   assert(!tex->is_sparse);
+   assert(!tex->texture_non_uniform);
+   assert(!tex->sampler_non_uniform);
+
+   /* TODO NEXT: process tex->texture_index and tex->sampler_index */
+
+   for (unsigned u = 0; u < tex->num_srcs; ++u) {
+      switch (tex->src[u].src_type) {
+      case nir_tex_src_coord:
+         assert(!smp_coords);
+         smp_coords = rogue_ssa_vec_regarray(b->shader,
+                                             coord_components,
+                                             tex->src[u].src.ssa->index,
+                                             0);
+         continue;
+
+      default:
+         break;
+      }
+
+      unreachable("Unimplemented NIR tex instruction op.");
+   }
+
+   assert(smp_coords);
+
+   rogue_backend_instr *smp2d = rogue_SMP2D(b,
+                                            rogue_ref_regarray(dst),
+                                            rogue_ref_drc(0),
+                                            rogue_ref_regarray(image_state),
+                                            rogue_ref_regarray(smp_coords),
+                                            rogue_ref_regarray(smp_state),
+                                            rogue_none(),
+                                            rogue_ref_val(channels));
+
+   rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_SLCWRITEBACK);
+   rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_FCNORM);
+}
+
+static void trans_nir_tex(rogue_builder *b, nir_tex_instr *tex)
+{
+   switch (tex->op) {
+   case nir_texop_tex:
+      return trans_nir_texop_tex(b, tex);
+
+   default:
+      break;
+   }
+
+   unreachable("Unimplemented NIR tex instruction op.");
+}
+
 static void trans_nir_load_const(rogue_builder *b,
                                  nir_load_const_instr *load_const)
 {
@@ -679,6 +748,9 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
    case nir_op_ffma:
       return trans_nir_alu_ffma(b, alu);
 
+   case nir_op_vec2:
+      return trans_nir_alu_vecN(b, alu, 2);
+
    case nir_op_vec4:
       return trans_nir_alu_vecN(b, alu, 4);
 
@@ -803,6 +875,10 @@ rogue_shader *rogue_nir_to_rogue(rogue_build_ctx *ctx, const nir_shader *nir)
 
          case nir_instr_type_jump:
             trans_nir_jump(&b, nir_instr_as_jump(instr));
+            break;
+
+         case nir_instr_type_tex:
+            trans_nir_tex(&b, nir_instr_as_tex(instr));
             break;
 
          default:
