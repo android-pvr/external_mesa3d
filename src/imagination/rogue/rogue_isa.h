@@ -751,8 +751,7 @@ typedef struct rogue_alu_instr_encoding {
 
       /* Bytes 1+ */
       rogue_alu_single_encoding sngl;
-      rogue_alu_fdual_encoding fadd;
-      rogue_alu_fdual_encoding fmul;
+      rogue_alu_fdual_encoding fdual;
       rogue_alu_fmad_encoding fmad;
       rogue_alu_tst_encoding tst;
       rogue_alu_movc_encoding movc;

@@ -266,17 +266,19 @@ static void rogue_encode_alu_instr(const rogue_alu_instr *alu,
       }
       break;
 
+   case ROGUE_ALU_OP_FADD:
    case ROGUE_ALU_OP_FMUL:
-      instr_encoding->alu.op = ALUOP_FMUL;
-      instr_encoding->alu.fmul.lp = rogue_alu_op_mod_is_set(alu, OM(LP));
-      instr_encoding->alu.fmul.sat = rogue_alu_op_mod_is_set(alu, OM(SAT));
-      instr_encoding->alu.fmul.s0neg =
+      instr_encoding->alu.op = alu->op == ROGUE_ALU_OP_FADD ? ALUOP_FADD
+                                                            : ALUOP_FMUL;
+      instr_encoding->alu.fdual.lp = rogue_alu_op_mod_is_set(alu, OM(LP));
+      instr_encoding->alu.fdual.sat = rogue_alu_op_mod_is_set(alu, OM(SAT));
+      instr_encoding->alu.fdual.s0neg =
          rogue_alu_src_mod_is_set(alu, 0, SM(NEG));
-      instr_encoding->alu.fmul.s0abs =
+      instr_encoding->alu.fdual.s0abs =
          rogue_alu_src_mod_is_set(alu, 0, SM(ABS));
-      instr_encoding->alu.fmul.s1abs =
+      instr_encoding->alu.fdual.s1abs =
          rogue_alu_src_mod_is_set(alu, 1, SM(ABS));
-      instr_encoding->alu.fmul.s0flr =
+      instr_encoding->alu.fdual.s0flr =
          rogue_alu_src_mod_is_set(alu, 0, SM(FLR));
       break;
 

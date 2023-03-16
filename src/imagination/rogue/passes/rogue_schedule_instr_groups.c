@@ -525,6 +525,7 @@ static void rogue_calc_alu_instrs_size(rogue_instr_group *group,
       }
       break;
 
+   case ROGUE_ALU_OP_FADD:
    case ROGUE_ALU_OP_FMUL:
       group->size.instrs[phase] = 1;
       break;

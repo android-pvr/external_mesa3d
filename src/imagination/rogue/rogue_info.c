@@ -641,6 +641,11 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
          [0] = SM(FLR) | SM(ABS) | SM(NEG),
          [1] = SM(ABS),
       },
+      .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
+      .supported_src_types = {
+         [0] = T(REG) | T(REGARRAY),
+         [1] = T(REG) | T(REGARRAY),
+      },
    },
    [ROGUE_ALU_OP_FMUL] = { .str = "fmul", .num_dsts = 1, .num_srcs = 2,
       .supported_phases = P(0),
