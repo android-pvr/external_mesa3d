@@ -632,6 +632,82 @@ static void trans_nir_intrinsic_load_global_constant(rogue_builder *b,
    rogue_add_instr_comment(instr, "load_global_constant");
 }
 
+/* TODO: Process this into loads in NIR instead. */
+static void trans_nir_intrinsic_load_push_constant(rogue_builder *b,
+                                                   nir_intrinsic_instr *intr)
+{
+   rogue_instr *instr;
+   unsigned offset = nir_src_as_uint(intr->src[0]);
+   struct pvr_pipeline_layout *pipeline_layout =
+      b->shader->ctx->pipeline_layout;
+
+   unsigned push_consts_sh_reg;
+
+   if (pipeline_layout) {
+      /* Fetch shared registers containing push constants address. */
+      enum pvr_stage_allocation pvr_stage = mesa_stage_to_pvr(b->shader->stage);
+      assert(pipeline_layout->sh_reg_layout_per_stage[pvr_stage]
+                .push_consts.present);
+      push_consts_sh_reg =
+         pipeline_layout->sh_reg_layout_per_stage[pvr_stage].push_consts.offset;
+   } else {
+      /* Dummy defaults for offline compiler. */
+      /* TODO: Load these from an offline pipeline description
+       * if using the offline compiler.
+       */
+      push_consts_sh_reg = 0;
+   }
+
+   rogue_ref64 push_consts_base_sh =
+      rogue_shared_ref64(b->shader, push_consts_sh_reg);
+
+   unsigned push_consts_base_addr_idx = b->shader->ctx->next_ssa_idx++;
+   rogue_ref64 push_consts_base_addr =
+      rogue_ssa_ref64(b->shader, push_consts_base_addr_idx);
+
+   instr =
+      &rogue_MOV(b, push_consts_base_addr.lo32, push_consts_base_sh.lo32)->instr;
+   rogue_add_instr_comment(instr, "push_consts_base_addr.lo32");
+   instr =
+      &rogue_MOV(b, push_consts_base_addr.hi32, push_consts_base_sh.hi32)->instr;
+   rogue_add_instr_comment(instr, "push_consts_base_addr.hi32");
+
+   /* Offset the push constants base address to the desired entry. */
+   unsigned push_consts_addr_offset_idx = b->shader->ctx->next_ssa_idx++;
+   rogue_ref64 push_consts_addr_offset =
+      rogue_ssa_ref64(b->shader, push_consts_addr_offset_idx);
+
+   rogue_MOV(b, push_consts_addr_offset.lo32, rogue_ref_imm(offset));
+   rogue_MOV(b, push_consts_addr_offset.hi32, rogue_ref_imm(0));
+
+   unsigned push_consts_addr_idx = b->shader->ctx->next_ssa_idx++;
+   rogue_ref64 push_const_addr =
+      rogue_ssa_ref64(b->shader, push_consts_addr_idx);
+
+   rogue_ADD64(b,
+               push_const_addr.lo32,
+               push_const_addr.hi32,
+               rogue_none(),
+               push_consts_base_addr.lo32,
+               push_consts_base_addr.hi32,
+               push_consts_addr_offset.lo32,
+               push_consts_addr_offset.hi32,
+               rogue_none());
+
+   /* Load the push constant. */
+   /*** TODO NEXT: this could be either a reg or regarray. ***/
+   rogue_reg *dst = rogue_ssa_reg(b->shader, intr->dest.ssa.index);
+
+   /* TODO NEXT: src[1] should be depending on ssa vec size for burst loads */
+   instr = &rogue_LD(b,
+                     rogue_ref_reg(dst),
+                     rogue_ref_drc(0),
+                     rogue_ref_val(1),
+                     push_const_addr.ref64)
+               ->instr;
+   rogue_add_instr_commentf(instr, "load push_constant (offset 0x%x)", offset);
+}
+
 static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
 {
    switch (intr->intrinsic) {
@@ -646,6 +722,9 @@ static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
 
    case nir_intrinsic_load_global_constant:
       return trans_nir_intrinsic_load_global_constant(b, intr);
+
+   case nir_intrinsic_load_push_constant:
+      return trans_nir_intrinsic_load_push_constant(b, intr);
 
    default:
       break;
@@ -662,6 +741,15 @@ static void trans_nir_alu_pack_unorm_4x8(rogue_builder *b, nir_alu_instr *alu)
    rogue_alu_instr *pck_u8888 = rogue_PCK_U8888(b, dst, src);
    rogue_set_instr_repeat(&pck_u8888->instr, 4);
    rogue_set_alu_op_mod(pck_u8888, ROGUE_ALU_OP_MOD_SCALE);
+}
+
+static void trans_nir_alu_fadd(rogue_builder *b, nir_alu_instr *alu)
+{
+   rogue_ref dst = nir_ssa_reg_alu_dst32(b->shader, alu);
+   rogue_ref src0 = nir_ssa_reg_alu_src32(b->shader, alu, 0);
+   rogue_ref src1 = nir_ssa_reg_alu_src32(b->shader, alu, 1);
+
+   rogue_FADD(b, dst, src0, src1);
 }
 
 static void trans_nir_alu_fmul(rogue_builder *b, nir_alu_instr *alu)
@@ -741,6 +829,9 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
    case nir_op_pack_unorm_4x8:
       return trans_nir_alu_pack_unorm_4x8(b, alu);
       return;
+
+   case nir_op_fadd:
+      return trans_nir_alu_fadd(b, alu);
 
    case nir_op_fmul:
       return trans_nir_alu_fmul(b, alu);

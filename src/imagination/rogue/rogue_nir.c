@@ -74,11 +74,52 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
 
    nir_validate_shader(nir, "after spirv_to_nir");
 
-   NIR_PASS_V(nir, nir_lower_vars_to_ssa);
+#if 0
+   const struct nir_lower_sysvals_to_varyings_options sysvals_to_varyings = {
+      .point_coord = true,
+   };
+   NIR_PASS_V(nir, nir_lower_sysvals_to_varyings, &sysvals_to_varyings);
+#endif
 
-   /* Splitting. */
+   NIR_PASS_V(nir, nir_lower_variable_initializers, nir_var_shader_out);
+   NIR_PASS_V(nir, nir_lower_variable_initializers, ~0);
+
    NIR_PASS_V(nir, nir_split_var_copies);
    NIR_PASS_V(nir, nir_split_per_member_structs);
+
+   if (nir->info.stage == MESA_SHADER_FRAGMENT)
+      NIR_PASS_V(nir,
+                 nir_lower_input_attachments,
+                 &(nir_input_attachment_options){
+                    .use_fragcoord_sysval = true,
+                    .use_layer_id_sysval = false,
+                 });
+
+   NIR_PASS_V(nir,
+              nir_remove_dead_variables,
+              nir_var_shader_in | nir_var_shader_out | nir_var_system_value,
+              NULL);
+
+   NIR_PASS_V(nir, nir_lower_global_vars_to_local);
+   NIR_PASS_V(nir, nir_lower_vars_to_ssa);
+
+   NIR_PASS_V(nir,
+              nir_lower_io_to_temporaries,
+              nir_shader_get_entrypoint(nir),
+              true,
+              true);
+
+   NIR_PASS_V(nir, nir_split_var_copies);
+   NIR_PASS_V(nir, nir_lower_global_vars_to_local);
+   NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_function_temp, NULL);
+
+   /* Lower load_consts to scalars. */
+   NIR_PASS_V(nir, nir_lower_load_const_to_scalar);
+
+   NIR_PASS_V(nir, nir_lower_var_copies);
+
+   NIR_PASS_V(nir, nir_opt_constant_folding);
+   NIR_PASS_V(nir, nir_lower_system_values);
 
    /* Replace references to I/O variables with intrinsics. */
    NIR_PASS_V(nir,
@@ -107,16 +148,21 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
    /* Lower ALU operations to scalars. */
    NIR_PASS_V(nir, nir_lower_alu_to_scalar, NULL, NULL);
 
-   /* Lower load_consts to scalars. */
-   NIR_PASS_V(nir, nir_lower_load_const_to_scalar);
-
    /* Additional I/O lowering. */
+   NIR_PASS_V(nir,
+              nir_lower_explicit_io,
+              nir_var_mem_push_const,
+              nir_address_format_32bit_offset);
+
    NIR_PASS_V(nir,
               nir_lower_explicit_io,
               nir_var_mem_ubo,
               spirv_options.ubo_addr_format);
    NIR_PASS_V(nir, nir_lower_io_to_scalar, nir_var_mem_ubo);
+
    NIR_PASS_V(nir, rogue_nir_lower_io);
+
+   NIR_PASS_V(nir, nir_lower_vars_to_ssa);
 
    /* Lower samplers. */
    NIR_PASS_V(nir, nir_opt_dce);
@@ -127,13 +173,30 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
    do {
       progress = false;
 
+      NIR_PASS(progress, nir, nir_opt_copy_prop_vars);
+      NIR_PASS(progress, nir, nir_opt_dead_write_vars);
+      NIR_PASS(progress, nir, nir_lower_var_copies);
+      NIR_PASS(progress, nir, nir_lower_vars_to_ssa);
+
       NIR_PASS(progress, nir, nir_copy_prop);
+      NIR_PASS(progress, nir, nir_opt_remove_phis);
+      NIR_PASS(progress, nir, nir_lower_phis_to_scalar, true);
+      NIR_PASS(progress, nir, nir_opt_dce);
+      NIR_PASS(progress, nir, nir_opt_dead_cf);
       NIR_PASS(progress, nir, nir_opt_cse);
+      NIR_PASS(progress, nir, nir_opt_peephole_select, 64, false, true);
       NIR_PASS(progress, nir, nir_opt_algebraic);
       NIR_PASS(progress, nir, nir_opt_constant_folding);
-      NIR_PASS(progress, nir, nir_opt_dce);
+
+      NIR_PASS(progress, nir, nir_opt_undef);
+      NIR_PASS(progress, nir, nir_lower_undef_to_zero);
+
       NIR_PASS_V(nir, nir_opt_gcm, false);
    } while (progress);
+
+   NIR_PASS_V(nir, nir_opt_shrink_vectors);
+   /* NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_function_temp |
+    * nir_var_shader_in | nir_var_shader_out, NULL); */
 
    /* Late algebraic opts. */
    do {
@@ -148,6 +211,17 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
 
    /* Remove unused constant registers. */
    NIR_PASS_V(nir, nir_opt_dce);
+
+   /*
+   if (nir->info.stage == MESA_SHADER_FRAGMENT &&
+       (nir->info.fs.uses_discard || nir->info.fs.uses_demote)) {
+      NIR_PASS_V(nir, nir_opt_conditional_discard);
+      NIR_PASS_V(nir, nir_opt_move_discards_to_top);
+   }
+   */
+
+   /* NIR_PASS_V(nir, nir_opt_move, nir_move_load_ubo); */
+   //
 
    /* Move loads to just before they're needed. */
    /* Disabled for now since we want to try and keep them vectorised and group
