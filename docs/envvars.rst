@@ -1704,6 +1704,8 @@ PowerVR driver environment variables
       Skips the compiler validation step.
    ``vld_nonfatal``
       Prints all the validation errors instead of stopping after the first.
+   ``regalloc``
+      Prints the register allocations before applying them.
 
 .. envvar:: ROGUE_COLOR
 

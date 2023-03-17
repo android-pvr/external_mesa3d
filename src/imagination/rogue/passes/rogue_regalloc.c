@@ -213,6 +213,63 @@ bool rogue_regalloc(rogue_shader *shader)
    if (!ra_allocate(ra_graph))
       unreachable("Register allocation failed.");
 
+   /* Print allocations. */
+   if (ROGUE_DEBUG(REGALLOC)) {
+      FILE *fp = stdout;
+
+      /* Regarray allocations. */
+      fputs("Register allocations\n", fp);
+      for (unsigned u = 0; u < num_parent_regarrays; ++u) {
+         rogue_regarray *regarray = parent_regarrays[u];
+
+         unsigned size = regarray->size;
+         unsigned base_index = regarray->regs[0]->index;
+         unsigned hw_base_index = ra_get_node_reg(ra_graph, base_index);
+         enum rogue_regalloc_class ra_class =
+            ra_class_index(ra_get_node_class(ra_graph, base_index));
+         enum rogue_reg_class new_class = regalloc_info[ra_class].class;
+
+         rogue_print_regarray(fp, regarray);
+         fputs(" -> ", fp);
+         rogue_print_regarray_raw(fp, new_class, hw_base_index, size);
+         fputs("\n", fp);
+
+         /* Subarrays. */
+         rogue_foreach_subarray_safe (subarray, regarray) {
+            size = subarray->size;
+            unsigned idx_offset =
+               subarray->regs[0]->index - regarray->regs[0]->index;
+
+            rogue_print_regarray(fp, subarray);
+            fputs(" -> ", fp);
+            rogue_print_regarray_raw(fp,
+                                     new_class,
+                                     hw_base_index + idx_offset,
+                                     size);
+            fputs("\n", fp);
+         }
+      }
+
+      /* Standalone register allocations. */
+      rogue_foreach_reg_safe (reg, shader, ROGUE_REG_CLASS_SSA) {
+         if (reg->regarray)
+            continue;
+
+         unsigned hw_index = ra_get_node_reg(ra_graph, reg->index);
+
+         enum rogue_regalloc_class ra_class =
+            ra_class_index(ra_get_node_class(ra_graph, reg->index));
+         enum rogue_reg_class new_class = regalloc_info[ra_class].class;
+
+         rogue_print_reg(fp, reg, ROGUE_IDX_NONE);
+         fputs(" -> ", fp);
+         rogue_print_reg_raw(fp, new_class, hw_index);
+         fputs("\n", fp);
+      }
+
+      fputs("\n", fp);
+   }
+
    /* Replace SSA regarray registers with allocated physical registers. */
    for (unsigned u = 0; u < num_parent_regarrays; ++u) {
       rogue_regarray *regarray = parent_regarrays[u];

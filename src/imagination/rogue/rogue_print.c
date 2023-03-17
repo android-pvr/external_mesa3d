@@ -131,15 +131,20 @@ static inline void rogue_print_val(FILE *fp, unsigned val)
    RESET(fp);
 }
 
-static inline void
-rogue_print_reg(FILE *fp, const rogue_reg *reg, enum rogue_idx idx)
+PUBLIC void
+rogue_print_reg_raw(FILE *fp, enum rogue_reg_class class, unsigned index)
 {
-   const rogue_reg_info *info = &rogue_reg_infos[reg->class];
+   const rogue_reg_info *info = &rogue_reg_infos[class];
    YELLOW(fp);
    fputs(info->str, fp);
    if (info->num != 1)
-      fprintf(fp, "%" PRIu32, reg->index);
+      fprintf(fp, "%" PRIu32, index);
    RESET(fp);
+}
+
+PUBLIC void rogue_print_reg(FILE *fp, const rogue_reg *reg, enum rogue_idx idx)
+{
+   rogue_print_reg_raw(fp, reg->class, reg->index);
 
    switch (idx) {
    case ROGUE_IDX_NONE:
@@ -155,21 +160,28 @@ rogue_print_reg(FILE *fp, const rogue_reg *reg, enum rogue_idx idx)
    }
 }
 
-static inline void rogue_print_regarray(FILE *fp,
-                                        const rogue_regarray *regarray)
+PUBLIC void rogue_print_regarray_raw(FILE *fp,
+                                     enum rogue_reg_class class,
+                                     unsigned base_index,
+                                     unsigned size)
 {
-   const rogue_reg *reg = regarray->regs[0];
-   const rogue_reg_info *info = &rogue_reg_infos[reg->class];
+   const rogue_reg_info *info = &rogue_reg_infos[class];
    YELLOW(fp);
-   fprintf(fp, "%s[%" PRIu32, info->str, reg->index);
-   if (regarray->size > 1) {
+   fprintf(fp, "%s[%" PRIu32, info->str, base_index);
+   if (size > 1) {
       RESET(fp);
       fputs("..", fp);
       YELLOW(fp);
-      fprintf(fp, "%" PRIu32, regarray->size + reg->index - 1);
+      fprintf(fp, "%" PRIu32, size + base_index - 1);
    }
    fputs("]", fp);
    RESET(fp);
+}
+
+PUBLIC void rogue_print_regarray(FILE *fp, const rogue_regarray *regarray)
+{
+   const rogue_reg *reg = regarray->regs[0];
+   rogue_print_regarray_raw(fp, reg->class, reg->index, regarray->size);
 }
 
 static inline void rogue_print_imm(FILE *fp, const rogue_imm *imm)

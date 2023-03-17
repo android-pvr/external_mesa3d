@@ -2866,6 +2866,17 @@ void rogue_print_shader(FILE *fp, const rogue_shader *shader);
  */
 void rogue_print_instr(FILE *fp, const rogue_instr *instr);
 
+void rogue_print_reg_raw(FILE *fp, enum rogue_reg_class class, unsigned index);
+
+void rogue_print_reg(FILE *fp, const rogue_reg *reg, enum rogue_idx idx);
+
+void rogue_print_regarray_raw(FILE *fp,
+                              enum rogue_reg_class class,
+                              unsigned base_index,
+                              unsigned size);
+
+void rogue_print_regarray(FILE *fp, const rogue_regarray *regarray);
+
 void rogue_print_reg_writes(FILE *fp, const rogue_shader *shader);
 
 void rogue_print_reg_uses(FILE *fp, const rogue_shader *shader);
@@ -2886,6 +2897,7 @@ enum rogue_debug {
    ROGUE_DEBUG_IR_DETAILS = BITFIELD_BIT(4),
    ROGUE_DEBUG_VLD_SKIP = BITFIELD_BIT(5),
    ROGUE_DEBUG_VLD_NONFATAL = BITFIELD_BIT(6),
+   ROGUE_DEBUG_REGALLOC = BITFIELD_BIT(7),
 };
 
 extern unsigned long rogue_debug;
