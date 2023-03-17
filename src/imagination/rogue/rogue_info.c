@@ -670,11 +670,11 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
          [1] = SM(ABS) | SM(NEG),
          [2] = SM(FLR) | SM(ABS) | SM(NEG),
       },
-      .supported_dst_types = { [0] = T(REG), },
+      .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
       .supported_src_types = {
-         [0] = T(REG),
-         [1] = T(REG),
-         [2] = T(REG),
+         [0] = T(REG) | T(REGARRAY),
+         [1] = T(REG) | T(REGARRAY),
+         [2] = T(REG) | T(REGARRAY),
       },
    },
    /* TODO NEXT!: Validate - can/must only select element if non-32-bit type, element has to be same for both args if both args present, 16-bit must be 0 or 1, 32-bit must be 0-3 (can't have no element set)

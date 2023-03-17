@@ -37,7 +37,7 @@
  * \brief Contains the rogue_nir_lower_io pass.
  */
 
-static void lower_vulkan_resource_index(nir_builder *b,
+static bool lower_vulkan_resource_index(nir_builder *b,
                                         nir_intrinsic_instr *intr)
 {
    /* Pass along the desc_set, binding, desc_type. */
@@ -51,11 +51,16 @@ static void lower_vulkan_resource_index(nir_builder *b,
                                nir_imm_int(b, desc_type));
    nir_ssa_def_rewrite_uses(&intr->dest.ssa, def);
    nir_instr_remove(&intr->instr);
+
+   return true;
 }
 
-static void lower_load_global_constant_to_scalar(nir_builder *b,
+static bool lower_load_global_constant_to_scalar(nir_builder *b,
                                                  nir_intrinsic_instr *intr)
 {
+   if (ROGUE_DEBUG(BURST_LOADS))
+      return false;
+
    /* Scalarize the load_global_constant. */
    b->cursor = nir_before_instr(&intr->instr);
 
@@ -90,11 +95,16 @@ static void lower_load_global_constant_to_scalar(nir_builder *b,
    nir_ssa_def_rewrite_uses(&intr->dest.ssa,
                             nir_vec(b, loads, intr->num_components));
    nir_instr_remove(&intr->instr);
+
+   return true;
 }
 
-static void lower_load_push_constant_to_scalar(nir_builder *b,
+static bool lower_load_push_constant_to_scalar(nir_builder *b,
                                                nir_intrinsic_instr *intr)
 {
+   if (ROGUE_DEBUG(BURST_LOADS))
+      return false;
+
    /* Scalarize the load_global_constant. */
    b->cursor = nir_before_instr(&intr->instr);
 
@@ -130,22 +140,21 @@ static void lower_load_push_constant_to_scalar(nir_builder *b,
    nir_ssa_def_rewrite_uses(&intr->dest.ssa,
                             nir_vec(b, loads, intr->num_components));
    nir_instr_remove(&intr->instr);
+
+   return true;
 }
 
 static bool lower_intrinsic(nir_builder *b, nir_intrinsic_instr *instr)
 {
    switch (instr->intrinsic) {
    case nir_intrinsic_vulkan_resource_index:
-      lower_vulkan_resource_index(b, instr);
-      return true;
+      return lower_vulkan_resource_index(b, instr);
 
    case nir_intrinsic_load_global_constant:
-      lower_load_global_constant_to_scalar(b, instr);
-      return true;
+      return lower_load_global_constant_to_scalar(b, instr);
 
    case nir_intrinsic_load_push_constant:
-      lower_load_push_constant_to_scalar(b, instr);
-      return true;
+      return lower_load_push_constant_to_scalar(b, instr);
 
    default:
       break;

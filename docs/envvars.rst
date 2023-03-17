@@ -1706,6 +1706,8 @@ PowerVR driver environment variables
       Prints all the validation errors instead of stopping after the first.
    ``regalloc``
       Prints the register allocations before applying them.
+   ``burst_loads``
+      Skips scalarising NIR loads, enabling the USC to perform burst loads.
 
 .. envvar:: ROGUE_COLOR
 
