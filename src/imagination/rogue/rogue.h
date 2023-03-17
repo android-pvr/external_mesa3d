@@ -2627,7 +2627,6 @@ static inline bool rogue_regarray_replace(rogue_shader *shader,
    bool replaced = true;
 
    assert(!old_regarray->parent);
-   assert(!new_regarray->parent);
 
    rogue_foreach_regarray_write_safe (write, old_regarray) {
       replaced &= rogue_dst_regarray_replace(write, new_regarray);

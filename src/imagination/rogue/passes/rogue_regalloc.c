@@ -25,6 +25,7 @@
 #include "util/macros.h"
 #include "util/ralloc.h"
 #include "util/register_allocate.h"
+#include "util/u_qsort.h"
 
 #include <stdbool.h>
 #include <stdlib.h>
@@ -72,6 +73,20 @@ static void rogue_reg_liveness(rogue_reg *reg, rogue_live_range *live_range)
    }
 }
 
+static int regarray_cmp(const void *lhs, const void *rhs, UNUSED void *arg)
+{
+   const rogue_regarray *const *l = lhs;
+   const rogue_regarray *const *r = rhs;
+
+   /* Signs swapped for sorting largest->smallest. */
+   if ((*l)->size > (*r)->size)
+      return -1;
+   else if ((*l)->size < (*r)->size)
+      return 1;
+
+   return 0;
+}
+
 PUBLIC
 bool rogue_regalloc(rogue_shader *shader)
 {
@@ -116,7 +131,7 @@ bool rogue_regalloc(rogue_shader *shader)
       ++num_parent_regarrays;
    }
 
-   /* Construct list of parent regarrays. */
+   /* Construct list of sorted parent regarrays. */
    rogue_regarray **parent_regarrays =
       rzalloc_array_size(ra_regs,
                          sizeof(*parent_regarrays),
@@ -129,6 +144,12 @@ bool rogue_regalloc(rogue_shader *shader)
 
       parent_regarrays[ra++] = regarray;
    }
+
+   util_qsort_r(parent_regarrays,
+                num_parent_regarrays,
+                sizeof(*parent_regarrays),
+                regarray_cmp,
+                NULL);
 
    /* Prepare live ranges. */
    rogue_live_range *ssa_live_range =
