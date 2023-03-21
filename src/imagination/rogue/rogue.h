@@ -106,6 +106,7 @@ extern const rogue_reg_info rogue_reg_infos[ROGUE_REG_CLASS_COUNT];
 enum rogue_regalloc_class {
    ROGUE_REGALLOC_CLASS_TEMP_1,
    ROGUE_REGALLOC_CLASS_TEMP_2,
+   ROGUE_REGALLOC_CLASS_TEMP_3,
    ROGUE_REGALLOC_CLASS_TEMP_4,
 
    ROGUE_REGALLOC_CLASS_COUNT,
@@ -2106,7 +2107,8 @@ rogue_regarray *rogue_ssa_vec_regarray(rogue_shader *shader,
 rogue_regarray *rogue_regarray_cached(rogue_shader *shader,
                                       unsigned size,
                                       enum rogue_reg_class class,
-                                      uint32_t start_index);
+                                      uint32_t start_index,
+                                      bool allow_overlap);
 
 rogue_regarray *rogue_vec_regarray_cached(rogue_shader *shader,
                                           unsigned size,
@@ -2662,7 +2664,8 @@ static inline bool rogue_src_regarray_replace(rogue_regarray_use *use,
 
 static inline bool rogue_regarray_replace(rogue_shader *shader,
                                           rogue_regarray *old_regarray,
-                                          rogue_regarray *new_regarray)
+                                          rogue_regarray *new_regarray,
+                                          bool allow_overlap)
 {
    bool replaced = true;
 
@@ -2687,7 +2690,8 @@ static inline bool rogue_regarray_replace(rogue_shader *shader,
          rogue_regarray_cached(shader,
                                old_subarray->size,
                                new_class,
-                               new_base_index + idx_offset);
+                               new_base_index + idx_offset,
+                               allow_overlap);
 
       rogue_foreach_regarray_write_safe (write, old_subarray) {
          replaced &= rogue_dst_regarray_replace(write, new_subarray);

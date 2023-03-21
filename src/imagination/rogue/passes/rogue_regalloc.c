@@ -106,12 +106,12 @@ bool rogue_regalloc(rogue_shader *shader)
    struct ra_regs *ra_regs = ra_alloc_reg_set(shader, hw_temps, true);
 
    for (enum rogue_regalloc_class c = 0; c < ROGUE_REGALLOC_CLASS_COUNT; ++c) {
-      ASSERTED struct ra_class *ra_class =
-         ra_alloc_contig_reg_class(ra_regs, regalloc_info[c].stride);
+      unsigned stride = regalloc_info[c].stride;
+      struct ra_class *ra_class = ra_alloc_contig_reg_class(ra_regs, stride);
       assert(c == ra_class_index(ra_class));
 
-      for (unsigned t = 0; t < hw_temps; ++t)
-         if (!(t % regalloc_info[c].stride))
+      for (unsigned t = 0; t < hw_temps - (stride - 1); ++t)
+         if (!(t % stride))
             ra_class_add_reg(ra_class, t);
    }
 
@@ -190,12 +190,26 @@ bool rogue_regalloc(rogue_shader *shader)
 
       enum rogue_regalloc_class raclass;
 
-      if (regarray->size == 2)
+      switch (regarray->size) {
+      case 1:
+         raclass = ROGUE_REGALLOC_CLASS_TEMP_1;
+         break;
+
+      case 2:
          raclass = ROGUE_REGALLOC_CLASS_TEMP_2;
-      else if (regarray->size == 4)
+         break;
+
+      case 3:
+         raclass = ROGUE_REGALLOC_CLASS_TEMP_3;
+         break;
+
+      case 4:
          raclass = ROGUE_REGALLOC_CLASS_TEMP_4;
-      else
+         break;
+
+      default:
          unreachable("Unsupported regarray size.");
+      }
 
       ra_set_node_class(ra_graph,
                         base_index,
@@ -254,21 +268,6 @@ bool rogue_regalloc(rogue_shader *shader)
          fputs(" -> ", fp);
          rogue_print_regarray_raw(fp, new_class, hw_base_index, size);
          fputs("\n", fp);
-
-         /* Subarrays. */
-         rogue_foreach_subarray_safe (subarray, regarray) {
-            size = subarray->size;
-            unsigned idx_offset =
-               subarray->regs[0]->index - regarray->regs[0]->index;
-
-            rogue_print_regarray(fp, subarray);
-            fputs(" -> ", fp);
-            rogue_print_regarray_raw(fp,
-                                     new_class,
-                                     hw_base_index + idx_offset,
-                                     size);
-            fputs("\n", fp);
-         }
       }
 
       /* Standalone register allocations. */
@@ -320,8 +319,10 @@ bool rogue_regalloc(rogue_shader *shader)
          rogue_regarray *new_regarray = rogue_regarray_cached(shader,
                                                               regarray->size,
                                                               new_class,
-                                                              hw_base_index);
-         progress |= rogue_regarray_replace(shader, regarray, new_regarray);
+                                                              hw_base_index,
+                                                              true);
+         progress |=
+            rogue_regarray_replace(shader, regarray, new_regarray, true);
       }
    }
 

@@ -53,6 +53,7 @@ const rogue_reg_info rogue_reg_infos[ROGUE_REG_CLASS_COUNT] = {
 const rogue_regalloc_info regalloc_info[ROGUE_REGALLOC_CLASS_COUNT] = {
    [ROGUE_REGALLOC_CLASS_TEMP_1] = { .class = ROGUE_REG_CLASS_TEMP, .stride = 1, },
    [ROGUE_REGALLOC_CLASS_TEMP_2] = { .class = ROGUE_REG_CLASS_TEMP, .stride = 2, },
+   [ROGUE_REGALLOC_CLASS_TEMP_3] = { .class = ROGUE_REG_CLASS_TEMP, .stride = 3, },
    [ROGUE_REGALLOC_CLASS_TEMP_4] = { .class = ROGUE_REG_CLASS_TEMP, .stride = 4, },
 };
 

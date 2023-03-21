@@ -405,14 +405,18 @@ rogue_ssa_vec_reg(rogue_shader *shader, unsigned index, unsigned component)
 
 static rogue_regarray *rogue_find_common_regarray(rogue_regarray *regarray,
                                                   bool *is_parent,
-                                                  rogue_reg ***parent_regptr)
+                                                  rogue_reg ***parent_regptr,
+                                                  bool *overlaps)
 {
    rogue_regarray *common_regarray = NULL;
+
+   assert(overlaps);
+   *overlaps = false;
 
    for (unsigned u = 0; u < regarray->size; ++u) {
       if (regarray->regs[u]->regarray) {
          if (common_regarray && regarray->regs[u]->regarray != common_regarray)
-            unreachable("Can't have overlapping regarrays.");
+            unreachable("Mismatching regarrays.");
          else if (!common_regarray)
             common_regarray = regarray->regs[u]->regarray;
       }
@@ -430,7 +434,7 @@ static rogue_regarray *rogue_find_common_regarray(rogue_regarray *regarray,
        * and also registers *beyond* its parent. */
       if ((min_index > min_common_index && max_index > max_common_index) ||
           (min_index < min_common_index && max_index < max_common_index))
-         unreachable("Can't have overflowing partial regarrays.");
+         *overlaps = true;
 
       *is_parent = regarray->size > common_regarray->size;
       const rogue_regarray *parent_regarray = *is_parent ? regarray
@@ -456,7 +460,8 @@ static rogue_regarray *rogue_regarray_create(rogue_shader *shader,
                                              unsigned start_index,
                                              uint8_t component,
                                              bool vec,
-                                             rogue_regarray **regarray_cached)
+                                             rogue_regarray **regarray_cached,
+                                             bool allow_overlap)
 {
    rogue_regarray *regarray = rzalloc_size(shader, sizeof(*regarray));
    regarray->regs = rzalloc_size(regarray, sizeof(*regarray->regs) * size);
@@ -474,14 +479,50 @@ static rogue_regarray *rogue_regarray_create(rogue_shader *shader,
 
    bool is_parent = false;
    rogue_reg **parent_regptr = NULL;
-   rogue_regarray *common_regarray =
-      rogue_find_common_regarray(regarray, &is_parent, &parent_regptr);
+   bool overlaps = false;
+   rogue_regarray *common_regarray = rogue_find_common_regarray(regarray,
+                                                                &is_parent,
+                                                                &parent_regptr,
+                                                                &overlaps);
 
    if (!common_regarray) {
+      assert(!overlaps);
       /* We don't share any registers with another regarray. */
       for (unsigned u = 0; u < size; ++u)
          regarray->regs[u]->regarray = regarray;
    } else {
+      if (overlaps) {
+         if (allow_overlap) {
+            assert(!component);
+            assert(!vec);
+
+            /* Calculate properties of parent regarray that will hold both.  */
+            unsigned parent_start_index =
+               MIN2(regarray->regs[0]->index, common_regarray->regs[0]->index);
+            unsigned parent_end_index = MAX2(
+               regarray->regs[0]->index + regarray->size - 1,
+               common_regarray->regs[0]->index + common_regarray->size - 1);
+            unsigned parent_size = parent_end_index - parent_start_index + 1;
+
+            rogue_regarray *parent = rogue_regarray_cached(shader,
+                                                           parent_size,
+                                                           class,
+                                                           parent_start_index,
+                                                           false);
+
+            common_regarray = rogue_find_common_regarray(regarray,
+                                                         &is_parent,
+                                                         &parent_regptr,
+                                                         &overlaps);
+
+            assert(common_regarray == parent);
+            assert(!is_parent);
+            assert(!overlaps);
+         } else {
+            unreachable("Can't have overlapping partial regarrays.");
+         }
+      }
+
       if (is_parent) {
          /* We share registers with another regarray, and it is a subset of us.
           */
@@ -527,7 +568,8 @@ rogue_regarray_cached_common(rogue_shader *shader,
                              enum rogue_reg_class class,
                              uint32_t start_index,
                              uint8_t component,
-                             bool vec)
+                             bool vec,
+                             bool allow_overlap)
 {
    uint64_t key =
       rogue_regarray_cache_key(size, class, start_index, vec, component);
@@ -541,7 +583,8 @@ rogue_regarray_cached_common(rogue_shader *shader,
                                                start_index,
                                                component,
                                                vec,
-                                               regarray_cached);
+                                               regarray_cached,
+                                               allow_overlap);
 
    return *regarray_cached;
 }
@@ -550,14 +593,16 @@ PUBLIC
 rogue_regarray *rogue_regarray_cached(rogue_shader *shader,
                                       unsigned size,
                                       enum rogue_reg_class class,
-                                      uint32_t start_index)
+                                      uint32_t start_index,
+                                      bool allow_overlap)
 {
    return rogue_regarray_cached_common(shader,
                                        size,
                                        class,
                                        start_index,
                                        0,
-                                       false);
+                                       false,
+                                       allow_overlap);
 }
 
 PUBLIC
@@ -572,21 +617,30 @@ rogue_regarray *rogue_vec_regarray_cached(rogue_shader *shader,
                                        class,
                                        start_index,
                                        component,
-                                       true);
+                                       true,
+                                       false);
 }
 
 PUBLIC
 rogue_regarray *
 rogue_ssa_regarray(rogue_shader *shader, unsigned size, unsigned start_index)
 {
-   return rogue_regarray_cached(shader, size, ROGUE_REG_CLASS_SSA, start_index);
+   return rogue_regarray_cached(shader,
+                                size,
+                                ROGUE_REG_CLASS_SSA,
+                                start_index,
+                                false);
 }
 
 PUBLIC
 rogue_regarray *
 rogue_temp_regarray(rogue_shader *shader, unsigned size, unsigned start_index)
 {
-   return rogue_regarray_cached(shader, size, ROGUE_REG_CLASS_TEMP, start_index);
+   return rogue_regarray_cached(shader,
+                                size,
+                                ROGUE_REG_CLASS_TEMP,
+                                start_index,
+                                false);
 }
 
 PUBLIC
@@ -596,7 +650,8 @@ rogue_coeff_regarray(rogue_shader *shader, unsigned size, unsigned start_index)
    return rogue_regarray_cached(shader,
                                 size,
                                 ROGUE_REG_CLASS_COEFF,
-                                start_index);
+                                start_index,
+                                false);
 }
 
 PUBLIC
@@ -606,7 +661,8 @@ rogue_shared_regarray(rogue_shader *shader, unsigned size, unsigned start_index)
    return rogue_regarray_cached(shader,
                                 size,
                                 ROGUE_REG_CLASS_SHARED,
-                                start_index);
+                                start_index,
+                                false);
 }
 
 PUBLIC
@@ -616,7 +672,8 @@ rogue_vtxin_regarray(rogue_shader *shader, unsigned size, unsigned start_index)
    return rogue_regarray_cached(shader,
                                 size,
                                 ROGUE_REG_CLASS_VTXIN,
-                                start_index);
+                                start_index,
+                                false);
 }
 
 PUBLIC
