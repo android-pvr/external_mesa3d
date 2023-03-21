@@ -203,6 +203,7 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
       progress = false;
 
       NIR_PASS(progress, nir, nir_opt_algebraic_late);
+      NIR_PASS_V(nir, nir_lower_to_source_mods, nir_lower_all_source_mods);
       NIR_PASS_V(nir, nir_opt_constant_folding);
       NIR_PASS_V(nir, nir_copy_prop);
       NIR_PASS_V(nir, nir_opt_dce);

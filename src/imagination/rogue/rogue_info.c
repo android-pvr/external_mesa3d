@@ -801,9 +801,18 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
          [2] = T(REG),
       },
    },
-   [ROGUE_ALU_OP_FABS] = { .str = "fabs", .num_dsts = 1, .num_srcs = 1, },
-   [ROGUE_ALU_OP_FNEG] = { .str = "fneg", .num_dsts = 1, .num_srcs = 1, },
-   [ROGUE_ALU_OP_FNABS] = { .str = "fnabs", .num_dsts = 1, .num_srcs = 1, },
+   [ROGUE_ALU_OP_FABS] = { .str = "fabs", .num_dsts = 1, .num_srcs = 1,
+      .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
+      .supported_src_types = { [0] = T(REG) | T(REGARRAY), },
+   },
+   [ROGUE_ALU_OP_FNEG] = { .str = "fneg", .num_dsts = 1, .num_srcs = 1,
+      .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
+      .supported_src_types = { [0] = T(REG) | T(REGARRAY), },
+   },
+   [ROGUE_ALU_OP_FNABS] = { .str = "fnabs", .num_dsts = 1, .num_srcs = 1,
+      .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
+      .supported_src_types = { [0] = T(REG) | T(REGARRAY), },
+   },
 
    [ROGUE_ALU_OP_FMAX] = { .str = "fmax", .num_dsts = 1, .num_srcs = 2, }, /* TODO */
    [ROGUE_ALU_OP_FMIN] = { .str = "fmin", .num_dsts = 1, .num_srcs = 2, }, /* TODO */

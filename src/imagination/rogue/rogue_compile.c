@@ -769,6 +769,21 @@ static void trans_nir_alu_pack_unorm_4x8(rogue_builder *b, nir_alu_instr *alu)
    rogue_set_alu_op_mod(pck_u8888, ROGUE_ALU_OP_MOD_SCALE);
 }
 
+static void rogue_apply_alu_src_mods(rogue_alu_instr *rogue_alu,
+                                     nir_alu_instr *nir_alu)
+{
+   unsigned num_srcs = rogue_alu_op_infos[rogue_alu->op].num_srcs;
+   assert(num_srcs == nir_op_infos[nir_alu->op].num_inputs);
+
+   for (unsigned u = 0; u < num_srcs; ++u) {
+      if (nir_alu->src[u].negate)
+         rogue_set_alu_src_mod(rogue_alu, u, ROGUE_ALU_SRC_MOD_NEG);
+
+      if (nir_alu->src[u].abs)
+         rogue_set_alu_src_mod(rogue_alu, u, ROGUE_ALU_SRC_MOD_ABS);
+   }
+}
+
 static void trans_nir_alu_fadd(rogue_builder *b, nir_alu_instr *alu)
 {
    unsigned dst_components;
@@ -778,7 +793,8 @@ static void trans_nir_alu_fadd(rogue_builder *b, nir_alu_instr *alu)
    rogue_ref src0 = nir_ssa_reg_alu_src32(b->shader, alu, 0);
    rogue_ref src1 = nir_ssa_reg_alu_src32(b->shader, alu, 1);
 
-   rogue_FADD(b, dst, src0, src1);
+   rogue_alu_instr *fadd = rogue_FADD(b, dst, src0, src1);
+   rogue_apply_alu_src_mods(fadd, alu);
 }
 
 static void trans_nir_alu_fmul(rogue_builder *b, nir_alu_instr *alu)
@@ -790,7 +806,8 @@ static void trans_nir_alu_fmul(rogue_builder *b, nir_alu_instr *alu)
    rogue_ref src0 = nir_ssa_reg_alu_src32(b->shader, alu, 0);
    rogue_ref src1 = nir_ssa_reg_alu_src32(b->shader, alu, 1);
 
-   rogue_FMUL(b, dst, src0, src1);
+   rogue_alu_instr *fmul = rogue_FMUL(b, dst, src0, src1);
+   rogue_apply_alu_src_mods(fmul, alu);
 }
 
 static void trans_nir_alu_ffma(rogue_builder *b, nir_alu_instr *alu)
@@ -803,7 +820,30 @@ static void trans_nir_alu_ffma(rogue_builder *b, nir_alu_instr *alu)
    rogue_ref src1 = nir_ssa_reg_alu_src32(b->shader, alu, 1);
    rogue_ref src2 = nir_ssa_reg_alu_src32(b->shader, alu, 2);
 
-   rogue_FMAD(b, dst, src0, src1, src2);
+   rogue_alu_instr *ffma = rogue_FMAD(b, dst, src0, src1, src2);
+   rogue_apply_alu_src_mods(ffma, alu);
+}
+
+static void trans_nir_alu_fneg(rogue_builder *b, nir_alu_instr *alu)
+{
+   unsigned dst_components;
+   rogue_ref dst = nir_ssa_reg_alu_dst32(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   rogue_ref src = nir_ssa_reg_alu_src32(b->shader, alu, 0);
+
+   rogue_FNEG(b, dst, src);
+}
+
+static void trans_nir_alu_fabs(rogue_builder *b, nir_alu_instr *alu)
+{
+   unsigned dst_components;
+   rogue_ref dst = nir_ssa_reg_alu_dst32(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   rogue_ref src = nir_ssa_reg_alu_src32(b->shader, alu, 0);
+
+   rogue_FABS(b, dst, src);
 }
 
 static void trans_nir_alu_vecN(rogue_builder *b, nir_alu_instr *alu, unsigned n)
@@ -873,6 +913,12 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
 
    case nir_op_ffma:
       return trans_nir_alu_ffma(b, alu);
+
+   case nir_op_fneg:
+      return trans_nir_alu_fneg(b, alu);
+
+   case nir_op_fabs:
+      return trans_nir_alu_fabs(b, alu);
 
    case nir_op_vec2:
       return trans_nir_alu_vecN(b, alu, 2);
