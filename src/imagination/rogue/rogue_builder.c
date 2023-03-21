@@ -103,6 +103,17 @@ static inline rogue_alu_instr *rogue_build_alu13(rogue_builder *b,
    return rogue_build_alu(b, op, 1, dsts, 3, srcs);
 }
 
+static inline rogue_alu_instr *rogue_build_alu21(rogue_builder *b,
+                                                 enum rogue_alu_op op,
+                                                 rogue_ref dst0,
+                                                 rogue_ref dst1,
+                                                 rogue_ref src0)
+{
+   rogue_ref dsts[] = { dst0, dst1 };
+   rogue_ref srcs[] = { src0 };
+   return rogue_build_alu(b, op, 2, dsts, 1, srcs);
+}
+
 static inline rogue_alu_instr *rogue_build_alu22(rogue_builder *b,
                                                  enum rogue_alu_op op,
                                                  rogue_ref dst0,
@@ -157,6 +168,20 @@ static inline rogue_alu_instr *rogue_build_alu25(rogue_builder *b,
    return rogue_build_alu(b, op, 2, dsts, 5, srcs);
 }
 
+static inline rogue_alu_instr *rogue_build_alu33(rogue_builder *b,
+                                                 enum rogue_alu_op op,
+                                                 rogue_ref dst0,
+                                                 rogue_ref dst1,
+                                                 rogue_ref dst2,
+                                                 rogue_ref src0,
+                                                 rogue_ref src1,
+                                                 rogue_ref src2)
+{
+   rogue_ref dsts[] = { dst0, dst1, dst2 };
+   rogue_ref srcs[] = { src0, src1, src2 };
+   return rogue_build_alu(b, op, 3, dsts, 3, srcs);
+}
+
 static inline rogue_alu_instr *rogue_build_alu35(rogue_builder *b,
                                                  enum rogue_alu_op op,
                                                  rogue_ref dst0,
@@ -208,6 +233,18 @@ static inline rogue_alu_instr *rogue_build_alu35(rogue_builder *b,
       assert(rogue_alu_op_infos[ROGUE_ALU_OP_##op].num_dsts == 1);            \
       assert(rogue_alu_op_infos[ROGUE_ALU_OP_##op].num_srcs == 3);            \
       return rogue_build_alu13(b, ROGUE_ALU_OP_##op, dst0, src0, src1, src2); \
+   }
+
+#define ROGUE_BUILDER_DEFINE_ALU21(op)                                  \
+   PUBLIC                                                               \
+   rogue_alu_instr *rogue_##op(rogue_builder *b,                        \
+                               rogue_ref dst0,                          \
+                               rogue_ref dst1,                          \
+                               rogue_ref src0)                          \
+   {                                                                    \
+      assert(rogue_alu_op_infos[ROGUE_ALU_OP_##op].num_dsts == 2);      \
+      assert(rogue_alu_op_infos[ROGUE_ALU_OP_##op].num_srcs == 1);      \
+      return rogue_build_alu21(b, ROGUE_ALU_OP_##op, dst0, dst1, src0); \
    }
 
 #define ROGUE_BUILDER_DEFINE_ALU22(op)                                        \
@@ -287,6 +324,28 @@ static inline rogue_alu_instr *rogue_build_alu35(rogue_builder *b,
                                src2,                               \
                                src3,                               \
                                src4);                              \
+   }
+
+#define ROGUE_BUILDER_DEFINE_ALU33(op)                             \
+   PUBLIC                                                          \
+   rogue_alu_instr *rogue_##op(rogue_builder *b,                   \
+                               rogue_ref dst0,                     \
+                               rogue_ref dst1,                     \
+                               rogue_ref dst2,                     \
+                               rogue_ref src0,                     \
+                               rogue_ref src1,                     \
+                               rogue_ref src2)                     \
+   {                                                               \
+      assert(rogue_alu_op_infos[ROGUE_ALU_OP_##op].num_dsts == 3); \
+      assert(rogue_alu_op_infos[ROGUE_ALU_OP_##op].num_srcs == 3); \
+      return rogue_build_alu33(b,                                  \
+                               ROGUE_ALU_OP_##op,                  \
+                               dst0,                               \
+                               dst1,                               \
+                               dst2,                               \
+                               src0,                               \
+                               src1,                               \
+                               src2);                              \
    }
 
 #define ROGUE_BUILDER_DEFINE_ALU35(op)                             \

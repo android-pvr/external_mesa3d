@@ -524,16 +524,40 @@ enum pck_fmt {
    PCK_FMT_ONE = 0b11111,
 };
 
-typedef struct rogue_single_mbyp_encoding {
+typedef struct rogue_single_cmplx_encoding {
    /* Byte 1 */
    struct {
       unsigned s0abs : 1;
       unsigned s0neg : 1;
       unsigned : 6;
    } PACKED;
-} PACKED rogue_single_mbyp_encoding;
-static_assert(sizeof(rogue_single_mbyp_encoding) == 1,
-              "sizeof(rogue_single_mbyp_encoding) != 1");
+} PACKED rogue_single_cmplx_encoding;
+static_assert(sizeof(rogue_single_cmplx_encoding) == 1,
+              "sizeof(rogue_single_cmplx_encoding) != 1");
+
+typedef struct rogue_single_red_encoding {
+   /* Byte 1 */
+   struct {
+      unsigned s0abs : 1;
+      unsigned s0neg : 1;
+      unsigned pwen : 1;
+      unsigned type : 1;
+      unsigned iteration : 3;
+      unsigned part : 1;
+   } PACKED;
+} PACKED rogue_single_red_encoding;
+static_assert(sizeof(rogue_single_red_encoding) == 1,
+              "sizeof(rogue_single_red_encoding) != 1");
+
+enum red_type {
+   RED_TYPE_SIN = 0,
+   RED_TYPE_COS = 1,
+};
+
+enum red_part {
+   RED_PART_A = 0,
+   RED_PART_B = 1,
+};
 
 enum snglop {
    SNGLOP_RCP = 0b0000,
@@ -564,8 +588,9 @@ typedef struct rogue_alu_single_encoding {
 
    /* Byte 1+ */
    union {
-      rogue_single_mbyp_encoding mbyp;
+      rogue_single_cmplx_encoding cmplx;
       rogue_single_pck_encoding pck;
+      rogue_single_red_encoding red;
    } PACKED;
 } PACKED rogue_alu_single_encoding;
 static_assert(sizeof(rogue_alu_single_encoding) == 2,

@@ -512,17 +512,27 @@ static void rogue_calc_alu_instrs_size(rogue_instr_group *group,
                                        enum rogue_instr_phase phase)
 {
    switch (alu->op) {
-   /* TODO: All single source have 1 byte and optional extra byte w/ext,
-    * commonise some of these when adding support for more single source
-    * instructions.
-    */
    case ROGUE_ALU_OP_MBYP:
+   case ROGUE_ALU_OP_FRCP:
+   case ROGUE_ALU_OP_FRSQ:
+   case ROGUE_ALU_OP_FLOG2:
+   case ROGUE_ALU_OP_FLOGCN:
+   case ROGUE_ALU_OP_FEXP2:
       if (rogue_alu_src_mod_is_set(alu, 0, SM(NEG)) ||
           rogue_alu_src_mod_is_set(alu, 0, SM(ABS))) {
          group->size.instrs[phase] = 2;
       } else {
          group->size.instrs[phase] = 1;
       }
+      break;
+
+   case ROGUE_ALU_OP_FSINC:
+   case ROGUE_ALU_OP_FARCTANC:
+      group->size.instrs[phase] = 1;
+      break;
+
+   case ROGUE_ALU_OP_FRED:
+      group->size.instrs[phase] = 2;
       break;
 
    case ROGUE_ALU_OP_FADD:

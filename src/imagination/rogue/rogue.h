@@ -389,8 +389,6 @@ enum rogue_instr_type {
    ROGUE_INSTR_TYPE_INVALID = 0,
 
    ROGUE_INSTR_TYPE_ALU, /** ALU instruction. */
-   /* ROGUE_INSTR_TYPE_CMPLX, */ /** TODO: Complex/trig instruction (these take
-                                    up the whole pipeline). */
    ROGUE_INSTR_TYPE_BACKEND, /** Backend instruction. */
    ROGUE_INSTR_TYPE_CTRL, /** Control instruction. */
    ROGUE_INSTR_TYPE_BITWISE, /** Bitwise instruction. */
@@ -1193,6 +1191,16 @@ enum rogue_alu_op {
 
    ROGUE_ALU_OP_MBYP,
 
+   ROGUE_ALU_OP_FRCP,
+   ROGUE_ALU_OP_FRSQ,
+   ROGUE_ALU_OP_FLOG2,
+   ROGUE_ALU_OP_FLOGCN,
+   ROGUE_ALU_OP_FEXP2,
+
+   ROGUE_ALU_OP_FSINC,
+   ROGUE_ALU_OP_FARCTANC,
+   ROGUE_ALU_OP_FRED,
+
    ROGUE_ALU_OP_FADD,
    ROGUE_ALU_OP_FMUL,
    ROGUE_ALU_OP_FMAD,
@@ -1222,6 +1230,12 @@ enum rogue_alu_op {
 
 enum rogue_alu_op_mod {
    /* In order of priority */
+   ROGUE_ALU_OP_MOD_PARTA,
+   ROGUE_ALU_OP_MOD_PARTB,
+
+   ROGUE_ALU_OP_MOD_SIN,
+   ROGUE_ALU_OP_MOD_COS,
+
    ROGUE_ALU_OP_MOD_LP, /* Low-precision modifier (force 13 lsbs of all sources
                            to zero before op, and of result after op). */
    ROGUE_ALU_OP_MOD_SAT, /* Saturate output. */

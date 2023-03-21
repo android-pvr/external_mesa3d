@@ -254,15 +254,93 @@ static void rogue_encode_alu_instr(const rogue_alu_instr *alu,
 {
    switch (alu->op) {
    case ROGUE_ALU_OP_MBYP:
+   case ROGUE_ALU_OP_FRCP:
+   case ROGUE_ALU_OP_FRSQ:
+   case ROGUE_ALU_OP_FLOG2:
+   case ROGUE_ALU_OP_FLOGCN:
+   case ROGUE_ALU_OP_FEXP2:
+   case ROGUE_ALU_OP_FSINC:
+   case ROGUE_ALU_OP_FARCTANC:
+   case ROGUE_ALU_OP_FRED:
       instr_encoding->alu.op = ALUOP_SNGL;
-      instr_encoding->alu.sngl.snglop = SNGLOP_BYP;
+
+      switch (alu->op) {
+      case ROGUE_ALU_OP_MBYP:
+         instr_encoding->alu.sngl.snglop = SNGLOP_BYP;
+         break;
+
+      case ROGUE_ALU_OP_FRCP:
+         instr_encoding->alu.sngl.snglop = SNGLOP_RCP;
+         break;
+
+      case ROGUE_ALU_OP_FRSQ:
+         instr_encoding->alu.sngl.snglop = SNGLOP_RSQ;
+         break;
+
+      case ROGUE_ALU_OP_FLOG2:
+         instr_encoding->alu.sngl.snglop = SNGLOP_LOG;
+         break;
+
+      case ROGUE_ALU_OP_FLOGCN:
+         instr_encoding->alu.sngl.snglop = SNGLOP_LOGCN;
+         break;
+
+      case ROGUE_ALU_OP_FEXP2:
+         instr_encoding->alu.sngl.snglop = SNGLOP_EXP;
+         break;
+
+      case ROGUE_ALU_OP_FSINC:
+         instr_encoding->alu.sngl.snglop = SNGLOP_SINC;
+         break;
+
+      case ROGUE_ALU_OP_FARCTANC:
+         instr_encoding->alu.sngl.snglop = SNGLOP_ARCTANC;
+         break;
+
+      case ROGUE_ALU_OP_FRED:
+         instr_encoding->alu.sngl.snglop = SNGLOP_RED;
+         break;
+
+      default:
+         unreachable("Unsupported alu op.");
+      }
 
       if (instr_size == 2) {
          instr_encoding->alu.sngl.ext0 = 1;
-         instr_encoding->alu.sngl.mbyp.s0neg =
+
+         if (alu->op == ROGUE_ALU_OP_FRED) {
+            instr_encoding->alu.sngl.red.s0neg =
+               rogue_alu_src_mod_is_set(alu, 1, SM(NEG));
+            instr_encoding->alu.sngl.red.s0abs =
+               rogue_alu_src_mod_is_set(alu, 1, SM(ABS));
+
             rogue_alu_src_mod_is_set(alu, 0, SM(NEG));
-         instr_encoding->alu.sngl.mbyp.s0abs =
-            rogue_alu_src_mod_is_set(alu, 0, SM(ABS));
+
+            instr_encoding->alu.sngl.red.pwen =
+               rogue_ref_is_io_p0(&alu->dst[2].ref);
+
+            if (rogue_alu_op_mod_is_set(alu, OM(SIN)))
+               instr_encoding->alu.sngl.red.type = RED_TYPE_SIN;
+            else if (rogue_alu_op_mod_is_set(alu, OM(COS)))
+               instr_encoding->alu.sngl.red.type = RED_TYPE_COS;
+            else
+               unreachable("Missing range reduction type.");
+
+            instr_encoding->alu.sngl.red.iteration =
+               rogue_ref_get_val(&alu->src[0].ref);
+
+            if (rogue_alu_op_mod_is_set(alu, OM(PARTA)))
+               instr_encoding->alu.sngl.red.part = RED_PART_A;
+            else if (rogue_alu_op_mod_is_set(alu, OM(PARTB)))
+               instr_encoding->alu.sngl.red.part = RED_PART_B;
+            else
+               unreachable("Missing range reduction part.");
+         } else {
+            instr_encoding->alu.sngl.cmplx.s0neg =
+               rogue_alu_src_mod_is_set(alu, 0, SM(NEG));
+            instr_encoding->alu.sngl.cmplx.s0abs =
+               rogue_alu_src_mod_is_set(alu, 0, SM(ABS));
+         }
       }
       break;
 
