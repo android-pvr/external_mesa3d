@@ -824,6 +824,52 @@ static void trans_nir_alu_ffma(rogue_builder *b, nir_alu_instr *alu)
    rogue_apply_alu_src_mods(ffma, alu);
 }
 
+static void trans_nir_alu_fmin(rogue_builder *b, nir_alu_instr *alu)
+{
+   unsigned dst_components;
+   rogue_ref dst = nir_ssa_reg_alu_dst32(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   rogue_ref src0 = nir_ssa_reg_alu_src32(b->shader, alu, 0);
+   rogue_ref src1 = nir_ssa_reg_alu_src32(b->shader, alu, 1);
+
+   rogue_alu_instr *tst_mbyp = rogue_MBYP(b, rogue_ref_io(ROGUE_IO_FT0), src0);
+   rogue_set_instr_group_next(&tst_mbyp->instr, true);
+
+   rogue_alu_instr *tst = rogue_TST(b,
+                                    rogue_ref_io(ROGUE_IO_FTT),
+                                    rogue_ref_io(ROGUE_IO_P0),
+                                    rogue_ref_io(ROGUE_IO_FT0),
+                                    src1);
+   rogue_set_alu_op_mod(tst, ROGUE_ALU_OP_MOD_L);
+   rogue_set_alu_op_mod(tst, ROGUE_ALU_OP_MOD_F32);
+
+   rogue_CMOV(b, dst, rogue_ref_io(ROGUE_IO_P0), src0, src1);
+}
+
+static void trans_nir_alu_fmax(rogue_builder *b, nir_alu_instr *alu)
+{
+   unsigned dst_components;
+   rogue_ref dst = nir_ssa_reg_alu_dst32(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   rogue_ref src0 = nir_ssa_reg_alu_src32(b->shader, alu, 0);
+   rogue_ref src1 = nir_ssa_reg_alu_src32(b->shader, alu, 1);
+
+   rogue_alu_instr *tst_mbyp = rogue_MBYP(b, rogue_ref_io(ROGUE_IO_FT0), src0);
+   rogue_set_instr_group_next(&tst_mbyp->instr, true);
+
+   rogue_alu_instr *tst = rogue_TST(b,
+                                    rogue_ref_io(ROGUE_IO_FTT),
+                                    rogue_ref_io(ROGUE_IO_P0),
+                                    rogue_ref_io(ROGUE_IO_FT0),
+                                    src1);
+   rogue_set_alu_op_mod(tst, ROGUE_ALU_OP_MOD_G);
+   rogue_set_alu_op_mod(tst, ROGUE_ALU_OP_MOD_F32);
+
+   rogue_CMOV(b, dst, rogue_ref_io(ROGUE_IO_P0), src0, src1);
+}
+
 static void trans_nir_alu_fneg(rogue_builder *b, nir_alu_instr *alu)
 {
    unsigned dst_components;
@@ -913,6 +959,12 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
 
    case nir_op_ffma:
       return trans_nir_alu_ffma(b, alu);
+
+   case nir_op_fmin:
+      return trans_nir_alu_fmin(b, alu);
+
+   case nir_op_fmax:
+      return trans_nir_alu_fmax(b, alu);
 
    case nir_op_fneg:
       return trans_nir_alu_fneg(b, alu);

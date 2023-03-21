@@ -1217,9 +1217,6 @@ enum rogue_alu_op {
    ROGUE_ALU_OP_FNEG,
    ROGUE_ALU_OP_FNABS,
 
-   ROGUE_ALU_OP_FMAX,
-   ROGUE_ALU_OP_FMIN,
-
    ROGUE_ALU_OP_COUNT,
 };
 

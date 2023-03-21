@@ -813,9 +813,6 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
       .supported_src_types = { [0] = T(REG) | T(REGARRAY), },
    },
-
-   [ROGUE_ALU_OP_FMAX] = { .str = "fmax", .num_dsts = 1, .num_srcs = 2, }, /* TODO */
-   [ROGUE_ALU_OP_FMIN] = { .str = "fmin", .num_dsts = 1, .num_srcs = 2, }, /* TODO */
 };
 #undef B
 #undef T
