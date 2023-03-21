@@ -1406,6 +1406,8 @@ typedef struct rogue_alu_op_info {
    unsigned num_dsts;
    unsigned num_srcs;
 
+   bool whole_pipeline;
+
    uint64_t supported_phases;
    rogue_alu_io_info phase_io[ROGUE_INSTR_PHASE_COUNT];
 

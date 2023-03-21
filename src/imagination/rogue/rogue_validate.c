@@ -262,6 +262,13 @@ static void validate_alu_instr(rogue_validation_state *state,
       validate_log(state, "Repeat set for ALU op without repeat support.");
    }
 
+   /* Instruction grouping flag validation. */
+   /* TODO: this won't catch cases where the previous instruction
+    * has group_next set and the current instruction has whole_pipeline.
+    */
+   if (alu->instr.group_next && info->whole_pipeline)
+      validate_log(state, "Cannot group whole-pipeline instructions.");
+
    /* Validate destinations and sources for ungrouped shaders. */
    if (!state->shader->is_grouped) {
       for (unsigned i = 0; i < info->num_dsts; ++i) {
