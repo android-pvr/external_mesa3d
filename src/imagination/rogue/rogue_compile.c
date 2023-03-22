@@ -318,7 +318,13 @@ static void trans_nir_intrinsic_load_input_vs(rogue_builder *b,
    if (pipeline_layout) {
       rogue_vertex_inputs *vs_inputs = &b->shader->ctx->stage_data.vs.inputs;
       assert(input < vs_inputs->num_input_vars);
-      assert(component < vs_inputs->components[input]);
+
+      /* Replace components not provided by the driver with 1.0f. */
+      if (component >= vs_inputs->components[input]) {
+         rogue_instr *instr = &rogue_MOV(b, dst, rogue_ref_imm_f(1.0f))->instr;
+         rogue_add_instr_comment(instr, "load_input_vs (1.0f)");
+         return;
+      }
 
       vtxin_index = vs_inputs->base[input] + component;
    } else {
