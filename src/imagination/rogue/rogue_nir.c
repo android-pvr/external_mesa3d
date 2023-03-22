@@ -74,6 +74,12 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
 
    nir_validate_shader(nir, "after spirv_to_nir");
 
+   /* TODO: Clamp outputs when necessary. */
+#if 0
+   if (nir->info.stage == MESA_SHADER_FRAGMENT)
+      NIR_PASS_V(nir, nir_lower_clamp_color_outputs);
+#endif
+
 #if 0
    const struct nir_lower_sysvals_to_varyings_options sysvals_to_varyings = {
       .point_coord = true,

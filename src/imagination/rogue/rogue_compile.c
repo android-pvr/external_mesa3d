@@ -275,7 +275,7 @@ static void trans_nir_intrinsic_load_input_fs(rogue_builder *b,
 
    unsigned load_size;
    rogue_ref dst = nir_ssa_reg_intr_dst32(b->shader, intr, &load_size);
-   assert(load_size == 1); /* TODO: support loads up to 16. */
+   assert(load_size <= 16);
 
    struct nir_io_semantics io_semantics = nir_intrinsic_io_semantics(intr);
    unsigned component = nir_intrinsic_component(intr);

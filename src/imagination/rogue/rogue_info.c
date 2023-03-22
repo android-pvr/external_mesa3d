@@ -369,7 +369,7 @@ const rogue_backend_op_info rogue_backend_op_infos[ROGUE_BACKEND_OP_COUNT] = {
 	[ROGUE_BACKEND_OP_FITRP_PIXEL] = { .str = "fitrp.pixel", .num_dsts = 1, .num_srcs = 4,
       .phase_io = { .dst[0] = IO(S3), .src[1] = IO(S0), .src[2] = IO(S2), },
       .supported_op_mods = OM(SAT),
-      .supported_dst_types = { [0] = T(REG), },
+      .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
       .supported_src_types = {
          [0] = T(DRC),
          [1] = T(REGARRAY),
@@ -377,8 +377,11 @@ const rogue_backend_op_info rogue_backend_op_infos[ROGUE_BACKEND_OP_COUNT] = {
          [3] = T(VAL),
       },
       .src_stride = {
-         [1] = 3,
+         [1] = ~0U,
          [2] = ~0U,
+      },
+      .dst_stride = {
+         [0] = ~0U,
       },
    },
 	[ROGUE_BACKEND_OP_SMP1D] = { .str = "smp1d", .num_dsts = 1, .num_srcs = 6,

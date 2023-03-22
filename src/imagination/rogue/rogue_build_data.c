@@ -89,8 +89,15 @@ static void reserve_iterator(struct rogue_iterator_args *args,
    switch (type) {
    /* Default interpolation is smooth. */
    case INTERP_MODE_NONE:
+   case INTERP_MODE_SMOOTH:
       data.shademodel = ROGUE_PDSINST_DOUTI_SHADEMODEL_GOURUAD;
       data.perspective = true;
+      break;
+
+   case INTERP_MODE_FLAT:
+      /* TODO: properly choose the provoking vertex. */
+      data.shademodel = ROGUE_PDSINST_DOUTI_SHADEMODEL_FLAT_VERTEX0;
+      data.perspective = false;
       break;
 
    case INTERP_MODE_NOPERSPECTIVE:
@@ -107,13 +114,16 @@ static void reserve_iterator(struct rogue_iterator_args *args,
     */
    data.size = (components - 1);
 
-   /* TODO: Investigate F16 support. */
+   /* TODO: F16 support. */
    assert(!f16);
-   data.f16 = f16;
 
-   /* Offsets within the vertex. */
-   data.f32_offset = 2 * i;
-   data.f16_offset = data.f32_offset;
+   if (f16) {
+      data.f16 = 1;
+      /* data.f16_offset = i + num_f32_varyings; */
+   } else {
+      data.f16_offset = i * 2;
+   }
+   data.f32_offset = i * 2;
 
    ROGUE_PDSINST_DOUT_FIELDS_DOUTI_SRC_pack(&args->fpu_iterators[i], &data);
    args->destination[i] = i;
@@ -167,10 +177,6 @@ static void collect_io_data_fs(struct rogue_common_build_data *common_data,
          enum glsl_interp_mode interp = var->data.interpolation;
          bool f16 = glsl_type_is_16bit(var->type);
 
-         /* Check that arguments are either F16 or F32. */
-         assert(glsl_get_base_type(var->type) == GLSL_TYPE_FLOAT);
-         assert(f16 || glsl_type_is_32bit(var->type));
-
          /* Check input location. */
          assert(var->data.location >= VARYING_SLOT_VAR0 &&
                 var->data.location <= VARYING_SLOT_VAR31);
@@ -213,15 +219,33 @@ static unsigned alloc_vs_outputs(struct rogue_vertex_outputs *outputs)
  * \param[in] outputs The vertex shader output data.
  * \return The number of varyings used.
  */
-static unsigned count_vs_varyings(struct rogue_vertex_outputs *outputs)
+static void count_vs_varyings(struct rogue_vs_build_data *vs_data)
 {
-   unsigned varyings = 0;
+   struct rogue_vertex_outputs *outputs = &vs_data->outputs;
+
+   /* TODO: F16 support. */
 
    /* Skip the position. */
-   for (unsigned u = 1; u < outputs->num_output_vars; ++u)
-      varyings += outputs->components[u];
+   for (unsigned u = 1; u < outputs->num_output_vars; ++u) {
+      switch (outputs->interp_modes[u]) {
+      /* Default interpolation is smooth. */
+      case INTERP_MODE_NONE:
+      case INTERP_MODE_SMOOTH:
+         vs_data->num_f32_linear_varyings += outputs->components[u];
+         break;
 
-   return varyings;
+      case INTERP_MODE_FLAT:
+         vs_data->num_f32_flat_varyings += outputs->components[u];
+         break;
+
+      case INTERP_MODE_NOPERSPECTIVE:
+         vs_data->num_f32_npc_varyings += outputs->components[u];
+         break;
+
+      default:
+         unreachable("Unimplemented interpolation type.");
+      }
+   }
 }
 
 /**
@@ -253,7 +277,8 @@ static void reserve_vs_input(struct rogue_vertex_inputs *inputs,
  */
 static void reserve_vs_output(struct rogue_vertex_outputs *outputs,
                               unsigned i,
-                              unsigned components)
+                              unsigned components,
+                              enum glsl_interp_mode interp_mode)
 {
    assert(components >= 1 && components <= 4);
 
@@ -261,6 +286,7 @@ static void reserve_vs_output(struct rogue_vertex_outputs *outputs,
 
    outputs->base[i] = ~0;
    outputs->components[i] = components;
+   outputs->interp_modes[i] = interp_mode;
    ++outputs->num_output_vars;
 }
 
@@ -288,6 +314,7 @@ static void collect_io_data_vs(struct rogue_common_build_data *common_data,
 
    nir_foreach_shader_out_variable (var, nir) {
       unsigned components = glsl_get_components(var->type);
+      enum glsl_interp_mode interp_mode = var->data.interpolation;
 
       /* Check that outputs are F32. */
       /* TODO: Support other types. */
@@ -298,11 +325,11 @@ static void collect_io_data_vs(struct rogue_common_build_data *common_data,
          assert(components == 4);
          out_pos_present = true;
 
-         reserve_vs_output(&vs_data->outputs, 0, components);
+         reserve_vs_output(&vs_data->outputs, 0, components, interp_mode);
       } else if ((var->data.location >= VARYING_SLOT_VAR0) &&
                  (var->data.location <= VARYING_SLOT_VAR31)) {
          unsigned i = (var->data.location - VARYING_SLOT_VAR0) + 1;
-         reserve_vs_output(&vs_data->outputs, i, components);
+         reserve_vs_output(&vs_data->outputs, i, components, interp_mode);
       } else {
          unreachable("Unsupported vertex output type.");
       }
@@ -316,7 +343,7 @@ static void collect_io_data_vs(struct rogue_common_build_data *common_data,
    assert(vs_data->num_vertex_outputs <
           rogue_reg_infos[ROGUE_REG_CLASS_VTXOUT].num);
 
-   vs_data->num_varyings = count_vs_varyings(&vs_data->outputs);
+   count_vs_varyings(vs_data);
 }
 
 /**

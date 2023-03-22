@@ -1596,17 +1596,17 @@ pvr_vertex_state_init(struct pvr_graphics_pipeline *gfx_pipeline,
    pvr_csb_pack (&gfx_pipeline->shader_state.vertex.varying[0],
                  TA_STATE_VARYING0,
                  varying0) {
-      varying0.f32_linear = vs_data->num_varyings;
-      varying0.f32_flat = 0;
-      varying0.f32_npc = 0;
+      varying0.f32_linear = vs_data->num_f32_linear_varyings;
+      varying0.f32_flat = vs_data->num_f32_flat_varyings;
+      varying0.f32_npc = vs_data->num_f32_npc_varyings;
    }
 
    pvr_csb_pack (&gfx_pipeline->shader_state.vertex.varying[1],
                  TA_STATE_VARYING1,
                  varying1) {
-      varying1.f16_linear = 0;
-      varying1.f16_flat = 0;
-      varying1.f16_npc = 0;
+      varying1.f16_linear = vs_data->num_f16_linear_varyings;
+      varying1.f16_flat = vs_data->num_f16_flat_varyings;
+      varying1.f16_npc = vs_data->num_f16_npc_varyings;
    }
 }
 

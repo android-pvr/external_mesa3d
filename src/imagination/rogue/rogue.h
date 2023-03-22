@@ -3102,6 +3102,7 @@ typedef struct rogue_vertex_outputs {
    unsigned num_output_vars;
    unsigned base[ROGUE_MAX_IO_VARYING_VARS];
    unsigned components[ROGUE_MAX_IO_VARYING_VARS];
+   enum glsl_interp_mode interp_modes[ROGUE_MAX_IO_VARYING_VARS];
 } rogue_vertex_outputs;
 
 enum rogue_msaa_mode {
@@ -3133,7 +3134,13 @@ typedef struct rogue_build_data {
       rogue_vertex_outputs outputs;
       unsigned num_vertex_outputs; /* Final number of outputs. */
 
-      unsigned num_varyings; /* Final number of varyings. */
+      unsigned num_f32_npc_varyings; /* Number of f32 NPC varyings. */
+      unsigned num_f32_flat_varyings; /* Number of f32 flat varyings. */
+      unsigned num_f32_linear_varyings; /* Number of f32 linear varyings. */
+
+      unsigned num_f16_npc_varyings; /* Number of f16 NPC varyings. */
+      unsigned num_f16_flat_varyings; /* Number of f16 flat varyings. */
+      unsigned num_f16_linear_varyings; /* Number of f16 linear varyings. */
    } vs;
    struct rogue_comp_build_data {
       uint32_t local_id_regs[2];
