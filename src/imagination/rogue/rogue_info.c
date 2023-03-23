@@ -326,12 +326,11 @@ const rogue_backend_op_info rogue_backend_op_infos[ROGUE_BACKEND_OP_COUNT] = {
          [1] = T(VAL),
          [2] = T(REGARRAY),
       },
-      .dst_stride = {
-         [0] = ~0U,
-      },
       .src_stride = {
          [2] = 1,
       },
+      .valnum_src = 1,
+      .dst_valnum_mask = B(0),
    },
    /* .src[0] and .src[4] can actually be S0-5. */
    [ROGUE_BACKEND_OP_ST] = { .str = "st", .num_srcs = 6,
@@ -349,6 +348,8 @@ const rogue_backend_op_info rogue_backend_op_infos[ROGUE_BACKEND_OP_COUNT] = {
       .src_stride = {
          [4] = 1,
       },
+      .valnum_src = 3,
+      .src_valnum_mask = B(0),
    },
 	[ROGUE_BACKEND_OP_FITR_PIXEL] = { .str = "fitr.pixel", .num_dsts = 1, .num_srcs = 3,
       .phase_io = { .dst[0] = IO(S3), .src[1] = IO(S0), },
@@ -359,12 +360,12 @@ const rogue_backend_op_info rogue_backend_op_infos[ROGUE_BACKEND_OP_COUNT] = {
          [1] = T(REGARRAY),
          [2] = T(VAL),
       },
-      .dst_stride = {
-         [0] = ~0U,
-      },
       .src_stride = {
-         [1] = ~0U,
+         [1] = 3,
       },
+      .valnum_src = 2,
+      .dst_valnum_mask = B(0),
+      .src_valnum_mask = B(1),
    },
 	[ROGUE_BACKEND_OP_FITRP_PIXEL] = { .str = "fitrp.pixel", .num_dsts = 1, .num_srcs = 4,
       .phase_io = { .dst[0] = IO(S3), .src[1] = IO(S0), .src[2] = IO(S2), },
@@ -377,12 +378,12 @@ const rogue_backend_op_info rogue_backend_op_infos[ROGUE_BACKEND_OP_COUNT] = {
          [3] = T(VAL),
       },
       .src_stride = {
-         [1] = ~0U,
-         [2] = ~0U,
+         [1] = 3,
+         [2] = 3,
       },
-      .dst_stride = {
-         [0] = ~0U,
-      },
+      .valnum_src = 3,
+      .dst_valnum_mask = B(0),
+      .src_valnum_mask = B(1),
    },
 	[ROGUE_BACKEND_OP_SMP1D] = { .str = "smp1d", .num_dsts = 1, .num_srcs = 6,
       .phase_io = { .dst[0] = IO(S4), .src[1] = IO(S0), .src[2] = IO(S1), .src[3] = IO(S2), },
@@ -404,13 +405,12 @@ const rogue_backend_op_info rogue_backend_op_infos[ROGUE_BACKEND_OP_COUNT] = {
       /* TODO: This may depend on the other options set. */
       .src_stride = {
          [1] = 3,
-         [2] = ~0U,
+         [2] = 1,
          [3] = 3,
          [4] = 1,
       },
-      .dst_stride = {
-         [0] = ~0U,
-      },
+      .valnum_src = 5,
+      .dst_valnum_mask = B(0),
    },
 	[ROGUE_BACKEND_OP_SMP2D] = { .str = "smp2d", .num_dsts = 1, .num_srcs = 6,
       .phase_io = { .dst[0] = IO(S4), .src[1] = IO(S0), .src[2] = IO(S1), .src[3] = IO(S2), },
@@ -432,13 +432,12 @@ const rogue_backend_op_info rogue_backend_op_infos[ROGUE_BACKEND_OP_COUNT] = {
       /* TODO: This may depend on the other options set. */
       .src_stride = {
          [1] = 3,
-         [2] = ~0U,
+         [2] = 1,
          [3] = 3,
          [4] = 1,
       },
-      .dst_stride = {
-         [0] = ~0U,
-      },
+      .valnum_src = 5,
+      .dst_valnum_mask = B(0),
    },
 	[ROGUE_BACKEND_OP_SMP3D] = { .str = "smp3d", .num_dsts = 1, .num_srcs = 6,
       .phase_io = { .dst[0] = IO(S4), .src[1] = IO(S0), .src[2] = IO(S1), .src[3] = IO(S2), },
@@ -460,13 +459,12 @@ const rogue_backend_op_info rogue_backend_op_infos[ROGUE_BACKEND_OP_COUNT] = {
       /* TODO: This may depend on the other options set. */
       .src_stride = {
          [1] = 3,
-         [2] = ~0U,
+         [2] = 1,
          [3] = 3,
          [4] = 1,
       },
-      .dst_stride = {
-         [0] = ~0U,
-      },
+      .valnum_src = 5,
+      .dst_valnum_mask = B(0),
    },
 };
 #undef B
@@ -897,6 +895,7 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
          [0] = T(REGARRAY),
       },
       .src_repeat_mask = B(0),
+      .max_repeat = 4,
    },
    [ROGUE_ALU_OP_MOV] = { .str = "mov", .num_dsts = 1, .num_srcs = 1,
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },

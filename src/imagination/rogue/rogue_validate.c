@@ -154,7 +154,9 @@ static void validate_dst(rogue_validation_state *state,
                          unsigned i,
                          unsigned stride,
                          unsigned repeat,
-                         uint64_t repeat_mask)
+                         uint64_t repeat_mask,
+                         const rogue_ref *valnum,
+                         uint64_t dst_valnum_mask)
 {
    state->ctx.ref = &dst->ref;
    state->ctx.src = false;
@@ -168,8 +170,11 @@ static void validate_dst(rogue_validation_state *state,
 
    if (rogue_ref_is_reg_or_regarray(&dst->ref) && stride != ~0U) {
       unsigned dst_size = stride + 1;
-      if (repeat_mask & (1 << i))
+      if (repeat_mask & BITFIELD64_BIT(i))
          dst_size *= repeat;
+
+      if (dst_valnum_mask & BITFIELD64_BIT(i))
+         dst_size *= rogue_ref_get_val(valnum);
 
       if (rogue_ref_is_regarray(&dst->ref)) {
          if (rogue_ref_get_regarray_size(&dst->ref) != dst_size) {
@@ -192,7 +197,9 @@ static void validate_src(rogue_validation_state *state,
                          unsigned i,
                          unsigned stride,
                          unsigned repeat,
-                         uint64_t repeat_mask)
+                         uint64_t repeat_mask,
+                         const rogue_ref *valnum,
+                         uint64_t src_valnum_mask)
 {
    state->ctx.ref = &src->ref;
    state->ctx.src = true;
@@ -206,8 +213,11 @@ static void validate_src(rogue_validation_state *state,
 
    if (rogue_ref_is_reg_or_regarray(&src->ref) && stride != ~0U) {
       unsigned src_size = stride + 1;
-      if (repeat_mask & (1 << i))
+      if (repeat_mask & BITFIELD64_BIT(i))
          src_size *= repeat;
+
+      if (src_valnum_mask & BITFIELD64_BIT(i))
+         src_size *= rogue_ref_get_val(valnum);
 
       if (rogue_ref_is_regarray(&src->ref)) {
          if (rogue_ref_get_regarray_size(&src->ref) != src_size) {
@@ -262,6 +272,14 @@ static void validate_alu_instr(rogue_validation_state *state,
       validate_log(state, "Repeat set for ALU op without repeat support.");
    }
 
+   unsigned max_repeat = info->max_repeat ? info->max_repeat : 1;
+   if (alu->instr.repeat > max_repeat) {
+      validate_log(state,
+                   "Repeat %u set for ALU op with max repeat of %u.",
+                   alu->instr.repeat,
+                   info->max_repeat);
+   }
+
    /* Instruction grouping flag validation. */
    /* TODO: this won't catch cases where the previous instruction
     * has group_next set and the current instruction has whole_pipeline.
@@ -278,7 +296,9 @@ static void validate_alu_instr(rogue_validation_state *state,
                       i,
                       info->dst_stride[i],
                       alu->instr.repeat,
-                      info->dst_repeat_mask);
+                      info->dst_repeat_mask,
+                      &alu->src[info->valnum_src].ref,
+                      info->dst_valnum_mask);
       }
 
       for (unsigned i = 0; i < info->num_srcs; ++i) {
@@ -288,7 +308,9 @@ static void validate_alu_instr(rogue_validation_state *state,
                       i,
                       info->src_stride[i],
                       alu->instr.repeat,
-                      info->src_repeat_mask);
+                      info->src_repeat_mask,
+                      &alu->src[info->valnum_src].ref,
+                      info->src_valnum_mask);
       }
    }
 }
@@ -332,6 +354,14 @@ static void validate_backend_instr(rogue_validation_state *state,
       validate_log(state, "Repeat set for backend op without repeat support.");
    }
 
+   unsigned max_repeat = info->max_repeat ? info->max_repeat : 1;
+   if (backend->instr.repeat > max_repeat) {
+      validate_log(state,
+                   "Repeat %u set for backend op with max repeat of %u.",
+                   backend->instr.repeat,
+                   info->max_repeat);
+   }
+
    /* Validate destinations and sources for ungrouped shaders. */
    if (!state->shader->is_grouped) {
       for (unsigned i = 0; i < info->num_dsts; ++i) {
@@ -341,7 +371,9 @@ static void validate_backend_instr(rogue_validation_state *state,
                       i,
                       info->dst_stride[i],
                       backend->instr.repeat,
-                      info->dst_repeat_mask);
+                      info->dst_repeat_mask,
+                      &backend->src[info->valnum_src].ref,
+                      info->dst_valnum_mask);
       }
 
       for (unsigned i = 0; i < info->num_srcs; ++i) {
@@ -351,7 +383,9 @@ static void validate_backend_instr(rogue_validation_state *state,
                       i,
                       info->src_stride[i],
                       backend->instr.repeat,
-                      info->src_repeat_mask);
+                      info->src_repeat_mask,
+                      &backend->src[info->valnum_src].ref,
+                      info->src_valnum_mask);
       }
    }
 }
@@ -402,6 +436,14 @@ static bool validate_ctrl_instr(rogue_validation_state *state,
       validate_log(state, "Repeat set for CTRL op without repeat support.");
    }
 
+   unsigned max_repeat = info->max_repeat ? info->max_repeat : 1;
+   if (ctrl->instr.repeat > max_repeat) {
+      validate_log(state,
+                   "Repeat %u set for CTRL op with max repeat of %u.",
+                   ctrl->instr.repeat,
+                   info->max_repeat);
+   }
+
    /* Validate destinations and sources for ungrouped shaders. */
    if (!state->shader->is_grouped) {
       for (unsigned i = 0; i < info->num_dsts; ++i) {
@@ -411,7 +453,9 @@ static bool validate_ctrl_instr(rogue_validation_state *state,
                       i,
                       info->dst_stride[i],
                       ctrl->instr.repeat,
-                      info->dst_repeat_mask);
+                      info->dst_repeat_mask,
+                      &ctrl->src[info->valnum_src].ref,
+                      info->dst_valnum_mask);
       }
 
       for (unsigned i = 0; i < info->num_srcs; ++i) {
@@ -421,7 +465,9 @@ static bool validate_ctrl_instr(rogue_validation_state *state,
                       i,
                       info->src_stride[i],
                       ctrl->instr.repeat,
-                      info->src_repeat_mask);
+                      info->src_repeat_mask,
+                      &ctrl->src[info->valnum_src].ref,
+                      info->src_valnum_mask);
       }
    }
 
@@ -475,6 +521,14 @@ static void validate_bitwise_instr(rogue_validation_state *state,
       validate_log(state, "Repeat set for bitwise op without repeat support.");
    }
 
+   unsigned max_repeat = info->max_repeat ? info->max_repeat : 1;
+   if (bitwise->instr.repeat > max_repeat) {
+      validate_log(state,
+                   "Repeat %u set for bitwise op with max repeat of %u.",
+                   bitwise->instr.repeat,
+                   info->max_repeat);
+   }
+
    /* Validate destinations and sources for ungrouped shaders. */
    if (!state->shader->is_grouped) {
       for (unsigned i = 0; i < info->num_dsts; ++i) {
@@ -484,7 +538,9 @@ static void validate_bitwise_instr(rogue_validation_state *state,
                       i,
                       info->dst_stride[i],
                       bitwise->instr.repeat,
-                      info->dst_repeat_mask);
+                      info->dst_repeat_mask,
+                      &bitwise->src[info->valnum_src].ref,
+                      info->dst_valnum_mask);
       }
 
       for (unsigned i = 0; i < info->num_srcs; ++i) {
@@ -494,7 +550,9 @@ static void validate_bitwise_instr(rogue_validation_state *state,
                       i,
                       info->src_stride[i],
                       bitwise->instr.repeat,
-                      info->src_repeat_mask);
+                      info->src_repeat_mask,
+                      &bitwise->src[info->valnum_src].ref,
+                      info->src_valnum_mask);
       }
    }
 }
