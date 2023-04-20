@@ -113,9 +113,6 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
    NIR_PASS_V(nir, nir_lower_global_vars_to_local);
    NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_function_temp, NULL);
 
-   /* Lower load_consts to scalars. */
-   NIR_PASS_V(nir, nir_lower_load_const_to_scalar);
-
    NIR_PASS_V(nir, nir_lower_var_copies);
 
    NIR_PASS_V(nir, nir_opt_constant_folding);
@@ -144,6 +141,9 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
 
    /* Load outputs to scalars (single registers later). */
    NIR_PASS_V(nir, nir_lower_io_to_scalar, nir_var_shader_out);
+
+   /* Lower load_consts to scalars. */
+   NIR_PASS_V(nir, nir_lower_load_const_to_scalar);
 
    /* Lower ALU operations to scalars. */
    NIR_PASS_V(nir, nir_lower_alu_to_scalar, NULL, NULL);
