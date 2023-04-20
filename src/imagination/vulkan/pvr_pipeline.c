@@ -1220,14 +1220,20 @@ static VkResult pvr_compute_pipeline_compile(
    struct pvr_pipeline_layout *layout = compute_pipeline->base.layout;
    struct pvr_sh_reg_layout *sh_reg_layout =
       &layout->sh_reg_layout_per_stage[PVR_STAGE_ALLOCATION_COMPUTE];
-   struct rogue_compile_time_consts_data compile_time_consts_data;
-   uint32_t work_group_input_regs[PVR_WORKGROUP_DIMENSIONS];
+   struct rogue_compile_time_consts_data compile_time_consts_data = { 0 };
+   struct rogue_compiler *compiler = device->pdevice->compiler;
+   uint32_t work_group_input_regs[PVR_WORKGROUP_DIMENSIONS] = { 0 };
    struct pvr_explicit_constant_usage explicit_const_usage;
-   uint32_t local_input_regs[PVR_WORKGROUP_DIMENSIONS];
+   uint32_t local_input_regs[PVR_WORKGROUP_DIMENSIONS] = { 0 };
    struct rogue_ubo_data ubo_data;
-   uint32_t barrier_coefficient;
+   uint32_t barrier_coefficient = 0;
+   struct rogue_build_ctx *ctx;
    uint32_t usc_temps;
    VkResult result;
+
+   ctx = rogue_build_context_create(compiler, layout);
+   if (!ctx)
+      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
    if (pvr_has_hard_coded_shaders(&device->pdevice->dev_info)) {
       struct pvr_hard_code_compute_build_info build_info;
@@ -1265,7 +1271,16 @@ static VkResult pvr_compute_pipeline_compile(
       explicit_const_usage = build_info.explicit_conts_usage;
 
    } else {
+      const uint32_t cache_line_size =
+         rogue_get_slc_cache_line_size(&device->pdevice->dev_info);
+      gl_shader_stage stage = MESA_SHADER_COMPUTE;
+      UNUSED struct rogue_comp_build_data *comp_data;
+      rogue_common_build_data *common_data;
       uint32_t sh_count;
+
+      comp_data = &ctx->stage_data.comp;
+      common_data = &ctx->common_data[stage];
+
       sh_count = pvr_pipeline_alloc_shareds(device,
                                             layout,
                                             PVR_STAGE_ALLOCATION_COMPUTE,
@@ -1273,10 +1288,42 @@ static VkResult pvr_compute_pipeline_compile(
 
       compute_pipeline->shader_state.const_shared_reg_count = sh_count;
 
-      /* FIXME: Compile and upload the shader. */
-      /* FIXME: Initialize the shader state and setup build info. */
-      abort();
-   };
+      /* NIR middle-end translation. */
+      ctx->nir[stage] = pvr_spirv_to_nir(ctx, stage, &pCreateInfo->stage);
+      if (!ctx->nir[stage]) {
+         result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+         goto err_free_build_context;
+      }
+
+      /* TODO: (Placeholder) local invocation (ID) regs, workgroup regs,
+       * and barrier reg should be provided from the driver to the compiler
+       * (via comp_data).
+       */
+
+      /* Back-end translation. */
+      ctx->rogue[stage] = pvr_nir_to_rogue(ctx, ctx->nir[stage]);
+      if (!ctx->rogue[stage]) {
+         result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+         goto err_free_build_context;
+      }
+
+      pvr_rogue_to_binary(ctx, ctx->rogue[stage], &ctx->binary[stage]);
+      if (!ctx->binary[stage].size) {
+         result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+         goto err_free_build_context;
+      }
+
+      result = pvr_gpu_upload_usc(device,
+                                  util_dynarray_begin(&ctx->binary[stage]),
+                                  ctx->binary[stage].size,
+                                  cache_line_size,
+                                  &compute_pipeline->shader_state.bo);
+      if (result != VK_SUCCESS)
+         goto err_free_shader;
+
+      ubo_data = common_data->ubo_data;
+      usc_temps = common_data->temps;
+   }
 
    result = pvr_pds_descriptor_program_create_and_upload(
       device,
@@ -1326,6 +1373,8 @@ static VkResult pvr_compute_pipeline_compile(
          goto err_destroy_compute_program;
    }
 
+   ralloc_free(ctx);
+
    return VK_SUCCESS;
 
 err_destroy_compute_program:
@@ -1341,6 +1390,9 @@ err_free_descriptor_program:
 
 err_free_shader:
    pvr_bo_suballoc_free(compute_pipeline->shader_state.bo);
+
+err_free_build_context:
+   ralloc_free(ctx);
 
    return result;
 }

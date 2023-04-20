@@ -3117,6 +3117,11 @@ typedef struct rogue_build_data {
 
       unsigned num_varyings; /* Final number of varyings. */
    } vs;
+   struct rogue_comp_build_data {
+      uint32_t local_id_regs[2];
+      uint32_t workgroup_regs[3];
+      uint32_t barrier_reg;
+   } comp;
 } rogue_build_data;
 
 /**
@@ -3126,11 +3131,11 @@ typedef struct rogue_build_ctx {
    rogue_compiler *compiler;
 
    /* Shaders in various stages of compilations. */
-   nir_shader *nir[MESA_SHADER_FRAGMENT + 1];
-   rogue_shader *rogue[MESA_SHADER_FRAGMENT + 1];
-   struct util_dynarray binary[MESA_SHADER_FRAGMENT + 1];
+   nir_shader *nir[MESA_SHADER_COMPUTE + 1];
+   rogue_shader *rogue[MESA_SHADER_COMPUTE + 1];
+   struct util_dynarray binary[MESA_SHADER_COMPUTE + 1];
 
-   rogue_common_build_data common_data[MESA_SHADER_FRAGMENT + 1];
+   rogue_common_build_data common_data[MESA_SHADER_COMPUTE + 1];
    rogue_build_data stage_data;
    struct pvr_pipeline_layout *pipeline_layout;
    unsigned next_ssa_idx;

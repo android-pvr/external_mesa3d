@@ -212,6 +212,9 @@ nir_shader *rogue_spirv_to_nir(rogue_build_ctx *ctx,
 {
    nir_shader *nir;
 
+   if (stage != MESA_SHADER_VERTEX && stage != MESA_SHADER_FRAGMENT)
+      return NULL;
+
    nir = spirv_to_nir(spirv_data,
                       spirv_size,
                       spec,
