@@ -129,6 +129,25 @@ pvr_pdsinst_doutu_sample_rate_from_rogue(enum rogue_msaa_mode msaa_mode)
    }
 }
 
+/* clang-format off */
+static inline enum PVRX(PDSINST_DOUTI_SIZE)
+pvr_pdsinst_douti_size(uint32_t size)
+/* clang-format on */
+{
+   switch (size) {
+   case 1:
+      return PVRX(PDSINST_DOUTI_SIZE_1D);
+   case 2:
+      return PVRX(PDSINST_DOUTI_SIZE_2D);
+   case 3:
+      return PVRX(PDSINST_DOUTI_SIZE_3D);
+   case 4:
+      return PVRX(PDSINST_DOUTI_SIZE_4D);
+   default:
+      unreachable("Unsupported DOUTI size.");
+   }
+}
+
 /******************************************************************************
    PBESTATE
  ******************************************************************************/

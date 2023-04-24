@@ -1951,16 +1951,16 @@ static void pvr_graphics_pipeline_alloc_vertex_special_vars(
  * \param[in] args The iterator argument data.
  * \return The total number of coefficient registers required by the iterators.
  */
-static unsigned alloc_iterator_regs(struct rogue_iterator_args *args)
+static unsigned pvr_alloc_iterator_regs(struct rogue_iterator_args *args)
 {
    unsigned coeffs = 0;
 
-   for (unsigned u = 0; u < args->num_fpu_iterators; ++u) {
+   for (unsigned i = 0; i < args->num_fpu_iterators; i++) {
       /* Ensure there aren't any gaps. */
-      assert(args->base[u] == ~0);
+      assert(args->base[i] == ~0);
 
-      args->base[u] = coeffs;
-      coeffs += ROGUE_COEFF_ALIGN * args->components[u];
+      args->base[i] = coeffs;
+      coeffs += ROGUE_COEFF_ALIGN * args->components[i];
    }
 
    return coeffs;
@@ -1971,69 +1971,68 @@ static unsigned alloc_iterator_regs(struct rogue_iterator_args *args)
  * and calculates its setup data.
  *
  * \param[in] args The iterator argument data.
- * \param[in] i The iterator index.
+ * \param[in] idx The iterator index.
  * \param[in] type The interpolation type of the varying.
  * \param[in] f16 Whether the data type is F16 or F32.
  * \param[in] components The number of components in the varying.
  */
-static void reserve_iterator(struct rogue_iterator_args *args,
-                             unsigned i,
-                             enum glsl_interp_mode type,
-                             bool f16,
-                             unsigned components)
+static void pvr_reserve_iterator(struct rogue_iterator_args *args,
+                                 unsigned idx,
+                                 enum glsl_interp_mode type,
+                                 bool f16,
+                                 unsigned components)
 {
-   struct ROGUE_PDSINST_DOUT_FIELDS_DOUTI_SRC data = { 0 };
-
    assert(components >= 1 && components <= 4);
 
    /* The first iterator (W) *must* be INTERP_MODE_NOPERSPECTIVE. */
-   assert(i > 0 || type == INTERP_MODE_NOPERSPECTIVE);
-   assert(i < ARRAY_SIZE(args->fpu_iterators));
+   assert(idx > 0 || type == INTERP_MODE_NOPERSPECTIVE);
+   assert(idx < ARRAY_SIZE(args->fpu_iterators));
 
-   switch (type) {
-   /* Default interpolation is smooth. */
-   case INTERP_MODE_NONE:
-   case INTERP_MODE_SMOOTH:
-      data.shademodel = ROGUE_PDSINST_DOUTI_SHADEMODEL_GOURUAD;
-      data.perspective = true;
-      break;
+   pvr_csb_pack (&args->fpu_iterators[idx],
+                 PDSINST_DOUT_FIELDS_DOUTI_SRC,
+                 douti_src) {
+      switch (type) {
+      /* Default interpolation is smooth. */
+      case INTERP_MODE_NONE:
+      case INTERP_MODE_SMOOTH:
+         douti_src.shademodel = PVRX(PDSINST_DOUTI_SHADEMODEL_GOURUAD);
+         douti_src.perspective = true;
+         break;
 
-   case INTERP_MODE_FLAT:
-      /* TODO: properly choose the provoking vertex. */
-      data.shademodel = ROGUE_PDSINST_DOUTI_SHADEMODEL_FLAT_VERTEX0;
-      data.perspective = false;
-      break;
+      case INTERP_MODE_FLAT:
+         /* TODO: properly choose the provoking vertex. */
+         douti_src.shademodel = PVRX(PDSINST_DOUTI_SHADEMODEL_FLAT_VERTEX0);
+         douti_src.perspective = false;
+         break;
 
-   case INTERP_MODE_NOPERSPECTIVE:
-      data.shademodel = ROGUE_PDSINST_DOUTI_SHADEMODEL_GOURUAD;
-      data.perspective = false;
-      break;
+      case INTERP_MODE_NOPERSPECTIVE:
+         douti_src.shademodel = PVRX(PDSINST_DOUTI_SHADEMODEL_GOURUAD);
+         douti_src.perspective = false;
+         break;
 
-   default:
-      unreachable("Unimplemented interpolation type.");
+      default:
+         unreachable("Unimplemented interpolation type.");
+      }
+
+      douti_src.size = pvr_pdsinst_douti_size(components);
+
+      /* TODO: F16 support. */
+      assert(!f16);
+
+      if (f16) {
+         douti_src.f16 = 1;
+         /* data.f16_offset = idx + num_f32_varyings; */
+      } else {
+         douti_src.f16_offset = idx * 2;
+      }
+
+      douti_src.f32_offset = idx * 2;
    }
 
-   /* Number of components in this varying
-    * (corresponds to ROGUE_PDSINST_DOUTI_SIZE_1..4D).
-    */
-   data.size = (components - 1);
-
-   /* TODO: F16 support. */
-   assert(!f16);
-
-   if (f16) {
-      data.f16 = 1;
-      /* data.f16_offset = i + num_f32_varyings; */
-   } else {
-      data.f16_offset = i * 2;
-   }
-   data.f32_offset = i * 2;
-
-   ROGUE_PDSINST_DOUT_FIELDS_DOUTI_SRC_pack(&args->fpu_iterators[i], &data);
-   args->destination[i] = i;
-   args->base[i] = ~0;
-   args->components[i] = components;
-   ++args->num_fpu_iterators;
+   args->destination[idx] = idx;
+   args->base[idx] = ~0;
+   args->components[idx] = components;
+   args->num_fpu_iterators += 1;
 }
 
 static inline unsigned nir_count_variables_with_modes(const nir_shader *nir,
@@ -2042,53 +2041,57 @@ static inline unsigned nir_count_variables_with_modes(const nir_shader *nir,
    unsigned count = 0;
 
    nir_foreach_variable_with_modes (var, nir, mode) {
-      ++count;
+      count++;
    }
 
    return count;
 }
 
 /**
- * \brief Collects the fragment shader I/O data to feed-back to the driver.
+ * \brief Collects the fragment shader I/O data.
  *
- * \sa #collect_io_data()
+ * \sa #pvr_collect_io_data()
  *
  * \param[in] common_data Common build data.
  * \param[in] fs_data Fragment-specific build data.
  * \param[in] nir NIR fragment shader.
  */
-static void collect_io_data_fs(struct rogue_common_build_data *common_data,
-                               struct rogue_fs_build_data *fs_data,
-                               nir_shader *nir)
+static void pvr_collect_io_data_fs(struct rogue_common_build_data *common_data,
+                                   struct rogue_fs_build_data *fs_data,
+                                   nir_shader *nir)
 {
    unsigned num_inputs = nir_count_variables_with_modes(nir, nir_var_shader_in);
    assert(num_inputs < (ARRAY_SIZE(fs_data->iterator_args.fpu_iterators) - 1));
 
    /* Process inputs (if present). */
    if (num_inputs) {
-      /* If the fragment shader has inputs, the first iterator
-       * must be used for the W component.
+      /* If the fragment shader has inputs, the first iterator must be used for
+       * the W component.
        */
-      reserve_iterator(&fs_data->iterator_args,
-                       0,
-                       INTERP_MODE_NOPERSPECTIVE,
-                       false,
-                       1);
+      pvr_reserve_iterator(&fs_data->iterator_args,
+                           0,
+                           INTERP_MODE_NOPERSPECTIVE,
+                           false,
+                           1);
 
       nir_foreach_shader_in_variable (var, nir) {
-         unsigned i = (var->data.location - VARYING_SLOT_VAR0) + 1;
-         unsigned components = glsl_get_components(var->type);
-         enum glsl_interp_mode interp = var->data.interpolation;
-         bool f16 = glsl_type_is_16bit(var->type);
+         const unsigned idx = (var->data.location - VARYING_SLOT_VAR0) + 1;
+         const unsigned components = glsl_get_components(var->type);
+         const enum glsl_interp_mode interp = var->data.interpolation;
+         const bool f16 = glsl_type_is_16bit(var->type);
 
          /* Check input location. */
          assert(var->data.location >= VARYING_SLOT_VAR0 &&
                 var->data.location <= VARYING_SLOT_VAR31);
 
-         reserve_iterator(&fs_data->iterator_args, i, interp, f16, components);
+         pvr_reserve_iterator(&fs_data->iterator_args,
+                              idx,
+                              interp,
+                              f16,
+                              components);
       }
 
-      common_data->coeffs = alloc_iterator_regs(&fs_data->iterator_args);
+      common_data->coeffs = pvr_alloc_iterator_regs(&fs_data->iterator_args);
       assert(common_data->coeffs);
       /* TODO: This causes linking errors since the regs are setup in the
        * compiler stuff. See if there is a better way of re-enabling this check.
@@ -2106,16 +2109,16 @@ static void collect_io_data_fs(struct rogue_common_build_data *common_data,
  * \param[in] outputs The vertex shader output data.
  * \return The total number of vertex outputs required.
  */
-static unsigned alloc_vs_outputs(struct rogue_vertex_outputs *outputs)
+static unsigned pvr_alloc_vs_outputs(struct rogue_vertex_outputs *outputs)
 {
    unsigned vs_outputs = 0;
 
-   for (unsigned u = 0; u < outputs->num_output_vars; ++u) {
+   for (unsigned i = 0; i < outputs->num_output_vars; i++) {
       /* Ensure there aren't any gaps. */
-      assert(outputs->base[u] == ~0);
+      assert(outputs->base[i] == ~0);
 
-      outputs->base[u] = vs_outputs;
-      vs_outputs += outputs->components[u];
+      outputs->base[i] = vs_outputs;
+      vs_outputs += outputs->components[i];
    }
 
    return vs_outputs;
@@ -2127,27 +2130,27 @@ static unsigned alloc_vs_outputs(struct rogue_vertex_outputs *outputs)
  * \param[in] outputs The vertex shader output data.
  * \return The number of varyings used.
  */
-static void count_vs_varyings(struct rogue_vs_build_data *vs_data)
+static void pvr_count_vs_varyings(struct rogue_vs_build_data *vs_data)
 {
-   struct rogue_vertex_outputs *outputs = &vs_data->outputs;
+   const struct rogue_vertex_outputs *outputs = &vs_data->outputs;
 
    /* TODO: F16 support. */
 
    /* Skip the position. */
-   for (unsigned u = 1; u < outputs->num_output_vars; ++u) {
-      switch (outputs->interp_modes[u]) {
+   for (unsigned i = 1; i < outputs->num_output_vars; i++) {
+      switch (outputs->interp_modes[i]) {
       /* Default interpolation is smooth. */
       case INTERP_MODE_NONE:
       case INTERP_MODE_SMOOTH:
-         vs_data->num_f32_linear_varyings += outputs->components[u];
+         vs_data->num_f32_linear_varyings += outputs->components[i];
          break;
 
       case INTERP_MODE_FLAT:
-         vs_data->num_f32_flat_varyings += outputs->components[u];
+         vs_data->num_f32_flat_varyings += outputs->components[i];
          break;
 
       case INTERP_MODE_NOPERSPECTIVE:
-         vs_data->num_f32_npc_varyings += outputs->components[u];
+         vs_data->num_f32_npc_varyings += outputs->components[i];
          break;
 
       default:
@@ -2173,47 +2176,47 @@ static void reserve_vs_input(struct rogue_vertex_inputs *inputs,
 
    inputs->base[i] = ~0;
    inputs->components[i] = components;
-   ++inputs->num_input_vars;
+   inputs->num_input_vars++;
 }
 
 /**
  * \brief Reserves space for a vertex shader output.
  *
  * \param[in] outputs The vertex output data.
- * \param[in] i The vertex output index.
+ * \param[in] idx The vertex output index.
  * \param[in] components The number of components in the output.
  */
-static void reserve_vs_output(struct rogue_vertex_outputs *outputs,
-                              unsigned i,
-                              unsigned components,
-                              enum glsl_interp_mode interp_mode)
+static void pvr_reserve_vs_output(struct rogue_vertex_outputs *outputs,
+                                  unsigned idx,
+                                  unsigned components,
+                                  enum glsl_interp_mode interp_mode)
 {
    assert(components >= 1 && components <= 4);
 
-   assert(i < ARRAY_SIZE(outputs->base));
+   assert(idx < ARRAY_SIZE(outputs->base));
 
-   outputs->base[i] = ~0;
-   outputs->components[i] = components;
-   outputs->interp_modes[i] = interp_mode;
-   ++outputs->num_output_vars;
+   outputs->base[idx] = ~0;
+   outputs->components[idx] = components;
+   outputs->interp_modes[idx] = interp_mode;
+   outputs->num_output_vars++;
 }
 
 /**
  * \brief Collects the vertex shader I/O data to feed-back to the driver.
  *
- * \sa #collect_io_data()
+ * \sa #pvr_collect_io_data()
  *
  * \param[in] common_data Common build data.
  * \param[in] vs_data Vertex-specific build data.
  * \param[in] nir NIR vertex shader.
  */
-static void collect_io_data_vs(struct rogue_common_build_data *common_data,
-                               struct rogue_vs_build_data *vs_data,
-                               nir_shader *nir)
+static void pvr_collect_io_data_vs(struct rogue_common_build_data *common_data,
+                                   struct rogue_vs_build_data *vs_data,
+                                   nir_shader *nir)
 {
-   ASSERTED bool out_pos_present = false;
    ASSERTED unsigned num_outputs =
       nir_count_variables_with_modes(nir, nir_var_shader_out);
+   ASSERTED bool out_pos_present = false;
 
    /* Process outputs. */
 
@@ -2233,11 +2236,12 @@ static void collect_io_data_vs(struct rogue_common_build_data *common_data,
          assert(components == 4);
          out_pos_present = true;
 
-         reserve_vs_output(&vs_data->outputs, 0, components, interp_mode);
+         pvr_reserve_vs_output(&vs_data->outputs, 0, components, interp_mode);
       } else if ((var->data.location >= VARYING_SLOT_VAR0) &&
                  (var->data.location <= VARYING_SLOT_VAR31)) {
-         unsigned i = (var->data.location - VARYING_SLOT_VAR0) + 1;
-         reserve_vs_output(&vs_data->outputs, i, components, interp_mode);
+         /* The first one is reserved for the position output. */
+         unsigned idx = (var->data.location - VARYING_SLOT_VAR0) + 1;
+         pvr_reserve_vs_output(&vs_data->outputs, idx, components, interp_mode);
       } else {
          unreachable("Unsupported vertex output type.");
       }
@@ -2246,7 +2250,7 @@ static void collect_io_data_vs(struct rogue_common_build_data *common_data,
    /* Always need the output position to be present. */
    assert(out_pos_present);
 
-   vs_data->num_vertex_outputs = alloc_vs_outputs(&vs_data->outputs);
+   vs_data->num_vertex_outputs = pvr_alloc_vs_outputs(&vs_data->outputs);
    assert(vs_data->num_vertex_outputs);
    /* TODO: This causes linking errors since the regs are setup in the compiler
     * stuff. See if there is a better way of re-enabling this check.
@@ -2254,22 +2258,21 @@ static void collect_io_data_vs(struct rogue_common_build_data *common_data,
     *        rogue_reg_infos[ROGUE_REG_CLASS_VTXOUT].num);
     */
 
-   count_vs_varyings(vs_data);
+   pvr_count_vs_varyings(vs_data);
 }
 
 /**
- * \brief Collects I/O data to feed-back to the driver.
+ * \brief Collects I/O data.
  *
- * Collects the inputs/outputs/memory required, and feeds that back to the
- * driver. Done at this stage rather than at the start of rogue_to_binary, so
- * that all the I/O of all the shader stages is known before backend
- * compilation, which would let us do things like cull unused inputs.
+ * Collects the inputs/outputs/memory required. Done at this stage rather than
+ * at the start of rogue_to_binary, so that all the I/O of all the shader stages
+ * is known before backend compilation, which would let us do things like cull
+ * unused inputs.
  *
  * \param[in] ctx Shared multi-stage build context.
  * \param[in] nir NIR shader.
  */
-PUBLIC
-void rogue_collect_io_data(struct rogue_build_ctx *ctx, nir_shader *nir)
+static void pvr_collect_io_data(struct rogue_build_ctx *ctx, nir_shader *nir)
 {
    gl_shader_stage stage = nir->info.stage;
    struct rogue_common_build_data *common_data = &ctx->common_data[stage];
@@ -2277,16 +2280,14 @@ void rogue_collect_io_data(struct rogue_build_ctx *ctx, nir_shader *nir)
    /* Collect stage-specific data. */
    switch (stage) {
    case MESA_SHADER_FRAGMENT:
-      return collect_io_data_fs(common_data, &ctx->stage_data.fs, nir);
+      return pvr_collect_io_data_fs(common_data, &ctx->stage_data.fs, nir);
 
    case MESA_SHADER_VERTEX:
-      return collect_io_data_vs(common_data, &ctx->stage_data.vs, nir);
+      return pvr_collect_io_data_vs(common_data, &ctx->stage_data.vs, nir);
 
    default:
-      break;
+      unreachable("Unsupported stage.");
    }
-
-   unreachable("Unsupported stage.");
 }
 
 /* Compiles and uploads shaders and PDS programs. */
@@ -2390,7 +2391,7 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
       }
 
       /* Collect I/O data to pass back to the driver. */
-      rogue_collect_io_data(ctx, ctx->nir[stage]);
+      pvr_collect_io_data(ctx, ctx->nir[stage]);
    }
 
    /* Pre-back-end analysis and optimization, driver data extraction. */
