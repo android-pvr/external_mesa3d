@@ -317,8 +317,5 @@ nir_shader *rogue_spirv_to_nir(rogue_build_ctx *ctx,
    /* Apply passes. */
    rogue_nir_passes(ctx, nir, stage);
 
-   /* Collect I/O data to pass back to the driver. */
-   rogue_collect_io_data(ctx, nir);
-
    return nir;
 }
