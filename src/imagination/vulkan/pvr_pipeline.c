@@ -1652,6 +1652,12 @@ static bool pvr_blend_factor_requires_consts(VkBlendFactor factor)
    }
 }
 
+/** \defgroup Graphics pipeline register allocation.
+ * Functions covering shared, coefficient, and vertex input register allocation
+ * setting up appropriate info to be passed into the compiler.
+ * @{
+ */
+
 /**
  * \brief Indicates whether dynamic blend constants are needed.
  *
@@ -2289,6 +2295,9 @@ static void pvr_collect_io_data(struct rogue_build_ctx *ctx, nir_shader *nir)
       unreachable("Unsupported stage.");
    }
 }
+
+/** @} */
+/* End of \defgroup Graphics pipeline register allocation. */
 
 /* Compiles and uploads shaders and PDS programs. */
 static VkResult
