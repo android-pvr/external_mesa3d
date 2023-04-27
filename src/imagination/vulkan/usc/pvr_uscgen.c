@@ -66,7 +66,7 @@ void pvr_uscgen_eot(const char *name,
    assert(emitpix);
 
    rogue_set_backend_op_mod(emitpix, ROGUE_BACKEND_OP_MOD_FREEP);
-   emitpix->instr.end = true;
+   rogue_END(&b);
 
    rogue_shader_passes(shader);
    rogue_encode_shader(NULL, shader, binary);
@@ -81,7 +81,7 @@ void pvr_uscgen_passthrough_vtx(struct util_dynarray *binary, bool rta)
    rogue_builder b;
    rogue_reg *dst;
    rogue_reg *src;
-   rogue_shader *shader = rogue_shader_create(NULL, MESA_SHADER_NONE);
+   rogue_shader *shader = rogue_shader_create(NULL, MESA_SHADER_VERTEX);
    rogue_set_shader_name(shader,
                          rta ? "passthrough vertex (RTA)"
                              : "passthrough vertex");

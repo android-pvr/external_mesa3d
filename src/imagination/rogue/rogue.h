@@ -439,12 +439,6 @@ typedef struct rogue_instr {
    char *comment; /** Comment string. */
 } rogue_instr;
 
-static inline void rogue_set_instr_group_next(rogue_instr *instr,
-                                              bool group_next)
-{
-   instr->group_next = group_next;
-}
-
 #define rogue_foreach_instr_in_block(instr, block) \
    list_for_each_entry (rogue_instr, instr, &(block)->instrs, link)
 
@@ -473,6 +467,28 @@ static inline void rogue_set_instr_group_next(rogue_instr *instr,
    rogue_foreach_block_safe_rev (_block, (shader))            \
       rogue_foreach_instr_in_block_safe_rev ((instr), _block)
 
+static inline rogue_instr *rogue_instr_next(rogue_instr *instr)
+{
+   struct list_head *list = &instr->link;
+   bool first = instr->link.next == &instr->block->instrs;
+
+   if (first)
+      return NULL;
+
+   return list_entry(list->next, rogue_instr, link);
+}
+
+static inline rogue_instr *rogue_instr_prev(rogue_instr *instr)
+{
+   struct list_head *list = &instr->link;
+   bool first = instr->link.prev == &instr->block->instrs;
+
+   if (first)
+      return NULL;
+
+   return list_entry(list->prev, rogue_instr, link);
+}
+
 static inline void rogue_set_instr_exec_cond(rogue_instr *instr,
                                              enum rogue_exec_cond exec_cond)
 {
@@ -482,6 +498,17 @@ static inline void rogue_set_instr_exec_cond(rogue_instr *instr,
 static inline void rogue_set_instr_repeat(rogue_instr *instr, unsigned repeat)
 {
    instr->repeat = repeat;
+}
+
+static inline void rogue_set_instr_end(rogue_instr *instr, bool end)
+{
+   instr->end = end;
+}
+
+static inline void rogue_set_instr_group_next(rogue_instr *instr,
+                                              bool group_next)
+{
+   instr->group_next = group_next;
 }
 
 static inline void rogue_add_instr_comment(rogue_instr *instr,
@@ -2231,7 +2258,7 @@ rogue_block *rogue_block_create(rogue_shader *shader, const char *label);
  * will return the block that said instruction is a part of.
  *
  * \param[in] cursor A cursor.
- * \return The the block being pointed to.
+ * \return The block being pointed to.
  */
 static inline rogue_block *rogue_cursor_block(rogue_cursor cursor)
 {
@@ -2714,6 +2741,9 @@ static inline bool rogue_instr_is_nop_end(const rogue_instr *instr)
       return false;
 
    const rogue_ctrl_instr *ctrl = rogue_instr_as_ctrl(instr);
+
+   if (ctrl->op == ROGUE_CTRL_OP_END)
+      return true;
 
    if (ctrl->op != ROGUE_CTRL_OP_NOP)
       return false;

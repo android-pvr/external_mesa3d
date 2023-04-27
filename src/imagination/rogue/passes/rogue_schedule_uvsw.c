@@ -42,11 +42,6 @@ bool rogue_schedule_uvsw(rogue_shader *shader, bool latency_hiding)
    if (shader->is_grouped)
       return false;
 
-   /* TODO: Support for other shader types that write to the unified vertex
-    * store. */
-   if (shader->stage != MESA_SHADER_VERTEX)
-      return false;
-
    /* TODO: Add support for delayed scheduling (latency hiding). */
    if (latency_hiding)
       unreachable("Latency hiding is unimplemented.");
@@ -80,16 +75,21 @@ bool rogue_schedule_uvsw(rogue_shader *shader, bool latency_hiding)
    if (!rogue_instr_is_nop_end(final_instr))
       unreachable("UVSW emit/end task need to be the final instruction.");
 
+   rogue_instr *prev = rogue_instr_prev(final_instr);
+   if (prev->type == ROGUE_INSTR_TYPE_BACKEND) {
+      rogue_backend_instr *backend = rogue_instr_as_backend(prev);
+      if (backend->op == ROGUE_BACKEND_OP_UVSW_WRITE) {
+         b.cursor = rogue_cursor_before_instr(prev);
+         rogue_UVSW_WRITETHENEMITTHENENDTASK(&b,
+                                             backend->dst[0].ref,
+                                             backend->src[0].ref);
+         rogue_instr_delete(prev);
+         return true;
+      }
+   }
+
    b.cursor = rogue_cursor_before_instr(final_instr);
-
-   /* TODO: If instruction before nop.end is uvsw.write then
-    * UVSW_WRITETHENEMITTHENENDTASK. */
-
-   rogue_UVSW_EMIT(&b);
-   rogue_UVSW_ENDTASK(&b);
-
-   /* TODO: replace nop.end and add end flag to final uvsw instruction instead.
-    */
+   rogue_UVSW_EMITTHENENDTASK(&b);
 
    return true;
 }

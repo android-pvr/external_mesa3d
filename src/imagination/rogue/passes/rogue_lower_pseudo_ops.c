@@ -132,30 +132,6 @@ static inline bool rogue_lower_alu_instr(rogue_builder *b, rogue_alu_instr *alu)
    return false;
 }
 
-static inline bool rogue_lower_END(rogue_builder *b, rogue_ctrl_instr *end)
-{
-   rogue_ctrl_instr *nop = rogue_NOP(b);
-   rogue_merge_instr_comment(&nop->instr, &end->instr, "end");
-   rogue_set_ctrl_op_mod(nop, ROGUE_CTRL_OP_MOD_END);
-   rogue_instr_delete(&end->instr);
-
-   return true;
-}
-
-static inline bool rogue_lower_ctrl_instr(rogue_builder *b,
-                                          rogue_ctrl_instr *ctrl)
-{
-   switch (ctrl->op) {
-   case ROGUE_CTRL_OP_END:
-      return rogue_lower_END(b, ctrl);
-
-   default:
-      break;
-   }
-
-   return false;
-}
-
 /* TODO: This should only really be called after a distribute_src_mods pass (to
  * come later). */
 PUBLIC
@@ -179,11 +155,6 @@ bool rogue_lower_pseudo_ops(rogue_shader *shader)
       case ROGUE_INSTR_TYPE_ALU:
          progress |= rogue_lower_alu_instr(&b, rogue_instr_as_alu(instr));
          break;
-
-      case ROGUE_INSTR_TYPE_CTRL:
-         progress |= rogue_lower_ctrl_instr(&b, rogue_instr_as_ctrl(instr));
-         break;
-
       default:
          continue;
       }

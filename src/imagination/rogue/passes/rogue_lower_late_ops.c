@@ -70,6 +70,40 @@ static inline bool rogue_lower_alu_instr(rogue_builder *b, rogue_alu_instr *alu)
    return false;
 }
 
+static inline bool rogue_lower_END(rogue_builder *b, rogue_ctrl_instr *end)
+{
+   /* If the instruction before is a non-control instruction, set
+    * its end flag instead of emitting a nop.end.
+    */
+   rogue_instr *prev = rogue_instr_prev(&end->instr);
+   if (prev && prev->type != ROGUE_INSTR_TYPE_CTRL) {
+      rogue_set_instr_end(prev, true);
+      rogue_instr_delete(&end->instr);
+      return true;
+   }
+
+   rogue_ctrl_instr *nop = rogue_NOP(b);
+   rogue_merge_instr_comment(&nop->instr, &end->instr, "end");
+   rogue_set_ctrl_op_mod(nop, ROGUE_CTRL_OP_MOD_END);
+   rogue_instr_delete(&end->instr);
+
+   return true;
+}
+
+static inline bool rogue_lower_ctrl_instr(rogue_builder *b,
+                                          rogue_ctrl_instr *ctrl)
+{
+   switch (ctrl->op) {
+   case ROGUE_CTRL_OP_END:
+      return rogue_lower_END(b, ctrl);
+
+   default:
+      break;
+   }
+
+   return false;
+}
+
 PUBLIC
 bool rogue_lower_late_ops(rogue_shader *shader)
 {
@@ -90,6 +124,10 @@ bool rogue_lower_late_ops(rogue_shader *shader)
       switch (instr->type) {
       case ROGUE_INSTR_TYPE_ALU:
          progress |= rogue_lower_alu_instr(&b, rogue_instr_as_alu(instr));
+         break;
+
+      case ROGUE_INSTR_TYPE_CTRL:
+         progress |= rogue_lower_ctrl_instr(&b, rogue_instr_as_ctrl(instr));
          break;
 
       default:
