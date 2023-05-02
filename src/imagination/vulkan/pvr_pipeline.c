@@ -1210,55 +1210,30 @@ pvr_pipeline_alloc_shareds(const struct pvr_device *device,
    Compute pipeline functions
  ******************************************************************************/
 
-struct pvr_compute_shader_info {
-   struct {
-      /* If the shader uses gl_LocalInvocationID. */
-      bool location_id_x : 1;
-      bool location_id_y_or_z : 1;
-
-      /* If the shader uses gl_WorkGroupID. */
-      bool work_group_id_x : 1;
-      bool work_group_id_y : 1;
-      bool work_group_id_z : 1;
-
-      /* If the shader uses gl_NumWorkGroups. */
-      bool num_work_groups : 1;
-
-      bool barrier : 1;
-
-      bool atomic_ops : 1;
-   } has;
-
-   /* local_size_x * local_size_y * local_size_z from the glsl
-    * layout(local_size_x = X, local_size_y = Y, local_size_z = Z).
-    */
-   uint32_t work_size;
-};
-
 /**
  * \brief Allocates the coefficient registers for a compute pipeline.
  *
  * \param[in,out] comp_data   Compiler build data for compute.
- * \param[in]     shader_info Shader info.
+ * \param[in]     comp_build_data Shader info.
  * \return Amount of coefficient registers allocated.
  */
 static uint32_t pvr_compute_pipeline_alloc_coeffs(
    struct rogue_comp_build_data *comp_data,
-   const struct pvr_compute_shader_info *shader_info)
+   const struct rogue_comp_build_data *comp_build_data)
 {
    uint32_t next_free_reg = 0;
 
-   if (shader_info->has.work_group_id_x)
+   if (comp_build_data->has.work_group_id_x)
       comp_data->workgroup_regs[0] = next_free_reg++;
    else
       comp_data->workgroup_regs[0] = ROGUE_REG_UNUSED;
 
-   if (shader_info->has.work_group_id_y)
+   if (comp_build_data->has.work_group_id_y)
       comp_data->workgroup_regs[1] = next_free_reg++;
    else
       comp_data->workgroup_regs[1] = ROGUE_REG_UNUSED;
 
-   if (shader_info->has.work_group_id_z)
+   if (comp_build_data->has.work_group_id_z)
       comp_data->workgroup_regs[2] = next_free_reg++;
    else
       comp_data->workgroup_regs[2] = ROGUE_REG_UNUSED;
@@ -1273,16 +1248,16 @@ static uint32_t pvr_compute_pipeline_alloc_coeffs(
  * gl_LocalInvocationID needs to be accounted for.
  *
  * \param[in,out] comp_data   Compiler build data for compute.
- * \param[in]     shader_info Shader info.
+ * \param[in]     comp_build_data Shader info.
  * \return Amount of vertex input registers allocated.
  */
 static uint32_t pvr_compute_pipeline_alloc_vtx_ins(
    struct rogue_comp_build_data *comp_data,
-   const struct pvr_compute_shader_info *shader_info)
+   const struct rogue_comp_build_data *comp_build_data)
 {
    uint32_t next_free_reg = 0;
 
-   if (shader_info->has.location_id_x)
+   if (comp_build_data->has.location_id_x)
       comp_data->local_id_regs[0] = next_free_reg++;
    else
       comp_data->local_id_regs[0] = ROGUE_REG_UNUSED;
@@ -1291,7 +1266,7 @@ static uint32_t pvr_compute_pipeline_alloc_vtx_ins(
     * a PDS temp so they get allocated a single register. They'll be
     * unpacked in the shader.
     */
-   if (shader_info->has.location_id_y_or_z)
+   if (comp_build_data->has.location_id_y_or_z)
       comp_data->local_id_regs[1] = next_free_reg++;
    else
       comp_data->local_id_regs[1] = ROGUE_REG_UNUSED;
@@ -1364,27 +1339,6 @@ static VkResult pvr_compute_pipeline_compile(
       explicit_const_usage = build_info.explicit_conts_usage;
 
    } else {
-      /* TODO: These should come from the compiler after having analyzed the
-       * shader.
-       * Remove this hard coding.
-       */
-      struct pvr_compute_shader_info shader_info = {
-         .has = {
-            .location_id_x = true,
-            .location_id_y_or_z = true,
-            .work_group_id_x = true,
-            .work_group_id_y = true,
-            .work_group_id_z = true,
-            .num_work_groups = true,
-
-            .barrier = false,
-
-            .atomic_ops = false,
-         },
-
-         .work_size = 1,
-      };
-
       const uint32_t cache_line_size =
          rogue_get_slc_cache_line_size(&device->pdevice->dev_info);
       gl_shader_stage stage = MESA_SHADER_COMPUTE;
@@ -1408,28 +1362,28 @@ static VkResult pvr_compute_pipeline_compile(
          goto err_free_build_context;
       }
 
-      reg_count = pvr_compute_pipeline_alloc_coeffs(comp_data, &shader_info);
+      reg_count = pvr_compute_pipeline_alloc_coeffs(comp_data, comp_data);
       compute_pipeline->shader_state.coefficient_register_count = reg_count;
 
-      reg_count = pvr_compute_pipeline_alloc_vtx_ins(comp_data, &shader_info);
+      reg_count = pvr_compute_pipeline_alloc_vtx_ins(comp_data, comp_data);
       compute_pipeline->shader_state.input_register_count = reg_count;
 
       /* TODO: Add proper handling for this. */
-      assert(shader_info.has.barrier == false);
+      assert(comp_data->has.barrier == false);
       comp_data->barrier_reg = ROGUE_REG_UNUSED;
       barrier_coefficient = comp_data->barrier_reg;
 
-      if (shader_info.has.work_group_id_x)
+      if (comp_data->has.work_group_id_x)
          work_group_input_regs[0] = comp_data->workgroup_regs[0];
       else
          work_group_input_regs[0] = PVR_PDS_COMPUTE_INPUT_REG_UNUSED;
 
-      if (shader_info.has.work_group_id_y)
+      if (comp_data->has.work_group_id_y)
          work_group_input_regs[1] = comp_data->workgroup_regs[1];
       else
          work_group_input_regs[1] = PVR_PDS_COMPUTE_INPUT_REG_UNUSED;
 
-      if (shader_info.has.work_group_id_z)
+      if (comp_data->has.work_group_id_z)
          work_group_input_regs[2] = comp_data->workgroup_regs[2];
       else
          work_group_input_regs[2] = PVR_PDS_COMPUTE_INPUT_REG_UNUSED;
@@ -1459,11 +1413,11 @@ static VkResult pvr_compute_pipeline_compile(
       }
 
       compute_pipeline->shader_state.uses_atomic_ops =
-         shader_info.has.atomic_ops;
-      compute_pipeline->shader_state.uses_barrier = shader_info.has.barrier;
+         comp_data->has.atomic_ops;
+      compute_pipeline->shader_state.uses_barrier = comp_data->has.barrier;
       compute_pipeline->shader_state.uses_num_workgroups =
-         shader_info.has.num_work_groups;
-      compute_pipeline->shader_state.work_size = shader_info.work_size;
+         comp_data->has.num_work_groups;
+      compute_pipeline->shader_state.work_size = comp_data->work_size;
 
       result = pvr_gpu_upload_usc(device,
                                   util_dynarray_begin(&ctx->binary[stage]),

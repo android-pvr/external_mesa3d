@@ -3181,6 +3181,27 @@ typedef struct rogue_build_data {
       uint32_t local_id_regs[2];
       uint32_t workgroup_regs[3];
       uint32_t barrier_reg;
+
+      struct {
+         /* If the shader uses gl_LocalInvocationID. */
+         bool location_id_x;
+         bool location_id_y_or_z;
+
+         /* If the shader uses gl_WorkGroupID. */
+         bool work_group_id_x;
+         bool work_group_id_y;
+         bool work_group_id_z;
+
+         /* If the shader uses gl_NumWorkGroups. */
+         bool num_work_groups;
+         bool barrier;
+         bool atomic_ops;
+      } has;
+
+      /* local_size_x * local_size_y * local_size_z from the glsl
+       * layout(local_size_x = X, local_size_y = Y, local_size_z = Z).
+       */
+      uint32_t work_size;
    } comp;
 } rogue_build_data;
 
