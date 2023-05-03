@@ -829,12 +829,13 @@ trans_nir_intrinsic_load_local_invocation_id_img(rogue_builder *b,
                                                  nir_intrinsic_instr *intr,
                                                  bool yz)
 {
-   struct rogue_cs_build_data *cs_data = &b->shader->ctx->stage_data.cs;
+   const struct rogue_cs_build_data *cs_data = &b->shader->ctx->stage_data.cs;
 
    unsigned load_size;
    rogue_ref dst = nir_ssa_reg_intr_dst32(b->shader, intr, &load_size);
    assert(load_size == 1);
 
+   assert(cs_data->local_id_regs[yz] != ROGUE_REG_UNUSED);
    rogue_reg *src = rogue_vtxin_reg(b->shader, cs_data->local_id_regs[yz]);
    rogue_instr *instr = &rogue_MOV(b, dst, rogue_ref_reg(src))->instr;
 
@@ -843,31 +844,22 @@ trans_nir_intrinsic_load_local_invocation_id_img(rogue_builder *b,
                             yz ? "yz" : "x");
 }
 
-/* TODO: Scalarise into x/y/z components and feedback which ones are being used.
- */
-static void trans_nir_intrinsic_load_workgroup_id(rogue_builder *b,
-                                                  nir_intrinsic_instr *intr)
+static void trans_nir_intrinsic_load_workgroup_id_img(rogue_builder *b,
+                                                      nir_intrinsic_instr *intr,
+                                                      unsigned component)
 {
-   struct rogue_cs_build_data *cs_data = &b->shader->ctx->stage_data.cs;
+   const struct rogue_cs_build_data *cs_data = &b->shader->ctx->stage_data.cs;
 
-   unsigned num_components = intr->dest.ssa.num_components;
-   assert(num_components == 3);
+   unsigned load_size;
+   rogue_ref dst = nir_ssa_reg_intr_dst32(b->shader, intr, &load_size);
+   assert(load_size == 1);
 
-   rogue_ref_xyz dst = rogue_ssa_ref_xyz(b->shader, intr->dest.ssa.index);
-   rogue_instr *instr;
-   rogue_reg *src;
+   assert(cs_data->workgroup_regs[component] != ROGUE_REG_UNUSED);
+   rogue_reg *src =
+      rogue_coeff_reg(b->shader, cs_data->workgroup_regs[component]);
 
-   src = rogue_coeff_reg(b->shader, cs_data->workgroup_regs[0]);
-   instr = &rogue_MOV(b, dst.x, rogue_ref_reg(src))->instr;
-   rogue_add_instr_comment(instr, "load_workgroup_id.x");
-
-   src = rogue_coeff_reg(b->shader, cs_data->workgroup_regs[1]);
-   instr = &rogue_MOV(b, dst.y, rogue_ref_reg(src))->instr;
-   rogue_add_instr_comment(instr, "load_workgroup_id.y");
-
-   src = rogue_coeff_reg(b->shader, cs_data->workgroup_regs[2]);
-   instr = &rogue_MOV(b, dst.z, rogue_ref_reg(src))->instr;
-   rogue_add_instr_comment(instr, "load_workgroup_id.z");
+   rogue_instr *instr = &rogue_MOV(b, dst, rogue_ref_reg(src))->instr;
+   rogue_add_instr_commentf(instr, "load_workgroup_id.%c", 'x' + component);
 }
 
 static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
@@ -900,8 +892,14 @@ static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
    case nir_intrinsic_load_local_invocation_id_yz_img:
       return trans_nir_intrinsic_load_local_invocation_id_img(b, intr, true);
 
-   case nir_intrinsic_load_workgroup_id:
-      return trans_nir_intrinsic_load_workgroup_id(b, intr);
+   case nir_intrinsic_load_workgroup_id_x_img:
+      return trans_nir_intrinsic_load_workgroup_id_img(b, intr, 0);
+
+   case nir_intrinsic_load_workgroup_id_y_img:
+      return trans_nir_intrinsic_load_workgroup_id_img(b, intr, 1);
+
+   case nir_intrinsic_load_workgroup_id_z_img:
+      return trans_nir_intrinsic_load_workgroup_id_img(b, intr, 2);
 
    default:
       break;

@@ -187,6 +187,14 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
    if (nir->info.stage == MESA_SHADER_COMPUTE)
       NIR_PASS_V(nir, nir_lower_compute_system_values, &compute_sysval_options);
 
+   /* TODO: should really only need to do this once, and also split up lowering
+    * i/o and sysvals (and rewrite to use callback functions) need
+    * nir_lower_compute_system_values to lower global invocation id to workgroup
+    * id, but to not eliminate the local invocation id by making it a const 0
+    * also need to check if that's actually what vtx0 is...
+    */
+   NIR_PASS_V(nir, rogue_nir_lower_io);
+
    NIR_PASS_V(nir, nir_lower_vars_to_ssa);
 
    /* Lower samplers. */
@@ -314,6 +322,18 @@ static void rogue_collect_early_cs_build_data(rogue_build_ctx *ctx,
                   cs_data->has.location_id_y_or_z = true;
                   break;
 
+               case nir_intrinsic_load_workgroup_id_x_img:
+                  cs_data->has.work_group_id_x = true;
+                  break;
+
+               case nir_intrinsic_load_workgroup_id_y_img:
+                  cs_data->has.work_group_id_y = true;
+                  break;
+
+               case nir_intrinsic_load_workgroup_id_z_img:
+                  cs_data->has.work_group_id_z = true;
+                  break;
+
                default:
                   break;
                }
@@ -326,9 +346,6 @@ static void rogue_collect_early_cs_build_data(rogue_build_ctx *ctx,
       }
    }
 
-   cs_data->has.work_group_id_x = cs_data->has.work_group_id_y =
-      cs_data->has.work_group_id_z =
-         BITSET_TEST(info->system_values_read, SYSTEM_VALUE_WORKGROUP_ID);
    cs_data->has.num_work_groups =
       BITSET_TEST(info->system_values_read, SYSTEM_VALUE_NUM_WORKGROUPS);
 

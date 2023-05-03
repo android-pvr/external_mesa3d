@@ -2912,24 +2912,6 @@ static struct rogue_ref64 rogue_shared_ref64(rogue_shader *shader,
    };
 }
 
-typedef struct rogue_ref_xyz {
-   rogue_ref xyz;
-   rogue_ref x;
-   rogue_ref y;
-   rogue_ref z;
-} rogue_ref_xyz;
-
-static struct rogue_ref_xyz rogue_ssa_ref_xyz(rogue_shader *shader,
-                                              unsigned index)
-{
-   return (rogue_ref_xyz){
-      .xyz = rogue_ref_regarray(rogue_ssa_vec_regarray(shader, 3, index, 0)),
-      .x = rogue_ref_regarray(rogue_ssa_vec_regarray(shader, 1, index, 0)),
-      .y = rogue_ref_regarray(rogue_ssa_vec_regarray(shader, 1, index, 1)),
-      .z = rogue_ref_regarray(rogue_ssa_vec_regarray(shader, 1, index, 2)),
-   };
-}
-
 #define ROGUE_NO_CONST_REG ~0
 
 unsigned rogue_constreg_lookup(rogue_imm_t imm);

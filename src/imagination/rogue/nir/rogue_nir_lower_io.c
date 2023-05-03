@@ -146,9 +146,8 @@ static bool lower_load_push_constant_to_scalar(nir_builder *b,
    return true;
 }
 
-/*
- * Scalarize/convert the load_local_invocation_id to our custom intrinsics.
- * If the y/z components are unused, they will get DCEd later.
+/* Scalarize/convert load_local_invocation_id to our custom intrinsics.
+ * Unused components will get DCEd later.
  */
 static bool lower_load_local_invocation_id(nir_builder *b,
                                            nir_intrinsic_instr *intr)
@@ -175,6 +174,29 @@ static bool lower_load_local_invocation_id(nir_builder *b,
    return true;
 }
 
+/*
+ * Scalarize/convert the load_workgroup_id to our custom intrinsics.
+ * Unused components will get DCEd later.
+ */
+static bool lower_load_workgroup_id(nir_builder *b, nir_intrinsic_instr *intr)
+{
+   assert(intr->dest.is_ssa);
+   assert(intr->dest.ssa.num_components == 3);
+   assert(intr->dest.ssa.bit_size == 32);
+
+   b->cursor = nir_before_instr(&intr->instr);
+
+   nir_ssa_def *wgid_x = nir_load_workgroup_id_x_img(b);
+   nir_ssa_def *wgid_y = nir_load_workgroup_id_y_img(b);
+   nir_ssa_def *wgid_z = nir_load_workgroup_id_z_img(b);
+
+   nir_ssa_def_rewrite_uses(&intr->dest.ssa,
+                            nir_vec3(b, wgid_x, wgid_y, wgid_z));
+   nir_instr_remove(&intr->instr);
+
+   return true;
+}
+
 static bool lower_intrinsic(nir_builder *b, nir_intrinsic_instr *instr)
 {
    switch (instr->intrinsic) {
@@ -189,6 +211,9 @@ static bool lower_intrinsic(nir_builder *b, nir_intrinsic_instr *instr)
 
    case nir_intrinsic_load_local_invocation_id:
       return lower_load_local_invocation_id(b, instr);
+
+   case nir_intrinsic_load_workgroup_id:
+      return lower_load_workgroup_id(b, instr);
 
    default:
       break;
