@@ -871,9 +871,8 @@ void pvr_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
    const uint32_t uvs_pba_entries =
       PVR_GET_FEATURE_VALUE(&pdevice->dev_info, uvs_pba_entries, 160);
 
-   /* Default value based on the minimum value found in all existing cores. */
-   const uint32_t num_user_clip_planes =
-      PVR_GET_FEATURE_VALUE(&pdevice->dev_info, num_user_clip_planes, 8);
+   /* TODO: Add support in driver and compiler */
+   const uint32_t num_user_clip_planes = 0;
 
    const uint32_t sub_pixel_precision =
       PVR_HAS_FEATURE(&pdevice->dev_info, simple_internal_parameter_format)
