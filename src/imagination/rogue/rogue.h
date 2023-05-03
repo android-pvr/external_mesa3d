@@ -2912,6 +2912,24 @@ static struct rogue_ref64 rogue_shared_ref64(rogue_shader *shader,
    };
 }
 
+typedef struct rogue_ref_xyz {
+   rogue_ref xyz;
+   rogue_ref x;
+   rogue_ref y;
+   rogue_ref z;
+} rogue_ref_xyz;
+
+static struct rogue_ref_xyz rogue_ssa_ref_xyz(rogue_shader *shader,
+                                              unsigned index)
+{
+   return (rogue_ref_xyz){
+      .xyz = rogue_ref_regarray(rogue_ssa_vec_regarray(shader, 3, index, 0)),
+      .x = rogue_ref_regarray(rogue_ssa_vec_regarray(shader, 1, index, 0)),
+      .y = rogue_ref_regarray(rogue_ssa_vec_regarray(shader, 1, index, 1)),
+      .z = rogue_ref_regarray(rogue_ssa_vec_regarray(shader, 1, index, 2)),
+   };
+}
+
 #define ROGUE_NO_CONST_REG ~0
 
 unsigned rogue_constreg_lookup(rogue_imm_t imm);
@@ -3177,7 +3195,7 @@ typedef struct rogue_build_data {
       unsigned num_f16_flat_varyings; /* Number of f16 flat varyings. */
       unsigned num_f16_linear_varyings; /* Number of f16 linear varyings. */
    } vs;
-   struct rogue_comp_build_data {
+   struct rogue_cs_build_data {
       uint32_t local_id_regs[2];
       uint32_t workgroup_regs[3];
       uint32_t barrier_reg;
@@ -3202,7 +3220,7 @@ typedef struct rogue_build_data {
        * layout(local_size_x = X, local_size_y = Y, local_size_z = Z).
        */
       uint32_t work_size;
-   } comp;
+   } cs;
 } rogue_build_data;
 
 /**

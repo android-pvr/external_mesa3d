@@ -705,6 +705,49 @@ static void trans_nir_intrinsic_load_global_constant(rogue_builder *b,
    rogue_add_instr_comment(instr, "load_global_constant");
 }
 
+static void trans_nir_intrinsic_load_global(rogue_builder *b,
+                                            nir_intrinsic_instr *intr)
+{
+   /* 64-bit source address. */
+   unsigned src_index = intr->src[0].ssa->index;
+   rogue_ref64 src_addr = rogue_ssa_ref64(b->shader, src_index);
+
+   unsigned load_size;
+   rogue_ref dst = nir_ssa_reg_intr_dst32(b->shader, intr, &load_size);
+   assert(load_size <= 16); /* TODO: support even larger load sizes. */
+
+   rogue_instr *instr = &rogue_LD(b,
+                                  dst,
+                                  rogue_ref_drc(0),
+                                  rogue_ref_val(load_size),
+                                  src_addr.ref64)
+                            ->instr;
+   rogue_add_instr_comment(instr, "load_global");
+}
+
+static void trans_nir_intrinsic_store_global(rogue_builder *b,
+                                             nir_intrinsic_instr *intr)
+{
+   unsigned store_size = nir_src_num_components(intr->src[0]);
+   assert(store_size == 1); /* TODO: Burst store support. */
+   assert(intr->src[0].is_ssa);
+   assert(intr->src[0].ssa->bit_size == 32);
+
+   rogue_reg *src = rogue_ssa_reg(b->shader, intr->src[0].ssa->index);
+   rogue_ref64 dst_addr = rogue_ssa_ref64(b->shader, intr->src[1].ssa->index);
+
+   rogue_instr *instr = &rogue_ST(b,
+                                  rogue_ref_reg(src),
+                                  rogue_ref_val(2),
+                                  rogue_ref_drc(0),
+                                  rogue_ref_val(store_size),
+                                  dst_addr.ref64,
+                                  rogue_none())
+                            ->instr;
+   /* TODO: cache flags */
+   rogue_add_instr_comment(instr, "store_global");
+}
+
 /* TODO: Process this into loads in NIR instead. */
 static void trans_nir_intrinsic_load_push_constant(rogue_builder *b,
                                                    nir_intrinsic_instr *intr)
@@ -781,6 +824,52 @@ static void trans_nir_intrinsic_load_push_constant(rogue_builder *b,
    rogue_add_instr_commentf(instr, "load push_constant (offset 0x%x)", offset);
 }
 
+static void
+trans_nir_intrinsic_load_local_invocation_id_img(rogue_builder *b,
+                                                 nir_intrinsic_instr *intr,
+                                                 bool yz)
+{
+   struct rogue_cs_build_data *cs_data = &b->shader->ctx->stage_data.cs;
+
+   unsigned load_size;
+   rogue_ref dst = nir_ssa_reg_intr_dst32(b->shader, intr, &load_size);
+   assert(load_size == 1);
+
+   rogue_reg *src = rogue_vtxin_reg(b->shader, cs_data->local_id_regs[yz]);
+   rogue_instr *instr = &rogue_MOV(b, dst, rogue_ref_reg(src))->instr;
+
+   rogue_add_instr_commentf(instr,
+                            "load_local_invocation_id.%s",
+                            yz ? "yz" : "x");
+}
+
+/* TODO: Scalarise into x/y/z components and feedback which ones are being used.
+ */
+static void trans_nir_intrinsic_load_workgroup_id(rogue_builder *b,
+                                                  nir_intrinsic_instr *intr)
+{
+   struct rogue_cs_build_data *cs_data = &b->shader->ctx->stage_data.cs;
+
+   unsigned num_components = intr->dest.ssa.num_components;
+   assert(num_components == 3);
+
+   rogue_ref_xyz dst = rogue_ssa_ref_xyz(b->shader, intr->dest.ssa.index);
+   rogue_instr *instr;
+   rogue_reg *src;
+
+   src = rogue_coeff_reg(b->shader, cs_data->workgroup_regs[0]);
+   instr = &rogue_MOV(b, dst.x, rogue_ref_reg(src))->instr;
+   rogue_add_instr_comment(instr, "load_workgroup_id.x");
+
+   src = rogue_coeff_reg(b->shader, cs_data->workgroup_regs[1]);
+   instr = &rogue_MOV(b, dst.y, rogue_ref_reg(src))->instr;
+   rogue_add_instr_comment(instr, "load_workgroup_id.y");
+
+   src = rogue_coeff_reg(b->shader, cs_data->workgroup_regs[2]);
+   instr = &rogue_MOV(b, dst.z, rogue_ref_reg(src))->instr;
+   rogue_add_instr_comment(instr, "load_workgroup_id.z");
+}
+
 static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
 {
    switch (intr->intrinsic) {
@@ -796,8 +885,23 @@ static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
    case nir_intrinsic_load_global_constant:
       return trans_nir_intrinsic_load_global_constant(b, intr);
 
+   case nir_intrinsic_load_global:
+      return trans_nir_intrinsic_load_global(b, intr);
+
+   case nir_intrinsic_store_global:
+      return trans_nir_intrinsic_store_global(b, intr);
+
    case nir_intrinsic_load_push_constant:
       return trans_nir_intrinsic_load_push_constant(b, intr);
+
+   case nir_intrinsic_load_local_invocation_id_x_img:
+      return trans_nir_intrinsic_load_local_invocation_id_img(b, intr, false);
+
+   case nir_intrinsic_load_local_invocation_id_yz_img:
+      return trans_nir_intrinsic_load_local_invocation_id_img(b, intr, true);
+
+   case nir_intrinsic_load_workgroup_id:
+      return trans_nir_intrinsic_load_workgroup_id(b, intr);
 
    default:
       break;
@@ -1097,6 +1201,48 @@ static void trans_nir_alu_iadd(rogue_builder *b, nir_alu_instr *alu)
    unreachable("Unsupported bit size.");
 }
 
+static void trans_nir_alu_imul64(rogue_builder *b, nir_alu_instr *alu)
+{
+   rogue_ref src0_lo, src0_hi;
+   rogue_ref src1_lo, src1_hi;
+   rogue_ref dst_lo, dst_hi;
+   rogue_ref imm_0 = rogue_ref_imm(0);
+
+   nir_ssa_reg_alu_dst64(b->shader, alu, &dst_lo, &dst_hi);
+   nir_ssa_reg_alu_src64(b->shader, alu, 0, &src0_lo, &src0_hi);
+   nir_ssa_reg_alu_src64(b->shader, alu, 1, &src1_lo, &src1_hi);
+
+   rogue_MADD64(b, dst_lo, dst_hi, src0_lo, src1_lo, imm_0, imm_0, rogue_none());
+}
+
+static void trans_nir_alu_imul(rogue_builder *b, nir_alu_instr *alu)
+{
+   unsigned bit_size = alu->dest.dest.ssa.bit_size;
+
+   switch (bit_size) {
+      /* TODO: case 32: */
+
+   case 64:
+      return trans_nir_alu_imul64(b, alu);
+
+   default:
+      break;
+   }
+
+   unreachable("Unsupported bit size.");
+}
+
+static void trans_nir_alu_i2i64(rogue_builder *b, nir_alu_instr *alu)
+{
+   rogue_ref src = nir_ssa_reg_alu_src32(b->shader, alu, 0);
+
+   rogue_ref dst_lo, dst_hi;
+   nir_ssa_reg_alu_dst64(b->shader, alu, &dst_lo, &dst_hi);
+
+   rogue_MOV(b, dst_lo, src);
+   rogue_MOV(b, dst_hi, rogue_ref_imm(0));
+}
+
 static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
 {
    switch (alu->op) {
@@ -1151,6 +1297,12 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
 
    case nir_op_iadd:
       return trans_nir_alu_iadd(b, alu);
+
+   case nir_op_imul:
+      return trans_nir_alu_imul(b, alu);
+
+   case nir_op_i2i64:
+      return trans_nir_alu_i2i64(b, alu);
 
    default:
       break;

@@ -40,12 +40,13 @@
 static const struct spirv_to_nir_options spirv_options = {
    .environment = NIR_SPIRV_VULKAN,
 
-   /* Buffer address: (descriptor_set, binding), offset. */
    .ubo_addr_format = nir_address_format_64bit_global,
+   .ssbo_addr_format = nir_address_format_64bit_global,
 };
 
 static const nir_shader_compiler_options nir_options = {
    .fuse_ffma32 = true,
+   .lower_bitops = true, /* TODO: Re-enable once supported. */
 };
 
 static int rogue_glsl_type_size(const struct glsl_type *type, bool bindless)
@@ -174,7 +175,17 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
               spirv_options.ubo_addr_format);
    NIR_PASS_V(nir, nir_lower_io_to_scalar, nir_var_mem_ubo);
 
+   NIR_PASS_V(nir,
+              nir_lower_explicit_io,
+              nir_var_mem_ssbo,
+              spirv_options.ssbo_addr_format);
+   NIR_PASS_V(nir, nir_lower_io_to_scalar, nir_var_mem_ssbo);
+
    NIR_PASS_V(nir, rogue_nir_lower_io);
+
+   nir_lower_compute_system_values_options compute_sysval_options = {};
+   if (nir->info.stage == MESA_SHADER_COMPUTE)
+      NIR_PASS_V(nir, nir_lower_compute_system_values, &compute_sysval_options);
 
    NIR_PASS_V(nir, nir_lower_vars_to_ssa);
 
@@ -283,6 +294,74 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
 #endif /* !defined(NDEBUG) */
 }
 
+static void rogue_collect_early_cs_build_data(rogue_build_ctx *ctx,
+                                              nir_shader *nir)
+{
+   const struct shader_info *info = &nir->info;
+   struct rogue_cs_build_data *cs_data = &ctx->stage_data.cs;
+
+   nir_foreach_function (func, nir) {
+      nir_foreach_block (block, func->impl) {
+         nir_foreach_instr (instr, block) {
+            switch (instr->type) {
+            case nir_instr_type_intrinsic:
+               switch (nir_instr_as_intrinsic(instr)->intrinsic) {
+               case nir_intrinsic_load_local_invocation_id_x_img:
+                  cs_data->has.location_id_x = true;
+                  break;
+
+               case nir_intrinsic_load_local_invocation_id_yz_img:
+                  cs_data->has.location_id_y_or_z = true;
+                  break;
+
+               default:
+                  break;
+               }
+               break;
+
+            default:
+               break;
+            }
+         }
+      }
+   }
+
+   cs_data->has.work_group_id_x = cs_data->has.work_group_id_y =
+      cs_data->has.work_group_id_z =
+         BITSET_TEST(info->system_values_read, SYSTEM_VALUE_WORKGROUP_ID);
+   cs_data->has.num_work_groups =
+      BITSET_TEST(info->system_values_read, SYSTEM_VALUE_NUM_WORKGROUPS);
+
+   /* TODO */
+   assert(!info->uses_control_barrier);
+   assert(!info->uses_memory_barrier);
+   cs_data->has.barrier = false;
+
+   /* TODO */
+   cs_data->has.atomic_ops = false;
+
+   cs_data->work_size = info->workgroup_size[0] * info->workgroup_size[1] *
+                        info->workgroup_size[2];
+}
+
+static void rogue_collect_early_build_data(rogue_build_ctx *ctx,
+                                           nir_shader *nir)
+{
+   switch (nir->info.stage) {
+   case MESA_SHADER_VERTEX:
+      break;
+
+   case MESA_SHADER_FRAGMENT:
+      break;
+
+   case MESA_SHADER_COMPUTE:
+      return rogue_collect_early_cs_build_data(ctx, nir);
+
+   default:
+      unreachable("Unsupported shader stage.");
+   }
+}
+
 /**
  * \brief Converts a SPIR-V shader to NIR.
  *
@@ -306,9 +385,6 @@ nir_shader *rogue_spirv_to_nir(rogue_build_ctx *ctx,
 {
    nir_shader *nir;
 
-   if (stage != MESA_SHADER_VERTEX && stage != MESA_SHADER_FRAGMENT)
-      return NULL;
-
    nir = spirv_to_nir(spirv_data,
                       spirv_size,
                       spec,
@@ -324,6 +400,9 @@ nir_shader *rogue_spirv_to_nir(rogue_build_ctx *ctx,
 
    /* Apply passes. */
    rogue_nir_passes(ctx, nir, stage);
+
+   /* Collect initial build data. */
+   rogue_collect_early_build_data(ctx, nir);
 
    return nir;
 }

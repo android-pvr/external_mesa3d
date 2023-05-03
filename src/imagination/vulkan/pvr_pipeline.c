@@ -1213,30 +1213,28 @@ pvr_pipeline_alloc_shareds(const struct pvr_device *device,
 /**
  * \brief Allocates the coefficient registers for a compute pipeline.
  *
- * \param[in,out] comp_data   Compiler build data for compute.
- * \param[in]     comp_build_data Shader info.
+ * \param[in,out] cs_data Compiler build data and shader info for compute.
  * \return Amount of coefficient registers allocated.
  */
-static uint32_t pvr_compute_pipeline_alloc_coeffs(
-   struct rogue_comp_build_data *comp_data,
-   const struct rogue_comp_build_data *comp_build_data)
+static uint32_t
+pvr_compute_pipeline_alloc_coeffs(struct rogue_cs_build_data *cs_data)
 {
    uint32_t next_free_reg = 0;
 
-   if (comp_build_data->has.work_group_id_x)
-      comp_data->workgroup_regs[0] = next_free_reg++;
+   if (cs_data->has.work_group_id_x)
+      cs_data->workgroup_regs[0] = next_free_reg++;
    else
-      comp_data->workgroup_regs[0] = ROGUE_REG_UNUSED;
+      cs_data->workgroup_regs[0] = ROGUE_REG_UNUSED;
 
-   if (comp_build_data->has.work_group_id_y)
-      comp_data->workgroup_regs[1] = next_free_reg++;
+   if (cs_data->has.work_group_id_y)
+      cs_data->workgroup_regs[1] = next_free_reg++;
    else
-      comp_data->workgroup_regs[1] = ROGUE_REG_UNUSED;
+      cs_data->workgroup_regs[1] = ROGUE_REG_UNUSED;
 
-   if (comp_build_data->has.work_group_id_z)
-      comp_data->workgroup_regs[2] = next_free_reg++;
+   if (cs_data->has.work_group_id_z)
+      cs_data->workgroup_regs[2] = next_free_reg++;
    else
-      comp_data->workgroup_regs[2] = ROGUE_REG_UNUSED;
+      cs_data->workgroup_regs[2] = ROGUE_REG_UNUSED;
 
    return next_free_reg;
 }
@@ -1247,31 +1245,29 @@ static uint32_t pvr_compute_pipeline_alloc_coeffs(
  * Since compute shaders can't have any user defined input variables, only
  * gl_LocalInvocationID needs to be accounted for.
  *
- * \param[in,out] comp_data   Compiler build data for compute.
- * \param[in]     comp_build_data Shader info.
+ * \param[in,out] cs_data Compiler build data and shader info for compute.
  * \return Amount of vertex input registers allocated.
  */
-static uint32_t pvr_compute_pipeline_alloc_vtx_ins(
-   struct rogue_comp_build_data *comp_data,
-   const struct rogue_comp_build_data *comp_build_data)
+static uint32_t
+pvr_compute_pipeline_alloc_vtx_ins(struct rogue_cs_build_data *cs_data)
 {
    uint32_t next_free_reg = 0;
 
-   if (comp_build_data->has.location_id_x)
-      comp_data->local_id_regs[0] = next_free_reg++;
+   if (cs_data->has.location_id_x)
+      cs_data->local_id_regs[0] = next_free_reg++;
    else
-      comp_data->local_id_regs[0] = ROGUE_REG_UNUSED;
+      cs_data->local_id_regs[0] = ROGUE_REG_UNUSED;
 
    /* gl_LocalInvocationID.Y and gl_LocalInvocationID.Z come pre-packed in
     * a PDS temp so they get allocated a single register. They'll be
     * unpacked in the shader.
     */
-   if (comp_build_data->has.location_id_y_or_z)
-      comp_data->local_id_regs[1] = next_free_reg++;
+   if (cs_data->has.location_id_y_or_z)
+      cs_data->local_id_regs[1] = next_free_reg++;
    else
-      comp_data->local_id_regs[1] = ROGUE_REG_UNUSED;
+      cs_data->local_id_regs[1] = ROGUE_REG_UNUSED;
 
-   static_assert(ARRAY_SIZE(comp_data->local_id_regs) == 2,
+   static_assert(ARRAY_SIZE(cs_data->local_id_regs) == 2,
                  "Y and Z are packed and should be using the same reg.");
 
    return next_free_reg;
@@ -1342,11 +1338,11 @@ static VkResult pvr_compute_pipeline_compile(
       const uint32_t cache_line_size =
          rogue_get_slc_cache_line_size(&device->pdevice->dev_info);
       gl_shader_stage stage = MESA_SHADER_COMPUTE;
-      struct rogue_comp_build_data *comp_data;
+      struct rogue_cs_build_data *cs_data;
       rogue_common_build_data *common_data;
       uint32_t reg_count;
 
-      comp_data = &ctx->stage_data.comp;
+      cs_data = &ctx->stage_data.cs;
       common_data = &ctx->common_data[stage];
 
       reg_count = pvr_pipeline_alloc_shareds(device,
@@ -1362,29 +1358,29 @@ static VkResult pvr_compute_pipeline_compile(
          goto err_free_build_context;
       }
 
-      reg_count = pvr_compute_pipeline_alloc_coeffs(comp_data, comp_data);
+      reg_count = pvr_compute_pipeline_alloc_coeffs(cs_data);
       compute_pipeline->shader_state.coefficient_register_count = reg_count;
 
-      reg_count = pvr_compute_pipeline_alloc_vtx_ins(comp_data, comp_data);
+      reg_count = pvr_compute_pipeline_alloc_vtx_ins(cs_data);
       compute_pipeline->shader_state.input_register_count = reg_count;
 
       /* TODO: Add proper handling for this. */
-      assert(comp_data->has.barrier == false);
-      comp_data->barrier_reg = ROGUE_REG_UNUSED;
-      barrier_coefficient = comp_data->barrier_reg;
+      assert(cs_data->has.barrier == false);
+      cs_data->barrier_reg = ROGUE_REG_UNUSED;
+      barrier_coefficient = cs_data->barrier_reg;
 
-      if (comp_data->has.work_group_id_x)
-         work_group_input_regs[0] = comp_data->workgroup_regs[0];
+      if (cs_data->has.work_group_id_x)
+         work_group_input_regs[0] = cs_data->workgroup_regs[0];
       else
          work_group_input_regs[0] = PVR_PDS_COMPUTE_INPUT_REG_UNUSED;
 
-      if (comp_data->has.work_group_id_y)
-         work_group_input_regs[1] = comp_data->workgroup_regs[1];
+      if (cs_data->has.work_group_id_y)
+         work_group_input_regs[1] = cs_data->workgroup_regs[1];
       else
          work_group_input_regs[1] = PVR_PDS_COMPUTE_INPUT_REG_UNUSED;
 
-      if (comp_data->has.work_group_id_z)
-         work_group_input_regs[2] = comp_data->workgroup_regs[2];
+      if (cs_data->has.work_group_id_z)
+         work_group_input_regs[2] = cs_data->workgroup_regs[2];
       else
          work_group_input_regs[2] = PVR_PDS_COMPUTE_INPUT_REG_UNUSED;
 
@@ -1394,10 +1390,10 @@ static VkResult pvr_compute_pipeline_compile(
       STATIC_ASSERT(ROGUE_REG_UNUSED == PVR_PDS_COMPUTE_INPUT_REG_UNUSED);
 
       /* TODO: Get rid of this copy when removing the hard coding path. */
-      local_input_regs[0] = comp_data->local_id_regs[0];
-      local_input_regs[1] = comp_data->local_id_regs[1];
+      local_input_regs[0] = cs_data->local_id_regs[0];
+      local_input_regs[1] = cs_data->local_id_regs[1];
       /* Y and Z are packed. */
-      local_input_regs[2] = comp_data->local_id_regs[1];
+      local_input_regs[2] = cs_data->local_id_regs[1];
 
       /* Back-end translation. */
       ctx->rogue[stage] = pvr_nir_to_rogue(ctx, ctx->nir[stage]);
@@ -1412,12 +1408,11 @@ static VkResult pvr_compute_pipeline_compile(
          goto err_free_build_context;
       }
 
-      compute_pipeline->shader_state.uses_atomic_ops =
-         comp_data->has.atomic_ops;
-      compute_pipeline->shader_state.uses_barrier = comp_data->has.barrier;
+      compute_pipeline->shader_state.uses_atomic_ops = cs_data->has.atomic_ops;
+      compute_pipeline->shader_state.uses_barrier = cs_data->has.barrier;
       compute_pipeline->shader_state.uses_num_workgroups =
-         comp_data->has.num_work_groups;
-      compute_pipeline->shader_state.work_size = comp_data->work_size;
+         cs_data->has.num_work_groups;
+      compute_pipeline->shader_state.work_size = cs_data->work_size;
 
       result = pvr_gpu_upload_usc(device,
                                   util_dynarray_begin(&ctx->binary[stage]),
