@@ -3105,12 +3105,16 @@ typedef struct rogue_common_build_data {
 typedef struct rogue_iterator_args {
    bool iterates_depth;
    bool triangle_fan;
+   uint32_t num_coeff_varyings;
    uint32_t num_fpu_iterators;
-   uint32_t fpu_iterators[ROGUE_MAX_IO_VARYING_VARS];
-   uint32_t destination[ROGUE_MAX_IO_VARYING_VARS];
-   unsigned base[ROGUE_MAX_IO_VARYING_VARS];
-   unsigned components[ROGUE_MAX_IO_VARYING_VARS];
+   uint32_t fpu_iterators[ROGUE_MAX_IO_VARYING_VARS * 4];
+   uint32_t destination[ROGUE_MAX_IO_VARYING_VARS * 4];
+   unsigned coeff_indices[ROGUE_MAX_IO_VARYING_VARS][4];
    enum glsl_interp_mode interp_modes[ROGUE_MAX_IO_VARYING_VARS][4];
+   struct reverse_map {
+      unsigned location : 6;
+      unsigned component : 2;
+   } coeff_to_location[ROGUE_MAX_IO_VARYING_VARS * 4];
 } rogue_iterator_args;
 
 /**
@@ -3132,7 +3136,8 @@ typedef struct rogue_vertex_outputs {
    unsigned layer_index;
    unsigned clip_index[2][4];
    unsigned cull_index[2][4];
-   unsigned indices[MAX_VARYING][4];
+   unsigned indices[ROGUE_MAX_IO_VARYING_VARS][4];
+   bool is_f16[ROGUE_MAX_IO_VARYING_VARS][4];
 } rogue_vertex_outputs;
 
 enum rogue_msaa_mode {

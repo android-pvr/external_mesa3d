@@ -59,20 +59,23 @@ unsigned rogue_coeff_index_fs(struct rogue_iterator_args *args,
    /* Special case: W coefficient. */
    if (location == ~0) {
       /* The W component shouldn't be the only one. */
-      assert(args->num_fpu_iterators > 1);
+      assert(args->num_coeff_varyings > 1);
       assert(args->destination[0] == 0);
       return 0;
    }
 
-   i = (location - VARYING_SLOT_VAR0) + 1;
-   assert(location >= VARYING_SLOT_VAR0 && location <= VARYING_SLOT_VAR31);
-   assert(i < args->num_fpu_iterators);
-   assert(component < args->components[i]);
+   if (location == VARYING_SLOT_POS) {
+      i = 0;
+   } else {
+      i = (location - VARYING_SLOT_VAR0) + 1;
+      assert(location >= VARYING_SLOT_VAR0 && location <= VARYING_SLOT_VAR31);
+   }
 
-   if (args->base[i] == ~0)
-      return ~0;
+   assert(component < 4);
+   assert(args->coeff_indices[i][component] == ~0 ||
+          args->coeff_indices[i][component] < args->num_coeff_varyings);
 
-   return args->base[i] + (ROGUE_COEFF_ALIGN * component);
+   return args->coeff_indices[i][component];
 }
 
 /**
@@ -94,16 +97,20 @@ enum glsl_interp_mode rogue_interp_mode_fs(struct rogue_iterator_args *args,
    /* Special case: W coefficient. */
    if (location == ~0) {
       /* The W component shouldn't be the only one. */
-      assert(args->num_fpu_iterators > 1);
+      assert(args->num_coeff_varyings > 1);
       assert(args->destination[0] == 0);
       return INTERP_MODE_NOPERSPECTIVE;
    }
 
-   i = (location - VARYING_SLOT_VAR0) + 1;
-   assert(location >= VARYING_SLOT_VAR0 && location <= VARYING_SLOT_VAR31);
-   assert(i < args->num_fpu_iterators);
-   assert(component < args->components[i]);
-   assert(args->base[i] != ~0);
+   if (location == VARYING_SLOT_POS) {
+      i = 0;
+   } else {
+      i = (location - VARYING_SLOT_VAR0) + 1;
+      assert(location >= VARYING_SLOT_VAR0 && location <= VARYING_SLOT_VAR31);
+   }
+
+   assert(component < 4);
+   assert(args->coeff_indices[i][component] != ~0);
 
    return args->interp_modes[i][component] == INTERP_MODE_NONE
              ? INTERP_MODE_SMOOTH
@@ -146,7 +153,7 @@ unsigned rogue_output_index_vs(struct rogue_vertex_outputs *outputs,
       i = outputs->cull_index[location - VARYING_SLOT_CULL_DIST0][component];
    } else if ((location >= VARYING_SLOT_VAR0) &&
               (location <= VARYING_SLOT_VAR31)) {
-      i = outputs->indices[location - VARYING_SLOT_VAR0][component];
+      i = outputs->indices[location - VARYING_SLOT_VAR0 + 1][component];
       assert(i < outputs->num_output_vars);
    } else {
       unreachable("Unsupported vertex output type.");

@@ -1966,28 +1966,6 @@ static void pvr_graphics_pipeline_alloc_vertex_special_vars(
 }
 
 /**
- * \brief Allocates the coefficient registers that will contain the iterator
- * data for the fragment shader input varyings.
- *
- * \param[in] args The iterator argument data.
- * \return The total number of coefficient registers required by the iterators.
- */
-static unsigned pvr_alloc_iterator_regs(struct rogue_iterator_args *args)
-{
-   unsigned coeffs = 0;
-
-   for (unsigned i = 0; i < args->num_fpu_iterators; i++) {
-      /* Ensure there aren't any gaps. */
-      assert(args->base[i] == ~0);
-
-      args->base[i] = coeffs;
-      coeffs += ROGUE_COEFF_ALIGN * args->components[i];
-   }
-
-   return coeffs;
-}
-
-/**
  * \brief Reserves an iterator for a fragment shader input varying,
  * and calculates its setup data.
  *
@@ -2003,61 +1981,23 @@ static void pvr_reserve_iterator(struct rogue_iterator_args *args,
                                  bool f16,
                                  unsigned components)
 {
+   unsigned location = idx / 4;
+   unsigned base = idx % 4;
+
    assert(components >= 1 && components <= 4);
 
    /* The first iterator (W) *must* be INTERP_MODE_NOPERSPECTIVE. */
    assert(idx > 0 || type == INTERP_MODE_NOPERSPECTIVE);
-   assert(idx < ARRAY_SIZE(args->fpu_iterators));
 
-   pvr_csb_pack (&args->fpu_iterators[idx],
-                 PDSINST_DOUT_FIELDS_DOUTI_SRC,
-                 douti_src) {
-      switch (type) {
-      /* Default interpolation is smooth. */
-      case INTERP_MODE_NONE:
-      case INTERP_MODE_SMOOTH:
-         douti_src.shademodel = PVRX(PDSINST_DOUTI_SHADEMODEL_GOURUAD);
-         douti_src.perspective = true;
-         break;
+   for (int c = 0; c < components; c++) {
+      args->coeff_to_location[args->num_coeff_varyings].location = location;
+      args->coeff_to_location[args->num_coeff_varyings].component = base + c;
 
-      case INTERP_MODE_FLAT:
-         douti_src.shademodel =
-            args->triangle_fan ? PVRX(PDSINST_DOUTI_SHADEMODEL_FLAT_VERTEX1)
-                               : PVRX(PDSINST_DOUTI_SHADEMODEL_FLAT_VERTEX0);
-         douti_src.perspective = false;
-         break;
+      args->coeff_indices[location][base + c] = args->num_coeff_varyings;
+      args->interp_modes[location][base + c] = type;
 
-      case INTERP_MODE_NOPERSPECTIVE:
-         douti_src.shademodel = PVRX(PDSINST_DOUTI_SHADEMODEL_GOURUAD);
-         douti_src.perspective = false;
-         break;
-
-      default:
-         unreachable("Unimplemented interpolation type.");
-      }
-
-      douti_src.size = pvr_pdsinst_douti_size(components);
-
-      /* TODO: F16 support. */
-      assert(!f16);
-
-      if (f16) {
-         douti_src.f16 = 1;
-         /* data.f16_offset = idx + num_f32_varyings; */
-      } else {
-         douti_src.f16_offset = idx * 2;
-      }
-
-      douti_src.f32_offset = idx * 2;
+      args->num_coeff_varyings++;
    }
-
-   args->destination[idx] = idx;
-   args->base[idx] = ~0;
-   args->components[idx] = components;
-   args->num_fpu_iterators += 1;
-
-   for (int c = 0; c < components; c++)
-      args->interp_modes[idx][c] = type;
 }
 
 static inline unsigned nir_count_variables_with_modes(const nir_shader *nir,
@@ -2087,8 +2027,17 @@ static void pvr_collect_io_data_fs(struct rogue_common_build_data *common_data,
 {
    unsigned num_inputs = nir_count_variables_with_modes(nir, nir_var_shader_in);
    assert(num_inputs < (ARRAY_SIZE(fs_data->iterator_args.fpu_iterators) - 1));
+   assert(num_inputs < (ARRAY_SIZE(fs_data->iterator_args.coeff_indices) - 1));
 
+   /* Initialise the data */
    fs_data->iterator_args.iterates_depth = false;
+   fs_data->iterator_args.num_coeff_varyings = 0;
+   for (int i = 0; i < ROGUE_MAX_IO_VARYING_VARS; i++) {
+      for (int c = 0; c < 4; c++) {
+         fs_data->iterator_args.interp_modes[i][c] = INTERP_MODE_SMOOTH;
+         fs_data->iterator_args.coeff_indices[i][c] = ~0;
+      }
+   }
 
    /* Process inputs (if present). */
    if (num_inputs) {
@@ -2096,7 +2045,7 @@ static void pvr_collect_io_data_fs(struct rogue_common_build_data *common_data,
        * the W component.
        */
       pvr_reserve_iterator(&fs_data->iterator_args,
-                           0,
+                           3,
                            INTERP_MODE_NOPERSPECTIVE,
                            false,
                            1);
@@ -2105,20 +2054,36 @@ static void pvr_collect_io_data_fs(struct rogue_common_build_data *common_data,
          const unsigned idx = (var->data.location - VARYING_SLOT_VAR0) + 1;
          const unsigned components = glsl_get_components(var->type);
          const enum glsl_interp_mode interp = var->data.interpolation;
-         const bool f16 = glsl_type_is_16bit(var->type);
+         const struct glsl_type *type = glsl_without_array_or_matrix(var->type);
+         const bool f16 = glsl_type_is_16bit(type);
+
+         if (var->data.location == VARYING_SLOT_POS) {
+            unsigned base = 4 * idx + var->data.location_frac;
+            /* Includes .z */
+            if (base <= 2 && (base + components) >= 2) {
+               pvr_reserve_iterator(&fs_data->iterator_args,
+                                    2,
+                                    INTERP_MODE_SMOOTH,
+                                    false,
+                                    1);
+               fs_data->iterator_args.iterates_depth = true;
+            }
+            continue;
+         }
 
          /* Check input location. */
          assert(var->data.location >= VARYING_SLOT_VAR0 &&
                 var->data.location <= VARYING_SLOT_VAR31);
 
          pvr_reserve_iterator(&fs_data->iterator_args,
-                              idx,
+                              idx * 4 + var->data.location_frac,
                               interp,
                               f16,
                               components);
       }
 
-      common_data->coeffs = pvr_alloc_iterator_regs(&fs_data->iterator_args);
+      common_data->coeffs =
+         fs_data->iterator_args.num_coeff_varyings * ROGUE_COEFF_ALIGN;
       assert(common_data->coeffs);
       /* TODO: This causes linking errors since the regs are setup in the
        * compiler stuff. See if there is a better way of re-enabling this check.
@@ -2210,6 +2175,7 @@ static void pvr_collect_io_data_vs(struct rogue_common_build_data *common_data,
           ~0,
           sizeof(vs_data->outputs.cull_index));
    memset(&vs_data->outputs.indices, ~0, sizeof(vs_data->outputs.indices));
+   memset(vs_data->outputs.is_f16, 0, sizeof(vs_data->outputs.is_f16));
 
    /* We should always have at least a position variable. */
    assert(num_outputs > 0 && "Unsupported number of vertex shader outputs.");
@@ -2217,6 +2183,9 @@ static void pvr_collect_io_data_vs(struct rogue_common_build_data *common_data,
    nir_foreach_shader_out_variable (var, nir) {
       unsigned components = glsl_get_components(var->type);
       const struct glsl_type *type = glsl_without_array_or_matrix(var->type);
+
+      /* Check that outputs are either F32 or F16. */
+      assert(glsl_type_is_32bit(type) || glsl_type_is_16bit(type));
 
       if (var->data.location == VARYING_SLOT_POS) {
          out_pos_present = true;
@@ -2242,7 +2211,7 @@ static void pvr_collect_io_data_vs(struct rogue_common_build_data *common_data,
                  (var->data.location <= VARYING_SLOT_VAR31)) {
          for (int c = 0; c < components; c++) {
             struct pvr_output_reg reg = {
-               .location = var->data.location - VARYING_SLOT_VAR0,
+               .location = var->data.location - VARYING_SLOT_VAR0 + 1,
                .component = var->data.location_frac + c,
                .f16 = glsl_type_is_16bit(type),
                .mode = INTERP_MODE_SMOOTH
@@ -2256,7 +2225,7 @@ static void pvr_collect_io_data_vs(struct rogue_common_build_data *common_data,
             /* FS interpolation mode takes precedence over VS */
             if (fs_reg != ~0) {
                reg.mode = rogue_interp_mode_fs(&fs_data->iterator_args,
-                                               reg.location,
+                                               var->data.location,
                                                reg.component);
             } else {
                switch (var->data.interpolation) {
@@ -2317,6 +2286,7 @@ static void pvr_collect_io_data_vs(struct rogue_common_build_data *common_data,
       struct pvr_output_reg *reg = &varyings[i];
       vs_data->outputs.indices[reg->location][reg->component] =
          i + (out_pos_present ? 4 : 0);
+      vs_data->outputs.is_f16[reg->location][reg->component] = reg->f16;
    }
 
    vs_data->num_vertex_outputs = varyings_count + (out_pos_present ? 4 : 0);
@@ -2400,6 +2370,137 @@ static void pvr_collect_io_data(struct rogue_build_ctx *ctx, nir_shader *nir)
 
    default:
       unreachable("Unsupported stage.");
+   }
+}
+
+static gl_varying_slot pvr_slot_for_coeff_location(unsigned location)
+{
+   if (location == VARYING_SLOT_POS)
+      return VARYING_SLOT_POS;
+   assert(location < ROGUE_MAX_IO_VARYING_VARS);
+   return location + VARYING_SLOT_VAR0 - 1;
+}
+
+/**
+ * \brief Setup PDS douti iterator commands.
+ *
+ * This pass links VS and FS IO together and
+ * must be run after both VS output and FS coeff
+ * registers have been allocated.
+ *
+ * \param[in] ctx Shared multi-stage build context.
+ */
+static void pvr_generate_iterator_commands(struct rogue_build_ctx *ctx)
+{
+   rogue_iterator_args *args = &ctx->stage_data.fs.iterator_args;
+   rogue_vertex_outputs *outputs = &ctx->stage_data.vs.outputs;
+
+   struct rogue_vs_build_data *vs_data = &ctx->stage_data.vs;
+   unsigned num_f32_varyings = vs_data->num_f32_linear_varyings +
+                               vs_data->num_f32_flat_varyings +
+                               vs_data->num_f32_npc_varyings;
+   if (args->iterates_depth)
+      num_f32_varyings += 2;
+   else
+      num_f32_varyings += 1;
+
+   args->num_fpu_iterators = 0;
+
+   for (int coeff = 0; coeff < args->num_coeff_varyings; coeff++) {
+      uint32_t fpu_idx = args->num_fpu_iterators++;
+
+      pvr_csb_pack (&args->fpu_iterators[fpu_idx],
+                    PDSINST_DOUT_FIELDS_DOUTI_SRC,
+                    douti_src) {
+         int start = coeff;
+
+         gl_varying_slot start_location = pvr_slot_for_coeff_location(
+            args->coeff_to_location[coeff].location);
+         unsigned start_component = args->coeff_to_location[coeff].component;
+         enum glsl_interp_mode start_mode =
+            rogue_interp_mode_fs(args, start_location, start_component);
+         unsigned start_vs_index =
+            rogue_output_index_vs(outputs, start_location, start_component);
+         bool start_f16 =
+            outputs->is_f16[args->coeff_to_location[coeff].location]
+                           [start_component];
+
+         /* W and Z are special, the rest come after these 2 */
+         if (start_location == VARYING_SLOT_POS) {
+            assert((start_component == 2 && args->iterates_depth) ||
+                   start_component == 3);
+            start_vs_index = (start_component == 3) ? 0 : 1;
+         } else {
+            /* Vectorise the iterators */
+            for (; coeff < MIN2(start + 3, args->num_coeff_varyings - 1);
+                 coeff++) {
+               gl_varying_slot next_location = pvr_slot_for_coeff_location(
+                  args->coeff_to_location[coeff + 1].location);
+               unsigned next_component =
+                  args->coeff_to_location[coeff + 1].component;
+               enum glsl_interp_mode next_mode =
+                  rogue_interp_mode_fs(args, next_location, next_component);
+               unsigned next_vs_index =
+                  rogue_output_index_vs(outputs, next_location, next_component);
+               bool next_f16 =
+                  outputs->is_f16[args->coeff_to_location[coeff + 1].location]
+                                 [next_component];
+               if (start_f16 != next_f16)
+                  break;
+               if (start_mode != next_mode)
+                  break;
+               if ((next_vs_index - start_vs_index) != (coeff - start + 1))
+                  break;
+            }
+
+            if (args->iterates_depth)
+               start_vs_index -= 2;
+            else
+               start_vs_index -= 3;
+         }
+
+         switch (start_mode) {
+         case INTERP_MODE_NONE:
+         case INTERP_MODE_SMOOTH:
+            douti_src.shademodel = PVRX(PDSINST_DOUTI_SHADEMODEL_GOURUAD);
+            douti_src.perspective = true;
+            break;
+
+         case INTERP_MODE_NOPERSPECTIVE:
+            douti_src.shademodel = PVRX(PDSINST_DOUTI_SHADEMODEL_GOURUAD);
+            douti_src.perspective = false;
+            break;
+
+         case INTERP_MODE_FLAT:
+            douti_src.shademodel =
+               args->triangle_fan ? PVRX(PDSINST_DOUTI_SHADEMODEL_FLAT_VERTEX1)
+                                  : PVRX(PDSINST_DOUTI_SHADEMODEL_FLAT_VERTEX0);
+            douti_src.perspective = false;
+            break;
+
+         default:
+            unreachable("Unimplemented interpolation type.");
+         }
+
+         /* Number of components in this varying
+          * (corresponds to ROGUE_PDSINST_DOUTI_SIZE_1..4D).
+          */
+         douti_src.size = pvr_pdsinst_douti_size(coeff - start + 1);
+
+         douti_src.f16 = !!start_f16;
+
+         /* Offsets within the vertex. */
+         douti_src.f32_offset = 2 * start_vs_index;
+         /* F16 TSP input values always come after all the F32 varyings */
+         if (start_f16) {
+            douti_src.f16_offset =
+               (start_vs_index - num_f32_varyings) + 2 * num_f32_varyings;
+         } else {
+            douti_src.f16_offset = douti_src.f32_offset;
+         }
+
+         args->destination[fpu_idx] = start;
+      }
    }
 }
 
@@ -2593,8 +2694,8 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
             &gfx_pipeline->shader_state.vertex;
 
          /* FIXME: For now we just overwrite it but the compiler shouldn't be
-          * returning the sh count since the driver is in charge of allocating
-          * them.
+          * returning the sh count since the driver is in charge of
+          * allocating them.
           */
          vertex_state->stage_state.const_shared_reg_count =
             sh_count[PVR_STAGE_ALLOCATION_VERTEX_GEOMETRY];
@@ -2649,9 +2750,11 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
          goto err_free_vertex_bo;
 
       /* TODO: powervr has an optimization where it attempts to recompile
-       * shaders. See PipelineCompileNoISPFeedbackFragmentStage. Unimplemented
-       * since in our case the optimization doesn't happen.
+       * shaders. See PipelineCompileNoISPFeedbackFragmentStage.
+       * Unimplemented since in our case the optimization doesn't happen.
        */
+
+      pvr_generate_iterator_commands(ctx);
 
       result = pvr_pds_coeff_program_create_and_upload(
          device,
@@ -2724,9 +2827,9 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
    if (result != VK_SUCCESS)
       goto err_free_vertex_attrib_program;
 
-   /* FIXME: When the temp_buffer_total_size is non-zero we need to allocate a
-    * scratch buffer for both vertex and fragment stage.
-    * Figure out the best place to do this.
+   /* FIXME: When the temp_buffer_total_size is non-zero we need to allocate
+    * a scratch buffer for both vertex and fragment stage. Figure out the
+    * best place to do this.
     */
    /* assert(pvr_pds_descriptor_program_variables.temp_buff_total_size == 0); */
    /* TODO: Implement spilling with the above. */
@@ -2792,8 +2895,8 @@ pvr_create_renderpass_state(const VkGraphicsPipelineCreateInfo *const info)
       .render_pass = info->renderPass,
       .subpass = info->subpass,
 
-      /* TODO: This is only needed for VK_KHR_create_renderpass2 (or core 1.2),
-       * which is not currently supported.
+      /* TODO: This is only needed for VK_KHR_create_renderpass2 (or
+       * core 1.2), which is not currently supported.
        */
       .view_mask = 0,
    };

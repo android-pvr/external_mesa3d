@@ -281,7 +281,8 @@ static void trans_nir_intrinsic_load_input_fs(rogue_builder *b,
    unsigned component = nir_intrinsic_component(intr);
    unsigned coeff_index = rogue_coeff_index_fs(&fs_data->iterator_args,
                                                io_semantics.location,
-                                               component);
+                                               component) *
+                          ROGUE_COEFF_ALIGN;
 
    enum glsl_interp_mode mode = rogue_interp_mode_fs(&fs_data->iterator_args,
                                                      io_semantics.location,
@@ -295,7 +296,8 @@ static void trans_nir_intrinsic_load_input_fs(rogue_builder *b,
                               ROGUE_COEFF_ALIGN * load_size,
                               coeff_index);
       unsigned wcoeff_index =
-         rogue_coeff_index_fs(&fs_data->iterator_args, ~0, 0);
+         rogue_coeff_index_fs(&fs_data->iterator_args, ~0, 0) *
+         ROGUE_COEFF_ALIGN;
       rogue_regarray *wcoeffs =
          rogue_coeff_regarray(b->shader, ROGUE_COEFF_ALIGN, wcoeff_index);
 
