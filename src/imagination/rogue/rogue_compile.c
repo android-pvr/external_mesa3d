@@ -282,22 +282,64 @@ static void trans_nir_intrinsic_load_input_fs(rogue_builder *b,
    unsigned coeff_index = rogue_coeff_index_fs(&fs_data->iterator_args,
                                                io_semantics.location,
                                                component);
-   unsigned wcoeff_index = rogue_coeff_index_fs(&fs_data->iterator_args, ~0, 0);
 
-   rogue_regarray *coeffs = rogue_coeff_regarray(b->shader,
-                                                 ROGUE_COEFF_ALIGN * load_size,
-                                                 coeff_index);
-   rogue_regarray *wcoeffs =
-      rogue_coeff_regarray(b->shader, ROGUE_COEFF_ALIGN, wcoeff_index);
+   enum glsl_interp_mode mode = rogue_interp_mode_fs(&fs_data->iterator_args,
+                                                     io_semantics.location,
+                                                     component);
 
-   rogue_instr *instr = &rogue_FITRP_PIXEL(b,
-                                           dst,
-                                           rogue_ref_drc(0),
-                                           rogue_ref_regarray(coeffs),
-                                           rogue_ref_regarray(wcoeffs),
-                                           rogue_ref_val(load_size))
-                            ->instr;
-   rogue_add_instr_comment(instr, "load_input_fs");
+   switch (mode) {
+   case INTERP_MODE_NONE:
+   case INTERP_MODE_SMOOTH: {
+      rogue_regarray *coeffs =
+         rogue_coeff_regarray(b->shader,
+                              ROGUE_COEFF_ALIGN * load_size,
+                              coeff_index);
+      unsigned wcoeff_index =
+         rogue_coeff_index_fs(&fs_data->iterator_args, ~0, 0);
+      rogue_regarray *wcoeffs =
+         rogue_coeff_regarray(b->shader, ROGUE_COEFF_ALIGN, wcoeff_index);
+
+      rogue_instr *instr = &rogue_FITRP_PIXEL(b,
+                                              dst,
+                                              rogue_ref_drc(0),
+                                              rogue_ref_regarray(coeffs),
+                                              rogue_ref_regarray(wcoeffs),
+                                              rogue_ref_val(load_size))
+                               ->instr;
+      rogue_add_instr_comment(instr, "load_input_fs_smooth");
+      break;
+   }
+   case INTERP_MODE_NOPERSPECTIVE: {
+      rogue_regarray *coeffs =
+         rogue_coeff_regarray(b->shader,
+                              ROGUE_COEFF_ALIGN * load_size,
+                              coeff_index);
+
+      rogue_instr *instr = &rogue_FITR_PIXEL(b,
+                                             dst,
+                                             rogue_ref_drc(0),
+                                             rogue_ref_regarray(coeffs),
+                                             rogue_ref_val(load_size))
+                               ->instr;
+      rogue_add_instr_comment(instr, "load_input_fs_npc");
+      break;
+   }
+   case INTERP_MODE_FLAT:
+      for (int i = 0; i < load_size; ++i) {
+         rogue_reg *coeff_c = rogue_coeff_reg(
+            b->shader,
+            coeff_index + i * ROGUE_COEFF_ALIGN + ROGUE_COEFF_COMPONENT_C);
+         rogue_reg *dst_i = rogue_ssa_reg(b->shader, intr->dest.ssa.index + i);
+
+         rogue_instr *instr =
+            &rogue_MOV(b, rogue_ref_reg(dst_i), rogue_ref_reg(coeff_c))->instr;
+
+         rogue_add_instr_comment(instr, "load_input_fs_flat");
+      }
+      break;
+   default:
+      unreachable("Unsupported Interpolation mode");
+   }
 }
 
 static void trans_nir_intrinsic_load_input_vs(rogue_builder *b,

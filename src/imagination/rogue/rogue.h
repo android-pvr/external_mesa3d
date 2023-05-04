@@ -3109,6 +3109,7 @@ typedef struct rogue_iterator_args {
    uint32_t destination[ROGUE_MAX_IO_VARYING_VARS];
    unsigned base[ROGUE_MAX_IO_VARYING_VARS];
    unsigned components[ROGUE_MAX_IO_VARYING_VARS];
+   enum glsl_interp_mode interp_modes[ROGUE_MAX_IO_VARYING_VARS][4];
 } rogue_iterator_args;
 
 /**
@@ -3191,6 +3192,17 @@ typedef struct rogue_build_ctx {
    unsigned next_ssa_idx;
 } rogue_build_ctx;
 
+/**
+ * \brief Components within vec4-aligned coefficient registers.
+ * The interpolation will be A*x + B*y + C
+ */
+enum rogue_coeff_component {
+   ROGUE_COEFF_COMPONENT_A = 0,
+   ROGUE_COEFF_COMPONENT_B,
+   ROGUE_COEFF_COMPONENT_C,
+   ROGUE_COEFF_COMPONENT_INVALID,
+};
+
 rogue_build_ctx *
 rogue_build_context_create(rogue_compiler *compiler,
                            struct pvr_pipeline_layout *pipeline_layout);
@@ -3203,6 +3215,10 @@ unsigned rogue_count_used_regs(const rogue_shader *shader,
 unsigned rogue_coeff_index_fs(rogue_iterator_args *args,
                               gl_varying_slot location,
                               unsigned component);
+
+enum glsl_interp_mode rogue_interp_mode_fs(struct rogue_iterator_args *args,
+                                           gl_varying_slot location,
+                                           unsigned component);
 
 unsigned rogue_output_index_vs(rogue_vertex_outputs *outputs,
                                gl_varying_slot location,

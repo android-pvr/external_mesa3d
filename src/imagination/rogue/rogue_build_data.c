@@ -74,6 +74,39 @@ unsigned rogue_coeff_index_fs(struct rogue_iterator_args *args,
 }
 
 /**
+ * \brief Returns the interpolation mode for a component of an
+ * input varying location.
+ *
+ * \param[in] args The allocated iterator argument data.
+ * \param[in] location The input varying location, or ~0 for the W coefficient.
+ * \param[in] component The requested component.
+ * \return The interpolation mode.
+ */
+PUBLIC
+enum glsl_interp_mode rogue_interp_mode_fs(struct rogue_iterator_args *args,
+                                           gl_varying_slot location,
+                                           unsigned component)
+{
+   unsigned i;
+
+   /* Special case: W coefficient. */
+   if (location == ~0) {
+      /* The W component shouldn't be the only one. */
+      assert(args->num_fpu_iterators > 1);
+      assert(args->destination[0] == 0);
+      return INTERP_MODE_NOPERSPECTIVE;
+   }
+
+   i = (location - VARYING_SLOT_VAR0) + 1;
+   assert(location >= VARYING_SLOT_VAR0 && location <= VARYING_SLOT_VAR31);
+   assert(i < args->num_fpu_iterators);
+   assert(component < args->components[i]);
+   assert(args->base[i] != ~0);
+
+   return args->interp_modes[i][component];
+}
+
+/**
  * \brief Returns the allocated vertex output index for a component of an input
  * varying location.
  *

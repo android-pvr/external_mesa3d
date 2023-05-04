@@ -2040,6 +2040,9 @@ static void pvr_reserve_iterator(struct rogue_iterator_args *args,
    args->base[idx] = ~0;
    args->components[idx] = components;
    args->num_fpu_iterators += 1;
+
+   for (int c = 0; c < components; c++)
+      args->interp_modes[idx][c] = type;
 }
 
 static inline unsigned nir_count_variables_with_modes(const nir_shader *nir,
