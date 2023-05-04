@@ -149,17 +149,9 @@ static rogue_ref nir_ssa_reg_alu_dst64(rogue_shader *shader,
    return dst.ref64;
 }
 
-static void trans_nir_jump_return(rogue_builder *b, nir_jump_instr *jump)
-{
-   rogue_END(b);
-}
-
 static void trans_nir_jump(rogue_builder *b, nir_jump_instr *jump)
 {
    switch (jump->type) {
-   case nir_jump_return:
-      return trans_nir_jump_return(b, jump);
-
    default:
       break;
    }
@@ -1431,6 +1423,7 @@ rogue_shader *rogue_nir_to_rogue(rogue_build_ctx *ctx, const nir_shader *nir)
          }
       }
    }
+   rogue_END(&b);
 
    /* Apply passes. */
    rogue_shader_passes(shader);

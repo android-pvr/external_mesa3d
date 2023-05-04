@@ -88,6 +88,13 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
    NIR_PASS_V(nir, nir_lower_sysvals_to_varyings, &sysvals_to_varyings);
 #endif
 
+   /* Inlining. */
+   NIR_PASS_V(nir, nir_lower_returns);
+   NIR_PASS_V(nir, nir_inline_functions);
+   NIR_PASS_V(nir, nir_copy_prop);
+   NIR_PASS_V(nir, nir_opt_deref);
+   nir_remove_non_entrypoints(nir);
+
    NIR_PASS_V(nir, nir_lower_variable_initializers, nir_var_shader_out);
    NIR_PASS_V(nir, nir_lower_variable_initializers, ~0);
 
