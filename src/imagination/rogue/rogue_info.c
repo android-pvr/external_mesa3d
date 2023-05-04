@@ -780,8 +780,8 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       },
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
       .supported_src_types = {
-         [0] = T(REG) | T(REGARRAY),
-         [1] = T(REG) | T(REGARRAY),
+         [0] = T(REG) | T(REGARRAY) | T(IMM),
+         [1] = T(REG) | T(REGARRAY) | T(IMM),
       },
    },
    [ROGUE_ALU_OP_FMUL] = { .str = "fmul", .num_dsts = 1, .num_srcs = 2,
@@ -828,7 +828,7 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       .supported_dst_types = { [0] = T(IO), [1] = T(IO), }, /* FTT and either P0 or NONE */
       .supported_src_types = {
          [0] = T(REG) | T(IO),
-         [1] = T(REG) | T(IO),
+         [1] = T(REG) | T(IO) | T(IMM),
       },
    },
    /* TODO: Support fully. */
@@ -935,8 +935,8 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       .supported_dst_types = { [0] = T(REG), },
       .supported_src_types = {
          [0] = T(IO),
-         [1] = T(REG),
-         [2] = T(REG),
+         [1] = T(REG) | T(REGARRAY) | T(IMM),
+         [2] = T(REG) | T(REGARRAY) | T(IMM),
       },
    },
    [ROGUE_ALU_OP_FABS] = { .str = "fabs", .num_dsts = 1, .num_srcs = 1,
