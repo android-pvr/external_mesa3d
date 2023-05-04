@@ -1587,6 +1587,17 @@ pvr_vertex_state_init(struct pvr_graphics_pipeline *gfx_pipeline,
    vertex_state->vertex_input_size = vtxin_regs_used;
    vertex_state->vertex_output_size =
       vs_data->num_vertex_outputs * ROGUE_REG_SIZE_BYTES;
+
+   vertex_state->psprite_present = vs_data->outputs.point_size_index != ~0;
+   vertex_state->layer_present = vs_data->outputs.layer_index != ~0;
+   vertex_state->viewport_present = vs_data->outputs.viewport_index != ~0;
+   for (int i = 0; i < 8; i++) {
+      vertex_state->clip_present[i / 4][i % 4] =
+         vs_data->outputs.clip_index[i / 4][i % 4] != ~0;
+      vertex_state->cull_present[i / 4][i % 4] =
+         vs_data->outputs.cull_index[i / 4][i % 4] != ~0;
+   }
+
    vertex_state->user_clip_planes_mask = 0;
    vertex_state->entry_offset = 0;
 
@@ -1613,7 +1624,8 @@ pvr_vertex_state_init(struct pvr_graphics_pipeline *gfx_pipeline,
 
 static void
 pvr_fragment_state_init(struct pvr_graphics_pipeline *gfx_pipeline,
-                        const struct rogue_common_build_data *common_data)
+                        const struct rogue_common_build_data *common_data,
+                        const struct rogue_fs_build_data *fs_data)
 {
    struct pvr_fragment_shader_state *fragment_state =
       &gfx_pipeline->shader_state.fragment;
@@ -1629,6 +1641,8 @@ pvr_fragment_state_init(struct pvr_graphics_pipeline *gfx_pipeline,
    fragment_state->stage_state.uses_barrier = false;
    fragment_state->stage_state.has_side_effects = false;
    fragment_state->stage_state.empty_program = false;
+
+   fragment_state->needs_iterated_depth = fs_data->iterator_args.iterates_depth;
 
    fragment_state->pass_type = PVRX(TA_PASSTYPE_OPAQUE);
    fragment_state->entry_offset = 0;
@@ -2073,6 +2087,8 @@ static void pvr_collect_io_data_fs(struct rogue_common_build_data *common_data,
 {
    unsigned num_inputs = nir_count_variables_with_modes(nir, nir_var_shader_in);
    assert(num_inputs < (ARRAY_SIZE(fs_data->iterator_args.fpu_iterators) - 1));
+
+   fs_data->iterator_args.iterates_depth = false;
 
    /* Process inputs (if present). */
    if (num_inputs) {
@@ -2610,7 +2626,8 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
             &gfx_pipeline->shader_state.fragment);
       } else {
          pvr_fragment_state_init(gfx_pipeline,
-                                 &ctx->common_data[MESA_SHADER_FRAGMENT]);
+                                 &ctx->common_data[MESA_SHADER_FRAGMENT],
+                                 &ctx->stage_data.fs);
 
          if (!old_path) {
             /* FIXME: For now we just overwrite it but the compiler shouldn't be

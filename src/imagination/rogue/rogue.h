@@ -3103,6 +3103,7 @@ typedef struct rogue_common_build_data {
  * (produces varyings for the fragment shader).
  */
 typedef struct rogue_iterator_args {
+   bool iterates_depth;
    bool triangle_fan;
    uint32_t num_fpu_iterators;
    uint32_t fpu_iterators[ROGUE_MAX_IO_VARYING_VARS];

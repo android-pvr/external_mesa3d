@@ -4803,8 +4803,8 @@ static void pvr_setup_output_select(struct pvr_cmd_buffer *const cmd_buffer)
       cmd_buffer->state.gfx_pipeline;
    const struct pvr_vertex_shader_state *const vertex_state =
       &gfx_pipeline->shader_state.vertex;
-   struct vk_dynamic_graphics_state *const dynamic_state =
-      &cmd_buffer->vk.dynamic_graphics_state;
+   const struct pvr_fragment_shader_state *const fragment_state =
+      &gfx_pipeline->shader_state.fragment;
    struct PVRX(TA_STATE_HEADER) *const header = &cmd_buffer->state.emit_header;
    struct pvr_ppp_state *const ppp_state = &cmd_buffer->state.ppp_state;
    uint32_t output_selects;
@@ -4814,8 +4814,28 @@ static void pvr_setup_output_select(struct pvr_cmd_buffer *const cmd_buffer)
    pvr_csb_pack (&output_selects, TA_OUTPUT_SEL, state) {
       state.rhw_pres = true;
       state.vtxsize = DIV_ROUND_UP(vertex_state->vertex_output_size, 4U);
-      state.psprite_size_pres = (dynamic_state->ia.primitive_topology ==
-                                 VK_PRIMITIVE_TOPOLOGY_POINT_LIST);
+      state.psprite_size_pres = vertex_state->psprite_present;
+      state.render_tgt_pres = vertex_state->layer_present;
+      state.vpt_tgt_pres = vertex_state->viewport_present;
+      state.tsp_unclamped_z_pres = fragment_state->needs_iterated_depth;
+
+      state.plane0 = vertex_state->clip_present[0][0];
+      state.plane1 = vertex_state->clip_present[0][1];
+      state.plane2 = vertex_state->clip_present[0][2];
+      state.plane3 = vertex_state->clip_present[0][3];
+      state.plane4 = vertex_state->clip_present[1][0];
+      state.plane5 = vertex_state->clip_present[1][1];
+      state.plane6 = vertex_state->clip_present[1][2];
+      state.plane7 = vertex_state->clip_present[1][3];
+
+      state.cullplane0 = vertex_state->cull_present[0][0];
+      state.cullplane1 = vertex_state->cull_present[0][1];
+      state.cullplane2 = vertex_state->cull_present[0][2];
+      state.cullplane3 = vertex_state->cull_present[0][3];
+      state.cullplane4 = vertex_state->cull_present[1][0];
+      state.cullplane5 = vertex_state->cull_present[1][1];
+      state.cullplane6 = vertex_state->cull_present[1][2];
+      state.cullplane7 = vertex_state->cull_present[1][3];
    }
 
    if (ppp_state->output_selects != output_selects) {

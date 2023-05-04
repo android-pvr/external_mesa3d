@@ -914,6 +914,11 @@ struct pvr_vertex_shader_state {
    uint32_t vertex_input_size;
    uint32_t vertex_output_size;
    uint32_t user_clip_planes_mask;
+   bool psprite_present;
+   bool viewport_present;
+   bool layer_present;
+   bool clip_present[2][4];
+   bool cull_present[2][4];
 };
 
 struct pvr_fragment_shader_state {
@@ -925,6 +930,7 @@ struct pvr_fragment_shader_state {
    /* FIXME: Move this into stage_state? */
    struct pvr_stage_allocation_descriptor_state descriptor_state;
    enum PVRX(TA_PASSTYPE) pass_type;
+   bool needs_iterated_depth;
 
    struct pvr_pds_upload pds_coeff_program;
    struct pvr_pds_upload pds_fragment_program;
