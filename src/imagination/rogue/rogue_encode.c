@@ -190,6 +190,12 @@ static void rogue_encode_instr_group_header(rogue_instr_group *group,
          h.ctrlop = CTRLOP_BA;
          break;
 
+      case ROGUE_CTRL_OP_CNDST:
+      case ROGUE_CTRL_OP_CNDEF:
+      case ROGUE_CTRL_OP_CNDEND:
+         h.ctrlop = CTRLOP_CND;
+         break;
+
       case ROGUE_CTRL_OP_WDF:
          h.ctrlop = CTRLOP_WDF;
          h.miscctl = rogue_ref_get_drc_index(&ctrl->src[0].ref);
@@ -917,6 +923,53 @@ static void rogue_encode_ctrl_instr(const rogue_ctrl_instr *ctrl,
 
       break;
    }
+
+   case ROGUE_CTRL_OP_CNDST:
+   case ROGUE_CTRL_OP_CNDEF:
+   case ROGUE_CTRL_OP_CNDEND:
+      switch (ctrl->op) {
+      case ROGUE_CTRL_OP_CNDST:
+         instr_encoding->ctrl.cnd.cndinst = CNDINST_ST;
+         break;
+
+      case ROGUE_CTRL_OP_CNDEF:
+         instr_encoding->ctrl.cnd.cndinst = CNDINST_EF;
+         break;
+
+      case ROGUE_CTRL_OP_CNDEND:
+         instr_encoding->ctrl.cnd.cndinst = CNDINST_END;
+         break;
+
+      default:
+         unreachable("Unsupported ctrl op.");
+      }
+
+      switch (ctrl->op) {
+      case ROGUE_CTRL_OP_CNDST:
+      case ROGUE_CTRL_OP_CNDEF:
+         if (rogue_ctrl_op_mod_is_set(ctrl, OM(ALWAYS)))
+            instr_encoding->ctrl.cnd.pcnd = PCND_ALWAYS;
+         else if (rogue_ctrl_op_mod_is_set(ctrl, OM(P0_TRUE)))
+            instr_encoding->ctrl.cnd.pcnd = PCND_P0_TRUE;
+         else if (rogue_ctrl_op_mod_is_set(ctrl, OM(NEVER)))
+            instr_encoding->ctrl.cnd.pcnd = PCND_NEVER;
+         else if (rogue_ctrl_op_mod_is_set(ctrl, OM(P0_FALSE)))
+            instr_encoding->ctrl.cnd.pcnd = PCND_P0_FALSE;
+         else
+            unreachable("Missing conditional test.");
+         break;
+
+      case ROGUE_CTRL_OP_CNDEND:
+         instr_encoding->ctrl.cnd.pcnd = PCND_ALWAYS;
+         break;
+
+      default:
+         unreachable("Unsupported ctrl op.");
+      }
+
+      instr_encoding->ctrl.cnd.adjust = rogue_ref_get_val(&ctrl->src[1].ref);
+
+      break;
 
    default:
       unreachable("Unsupported ctrl op.");

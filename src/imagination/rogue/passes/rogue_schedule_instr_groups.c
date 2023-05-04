@@ -204,7 +204,31 @@ static void rogue_lower_backend_io(rogue_backend_instr *backend,
 static void rogue_lower_ctrl_io(rogue_ctrl_instr *ctrl,
                                 rogue_instr_group *group)
 {
-   /* TODO: Support control instructions with I/O. */
+   const rogue_ctrl_op_info *info = &rogue_ctrl_op_infos[ctrl->op];
+
+   for (unsigned u = 0; u < info->num_dsts; ++u) {
+      if (info->phase_io.dst[u] == ROGUE_IO_INVALID)
+         continue;
+
+      rogue_set_io_sel(&group->io_sel,
+                       group->header.alu,
+                       info->phase_io.dst[u],
+                       &ctrl->dst[u].ref,
+                       true);
+      ctrl->dst[u].ref = rogue_ref_io(info->phase_io.dst[u]);
+   }
+
+   for (unsigned u = 0; u < info->num_srcs; ++u) {
+      if (info->phase_io.src[u] == ROGUE_IO_INVALID)
+         continue;
+
+      rogue_set_io_sel(&group->io_sel,
+                       group->header.alu,
+                       info->phase_io.src[u],
+                       &ctrl->src[u].ref,
+                       false);
+      ctrl->src[u].ref = rogue_ref_io(info->phase_io.src[u]);
+   }
 }
 
 static void rogue_lower_bitwise_io(rogue_bitwise_instr *bitwise,
@@ -730,6 +754,12 @@ static void rogue_calc_ctrl_instrs_size(rogue_instr_group *group,
    case ROGUE_CTRL_OP_BR:
    case ROGUE_CTRL_OP_BA:
       group->size.instrs[phase] = 5;
+      break;
+
+   case ROGUE_CTRL_OP_CNDST:
+   case ROGUE_CTRL_OP_CNDEF:
+   case ROGUE_CTRL_OP_CNDEND:
+      group->size.instrs[phase] = 1;
       break;
 
    case ROGUE_CTRL_OP_WDF:

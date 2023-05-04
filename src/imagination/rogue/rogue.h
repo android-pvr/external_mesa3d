@@ -597,8 +597,9 @@ enum rogue_io {
    /* Test output feedthrough. */
    ROGUE_IO_FTT,
 
-   /* Predicate register. */
+   /* Predicate registers. */
    ROGUE_IO_P0,
+   ROGUE_IO_PE,
 
    /* For optional instruction arguments. */
    ROGUE_IO_NONE,
@@ -1331,8 +1332,14 @@ enum rogue_ctrl_op {
    /* Real instructions. */
    ROGUE_CTRL_OP_NOP,
    ROGUE_CTRL_OP_WOP,
+
    ROGUE_CTRL_OP_BR, /* Branch: relative (to block). */
    ROGUE_CTRL_OP_BA, /* Branch: absolute (to address). */
+
+   ROGUE_CTRL_OP_CNDST, /** Conditional start. */
+   ROGUE_CTRL_OP_CNDEF, /** Conditional elif. */
+   ROGUE_CTRL_OP_CNDEND, /** Conditional end. */
+
    ROGUE_CTRL_OP_WDF,
 
    /* Pseudo-instructions. */
@@ -1353,6 +1360,11 @@ enum rogue_ctrl_op_mod {
 
    ROGUE_CTRL_OP_MOD_NOWDF, /* Don't schedule WDF. */
 
+   ROGUE_CTRL_OP_MOD_ALWAYS,
+   ROGUE_CTRL_OP_MOD_P0_TRUE,
+   ROGUE_CTRL_OP_MOD_NEVER,
+   ROGUE_CTRL_OP_MOD_P0_FALSE,
+
    ROGUE_CTRL_OP_MOD_COUNT,
 };
 
@@ -1368,6 +1380,11 @@ extern const rogue_ctrl_op_mod_info
 #define ROGUE_CTRL_OP_MAX_SRCS 7
 #define ROGUE_CTRL_OP_MAX_DSTS 2
 
+typedef struct rogue_ctrl_io_info {
+   enum rogue_io dst[ROGUE_CTRL_OP_MAX_SRCS];
+   enum rogue_io src[ROGUE_CTRL_OP_MAX_DSTS];
+} rogue_ctrl_io_info;
+
 typedef struct rogue_ctrl_op_info {
    const char *str;
 
@@ -1378,6 +1395,8 @@ typedef struct rogue_ctrl_op_info {
 
    unsigned num_dsts;
    unsigned num_srcs;
+
+   rogue_ctrl_io_info phase_io;
 
    uint64_t supported_op_mods;
    uint64_t supported_dst_mods[ROGUE_CTRL_OP_MAX_DSTS];

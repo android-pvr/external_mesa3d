@@ -369,6 +369,11 @@ static inline void rogue_print_ctrl_mods(FILE *fp, const rogue_ctrl_instr *ctrl)
    }
 }
 
+static inline void rogue_print_ctrl_dst(FILE *fp, const rogue_instr_dst *dst)
+{
+   rogue_print_ref(fp, &dst->ref);
+}
+
 static inline void rogue_print_ctrl_src(FILE *fp, const rogue_instr_src *src)
 {
    rogue_print_ref(fp, &src->ref);
@@ -393,6 +398,15 @@ static inline void rogue_print_ctrl_instr(FILE *fp,
    /* TODO NEXT: Dests. */
    /* TODO: Special case for the conditional ctrl instructions as they're
     * printed as source 0, then dest, then rest of the sources. */
+
+   for (unsigned i = 0; i < info->num_dsts; ++i) {
+      if (i > 0)
+         fputs(",", fp);
+
+      fputs(" ", fp);
+
+      rogue_print_ctrl_dst(fp, &ctrl->dst[i]);
+   }
 
    for (unsigned i = 0; i < info->num_srcs; ++i) {
       if (i == 0 && !info->num_dsts)

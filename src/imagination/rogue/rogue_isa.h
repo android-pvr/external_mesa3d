@@ -1204,6 +1204,36 @@ typedef struct rogue_offset32 {
 } PACKED rogue_offset32;
 static_assert(sizeof(rogue_offset32) == 4, "sizeof(rogue_offset32) != 4");
 
+typedef struct rogue_ctrl_cnd_encoding {
+   /* Byte 0 */
+   struct {
+      unsigned cndinst : 3;
+      unsigned pcnd : 2;
+      unsigned adjust : 2;
+      unsigned : 1;
+   } PACKED;
+} PACKED rogue_ctrl_cnd_encoding;
+static_assert(sizeof(rogue_ctrl_cnd_encoding) == 1,
+              "sizeof(rogue_ctrl_cnd_encoding) != 1");
+
+enum cndinst {
+   CNDINST_ST = 0b000,
+   CNDINST_EF = 0b001,
+   CNDINST_SM = 0b010,
+   CNDINST_LT = 0b011,
+   CNDINST_END = 0b100,
+   CNDINST_SETL_B = 0b101,
+   CNDINST_LPC = 0b110,
+   CNDINST_SETL_A = 0b111,
+};
+
+enum pcnd {
+   PCND_ALWAYS = 0b00,
+   PCND_P0_TRUE = 0b01,
+   PCND_NEVER = 0b10,
+   PCND_P0_FALSE = 0b11,
+};
+
 /* NOP */
 typedef struct rogue_ctrl_nop_encoding {
    /* Byte 0 */
@@ -1219,6 +1249,7 @@ typedef struct rogue_ctrl_instr_encoding {
    union {
       /* Bytes 0+ */
       rogue_ctrl_ba_encoding ba;
+      rogue_ctrl_cnd_encoding cnd;
       rogue_ctrl_nop_encoding nop;
    } PACKED;
 } PACKED rogue_ctrl_instr_encoding;

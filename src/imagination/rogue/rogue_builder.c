@@ -647,6 +647,18 @@ rogue_build_ctrl01(rogue_builder *b, enum rogue_ctrl_op op, rogue_ref src0)
    return rogue_build_ctrl(b, op, NULL, 0, NULL, 1, srcs);
 }
 
+static inline rogue_ctrl_instr *rogue_build_ctrl22(rogue_builder *b,
+                                                   enum rogue_ctrl_op op,
+                                                   rogue_ref dst0,
+                                                   rogue_ref dst1,
+                                                   rogue_ref src0,
+                                                   rogue_ref src1)
+{
+   rogue_ref dsts[] = { dst0, dst1 };
+   rogue_ref srcs[] = { src0, src1 };
+   return rogue_build_ctrl(b, op, NULL, 2, dsts, 2, srcs);
+}
+
 #define ROGUE_BUILDER_DEFINE_CTRLB(op)                                \
    PUBLIC                                                             \
    rogue_ctrl_instr *rogue_##op(rogue_builder *b, rogue_block *block) \
@@ -675,6 +687,20 @@ rogue_build_ctrl01(rogue_builder *b, enum rogue_ctrl_op op, rogue_ref src0)
       assert(rogue_ctrl_op_infos[ROGUE_CTRL_OP_##op].num_dsts == 0); \
       assert(rogue_ctrl_op_infos[ROGUE_CTRL_OP_##op].num_srcs == 1); \
       return rogue_build_ctrl01(b, ROGUE_CTRL_OP_##op, src0);        \
+   }
+
+#define ROGUE_BUILDER_DEFINE_CTRL22(op)                                         \
+   PUBLIC                                                                       \
+   rogue_ctrl_instr *rogue_##op(rogue_builder *b,                               \
+                                rogue_ref dst0,                                 \
+                                rogue_ref dst1,                                 \
+                                rogue_ref src0,                                 \
+                                rogue_ref src1)                                 \
+   {                                                                            \
+      assert(!rogue_ctrl_op_infos[ROGUE_CTRL_OP_##op].has_target);              \
+      assert(rogue_ctrl_op_infos[ROGUE_CTRL_OP_##op].num_dsts == 2);            \
+      assert(rogue_ctrl_op_infos[ROGUE_CTRL_OP_##op].num_srcs == 2);            \
+      return rogue_build_ctrl22(b, ROGUE_CTRL_OP_##op, dst0, dst1, src0, src1); \
    }
 
 #include "rogue_ctrl_instrs.def"
