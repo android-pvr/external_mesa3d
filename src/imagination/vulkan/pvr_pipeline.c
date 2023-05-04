@@ -2006,8 +2006,9 @@ static void pvr_reserve_iterator(struct rogue_iterator_args *args,
          break;
 
       case INTERP_MODE_FLAT:
-         /* TODO: properly choose the provoking vertex. */
-         douti_src.shademodel = PVRX(PDSINST_DOUTI_SHADEMODEL_FLAT_VERTEX0);
+         douti_src.shademodel =
+            args->triangle_fan ? PVRX(PDSINST_DOUTI_SHADEMODEL_FLAT_VERTEX1)
+                               : PVRX(PDSINST_DOUTI_SHADEMODEL_FLAT_VERTEX0);
          douti_src.perspective = false;
          break;
 
@@ -2348,6 +2349,12 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
    ctx = rogue_build_context_create(compiler, layout);
    if (!ctx)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+   /* TODO: Fix this by having multiple variants of iterator PDS programs for
+    * VK_EXT_extended_dynamic_state */
+   ctx->stage_data.fs.iterator_args.triangle_fan =
+      pCreateInfo->pInputAssemblyState->topology ==
+      VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN;
 
    vertex_input_layout = &ctx->stage_data.vs.inputs;
    vertex_input_reg_count = &ctx->stage_data.vs.num_vertex_input_regs;
