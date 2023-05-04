@@ -46,7 +46,11 @@ static bool can_back_prop(rogue_alu_instr *mov)
 
    /* Vertex outputs require uvsw.write; only back-propagate if the parent
     * instruction is also a mov. */
+   /* TODO: Needs fixing before re-enabling - vtxout writes with regs that
+    * have special consts in them leaves dangling regs after this. */
    if (mov->dst[0].ref.reg->class == ROGUE_REG_CLASS_VTXOUT) {
+      return false;
+#if 0
       rogue_reg_write *write =
          list_first_entry(&mov->src[0].ref.reg->writes, rogue_reg_write, link);
 
@@ -56,6 +60,7 @@ static bool can_back_prop(rogue_alu_instr *mov)
       rogue_alu_instr *alu = rogue_instr_as_alu(write->instr);
       if (alu->op != ROGUE_ALU_OP_MOV)
          return false;
+#endif
    }
 
    /* Is the source register only written to once? */
