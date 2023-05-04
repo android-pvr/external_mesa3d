@@ -45,7 +45,17 @@ static const struct spirv_to_nir_options spirv_options = {
 };
 
 static const nir_shader_compiler_options nir_options = {
+   .lower_fdiv = true,
    .fuse_ffma32 = true,
+   .lower_flrp16 = true,
+   .lower_flrp32 = true,
+   .lower_flrp64 = true,
+   .lower_fpow = true,
+   .lower_fsat = true,
+   .lower_fsqrt = true,
+   .has_fused_comp_and_csel = true,
+   .support_8bit_alu = true,
+   .support_16bit_alu = true,
    .lower_bitops = true, /* TODO: Re-enable once supported. */
    .max_unroll_iterations = 32,
    .max_unroll_iterations_aggressive = 128,
@@ -149,6 +159,10 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
               rogue_glsl_type_size,
               (nir_lower_io_options)0);
 
+   /* Clean up deref_vars. */
+   NIR_PASS_V(nir, nir_opt_dce);
+   NIR_PASS_V(nir, nir_opt_constant_folding);
+
    /* Load inputs to scalars (single registers later). */
    /* TODO: Fitrp can process multiple frag inputs at once, scalarise I/O. */
    NIR_PASS_V(nir, nir_lower_io_to_scalar, nir_var_shader_in);
@@ -171,6 +185,9 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
 
    /* Lower ALU operations to scalars. */
    NIR_PASS_V(nir, nir_lower_alu_to_scalar, NULL, NULL);
+
+   /* TODO: does always_precise need to be true? */
+   NIR_PASS_V(nir, nir_lower_flrp, 16 | 32 | 64, true);
 
    /* Additional I/O lowering. */
    NIR_PASS_V(nir,
@@ -217,6 +234,14 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
 
       NIR_PASS(progress, nir, nir_opt_copy_prop_vars);
       NIR_PASS(progress, nir, nir_opt_dead_write_vars);
+
+      NIR_PASS(progress, nir, nir_opt_combine_stores, nir_var_all);
+      NIR_PASS(progress,
+               nir,
+               nir_remove_dead_variables,
+               (nir_variable_mode)(nir_var_function_temp | nir_var_shader_temp),
+               NULL);
+
       NIR_PASS(progress, nir, nir_lower_var_copies);
       NIR_PASS(progress, nir, nir_lower_vars_to_ssa);
 
@@ -236,10 +261,8 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
       NIR_PASS(progress, nir, nir_lower_undef_to_zero);
 
       NIR_PASS(progress, nir, nir_opt_loop_unroll);
-      NIR_PASS_V(nir, nir_opt_gcm, false);
    } while (progress);
 
-   NIR_PASS_V(nir, nir_opt_shrink_vectors);
    /* NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_function_temp |
     * nir_var_shader_in | nir_var_shader_out, NULL); */
 
