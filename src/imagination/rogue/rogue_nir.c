@@ -91,6 +91,7 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
    NIR_PASS_V(nir, nir_lower_variable_initializers, ~0);
 
    if (stage == MESA_SHADER_VERTEX) {
+      NIR_PASS_V(nir, nir_lower_clip_cull_distance_arrays);
       NIR_PASS_V(nir,
                  nir_lower_point_size,
                  PVR_POINT_SIZE_RANGE_MIN,
