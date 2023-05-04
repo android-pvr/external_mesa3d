@@ -103,7 +103,9 @@ enum glsl_interp_mode rogue_interp_mode_fs(struct rogue_iterator_args *args,
    assert(component < args->components[i]);
    assert(args->base[i] != ~0);
 
-   return args->interp_modes[i][component];
+   return args->interp_modes[i][component] == INTERP_MODE_NONE
+             ? INTERP_MODE_SMOOTH
+             : args->interp_modes[i][component];
 }
 
 /**
@@ -121,21 +123,32 @@ unsigned rogue_output_index_vs(struct rogue_vertex_outputs *outputs,
                                unsigned component)
 {
    unsigned i;
-
+   assert(component < 4);
    if (location == VARYING_SLOT_POS) {
       /* Always at location 0. */
-      assert(outputs->base[0] == 0);
-      i = 0;
+      i = component;
+   } else if (location == VARYING_SLOT_PSIZ) {
+      assert(component == 0);
+      i = outputs->point_size_index;
+   } else if (location == VARYING_SLOT_VIEWPORT) {
+      assert(component == 0);
+      i = outputs->viewport_index;
+   } else if (location == VARYING_SLOT_LAYER) {
+      assert(component == 0);
+      i = outputs->layer_index;
+   } else if ((location >= VARYING_SLOT_CLIP_DIST0) &&
+              (location <= VARYING_SLOT_CLIP_DIST1)) {
+      i = outputs->clip_index[location - VARYING_SLOT_CLIP_DIST0][component];
+   } else if ((location >= VARYING_SLOT_CULL_DIST0) &&
+              (location <= VARYING_SLOT_CULL_DIST1)) {
+      i = outputs->cull_index[location - VARYING_SLOT_CULL_DIST0][component];
    } else if ((location >= VARYING_SLOT_VAR0) &&
               (location <= VARYING_SLOT_VAR31)) {
-      i = (location - VARYING_SLOT_VAR0) + 1;
+      i = outputs->indices[location - VARYING_SLOT_VAR0][component];
+      assert(i < outputs->num_output_vars);
    } else {
       unreachable("Unsupported vertex output type.");
    }
-
-   assert(i < outputs->num_output_vars);
-   assert(component < outputs->components[i]);
-   assert(outputs->base[i] != ~0);
-
-   return outputs->base[i] + component;
+   assert(i != ~0);
+   return i;
 }

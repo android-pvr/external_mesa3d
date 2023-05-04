@@ -3126,9 +3126,12 @@ typedef struct rogue_vertex_inputs {
  */
 typedef struct rogue_vertex_outputs {
    unsigned num_output_vars;
-   unsigned base[ROGUE_MAX_IO_VARYING_VARS];
-   unsigned components[ROGUE_MAX_IO_VARYING_VARS];
-   enum glsl_interp_mode interp_modes[ROGUE_MAX_IO_VARYING_VARS];
+   unsigned point_size_index;
+   unsigned viewport_index;
+   unsigned layer_index;
+   unsigned clip_index[2][4];
+   unsigned cull_index[2][4];
+   unsigned indices[MAX_VARYING][4];
 } rogue_vertex_outputs;
 
 enum rogue_msaa_mode {

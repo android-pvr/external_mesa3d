@@ -48,6 +48,7 @@
 #include "util/ralloc.h"
 #include "util/u_dynarray.h"
 #include "util/u_math.h"
+#include "util/u_qsort.h"
 #include "vk_alloc.h"
 #include "vk_format.h"
 #include "vk_graphics_state.h"
@@ -2113,60 +2114,219 @@ static void pvr_collect_io_data_fs(struct rogue_common_build_data *common_data,
    /* TODO: Process outputs. */
 }
 
-/**
- * \brief Allocates the vertex shader outputs.
- *
- * \param[in] outputs The vertex shader output data.
- * \return The total number of vertex outputs required.
- */
-static unsigned pvr_alloc_vs_outputs(struct rogue_vertex_outputs *outputs)
+struct pvr_output_reg {
+   unsigned location : 8;
+   unsigned component : 2;
+   bool f16 : 1;
+   enum glsl_interp_mode mode : 3;
+   unsigned _pad : 2;
+};
+
+static int
+pvr_compare_output_reg(const void *_a, const void *_b, UNUSED void *arg)
 {
-   unsigned vs_outputs = 0;
+   const struct pvr_output_reg *a = (const struct pvr_output_reg *)_a;
+   const struct pvr_output_reg *b = (const struct pvr_output_reg *)_b;
 
-   for (unsigned i = 0; i < outputs->num_output_vars; i++) {
-      /* Ensure there aren't any gaps. */
-      assert(outputs->base[i] == ~0);
+   /* First is F32 vs F16 */
+   if (a->f16 > b->f16)
+      return 1;
+   if (a->f16 < b->f16)
+      return -1;
 
-      outputs->base[i] = vs_outputs;
-      vs_outputs += outputs->components[i];
-   }
+   /* Next is interpolation mode in this order:
+    * INTERP_MODE_SMOOTH,
+    * INTERP_MODE_FLAT,
+    * INTERP_MODE_NOPERSPECTIVE,
+    */
+   if (a->mode > b->mode)
+      return 1;
+   if (a->mode < b->mode)
+      return -1;
 
-   return vs_outputs;
+   /* Finally determine through location/component number */
+   unsigned a_index = a->location * 4 + a->component;
+   unsigned b_index = b->location * 4 + b->component;
+   if (a_index > b_index)
+      return 1;
+   if (a_index < b_index)
+      return -1;
+
+   return 0;
 }
 
 /**
- * \brief Counts the varyings used by the vertex shader.
+ * \brief Collects the vertex shader I/O data to feed-back to the driver.
  *
- * \param[in] outputs The vertex shader output data.
- * \return The number of varyings used.
+ * \sa #pvr_collect_io_data()
+ *
+ * \param[in] common_data Common build data.
+ * \param[in] vs_data Vertex-specific build data.
+ * \param[in] fs_data Fragment-specific build data.
+ * \param[in] nir NIR vertex shader.
  */
-static void pvr_count_vs_varyings(struct rogue_vs_build_data *vs_data)
+static void pvr_collect_io_data_vs(struct rogue_common_build_data *common_data,
+                                   struct rogue_vs_build_data *vs_data,
+                                   struct rogue_fs_build_data *fs_data,
+                                   nir_shader *nir)
 {
-   const struct rogue_vertex_outputs *outputs = &vs_data->outputs;
+   ASSERTED bool out_pos_present = false;
+   ASSERTED unsigned num_outputs =
+      nir_count_variables_with_modes(nir, nir_var_shader_out);
+   bool psprite_present = false;
+   bool viewport_present = false;
+   bool layer_present = false;
+   bool clip_present[2][4] = { 0 };
+   bool cull_present[2][4] = { 0 };
+   struct pvr_output_reg varyings[MAX_VARYING * 4];
+   unsigned varyings_count = 0;
 
-   /* TODO: F16 support. */
+   /* Process outputs. */
 
-   /* Skip the position. */
-   for (unsigned i = 1; i < outputs->num_output_vars; i++) {
-      switch (outputs->interp_modes[i]) {
-      /* Default interpolation is smooth. */
-      case INTERP_MODE_NONE:
-      case INTERP_MODE_SMOOTH:
-         vs_data->num_f32_linear_varyings += outputs->components[i];
-         break;
+   /* Initialise all indices to ~0 */
+   vs_data->outputs.point_size_index = ~0;
+   vs_data->outputs.viewport_index = ~0;
+   vs_data->outputs.layer_index = ~0;
+   memset(&vs_data->outputs.clip_index,
+          ~0,
+          sizeof(vs_data->outputs.clip_index));
+   memset(&vs_data->outputs.cull_index,
+          ~0,
+          sizeof(vs_data->outputs.cull_index));
+   memset(&vs_data->outputs.indices, ~0, sizeof(vs_data->outputs.indices));
 
-      case INTERP_MODE_FLAT:
-         vs_data->num_f32_flat_varyings += outputs->components[i];
-         break;
+   /* We should always have at least a position variable. */
+   assert(num_outputs > 0 && "Unsupported number of vertex shader outputs.");
 
-      case INTERP_MODE_NOPERSPECTIVE:
-         vs_data->num_f32_npc_varyings += outputs->components[i];
-         break;
+   nir_foreach_shader_out_variable (var, nir) {
+      unsigned components = glsl_get_components(var->type);
+      const struct glsl_type *type = glsl_without_array_or_matrix(var->type);
 
-      default:
-         unreachable("Unimplemented interpolation type.");
+      if (var->data.location == VARYING_SLOT_POS) {
+         out_pos_present = true;
+      } else if (var->data.location == VARYING_SLOT_PSIZ) {
+         psprite_present = true;
+      } else if (var->data.location == VARYING_SLOT_VIEWPORT) {
+         viewport_present = true;
+      } else if (var->data.location == VARYING_SLOT_LAYER) {
+         layer_present = true;
+      } else if ((var->data.location >= VARYING_SLOT_CLIP_DIST0) &&
+                 (var->data.location <= VARYING_SLOT_CLIP_DIST1)) {
+         for (int c = 0; c < components; c++) {
+            clip_present[var->data.location - VARYING_SLOT_CLIP_DIST0]
+                        [var->data.location_frac + c] = true;
+         }
+      } else if ((var->data.location >= VARYING_SLOT_CULL_DIST0) &&
+                 (var->data.location <= VARYING_SLOT_CULL_DIST1)) {
+         for (int c = 0; c < components; c++) {
+            cull_present[var->data.location - VARYING_SLOT_CULL_DIST0]
+                        [var->data.location_frac + c] = true;
+         }
+      } else if ((var->data.location >= VARYING_SLOT_VAR0) &&
+                 (var->data.location <= VARYING_SLOT_VAR31)) {
+         for (int c = 0; c < components; c++) {
+            struct pvr_output_reg reg = {
+               .location = var->data.location - VARYING_SLOT_VAR0,
+               .component = var->data.location_frac + c,
+               .f16 = glsl_type_is_16bit(type),
+               .mode = INTERP_MODE_SMOOTH
+            };
+
+            /* FS interpolation mode takes precedence over VS */
+            if (fs_data) {
+               reg.mode = rogue_interp_mode_fs(&fs_data->iterator_args,
+                                               reg.location,
+                                               reg.component);
+            } else {
+               switch (var->data.interpolation) {
+               case INTERP_MODE_NONE:
+                  reg.mode = INTERP_MODE_SMOOTH;
+                  break;
+               case INTERP_MODE_SMOOTH:
+               case INTERP_MODE_NOPERSPECTIVE:
+               case INTERP_MODE_FLAT:
+                  reg.mode = var->data.interpolation;
+                  break;
+               default:
+                  unreachable("Unimplemented interpolation type.");
+               }
+            }
+
+            switch (reg.mode) {
+            case INTERP_MODE_SMOOTH:
+               if (reg.f16)
+                  vs_data->num_f16_linear_varyings++;
+               else
+                  vs_data->num_f32_linear_varyings++;
+               break;
+            case INTERP_MODE_NOPERSPECTIVE:
+               if (reg.f16)
+                  vs_data->num_f16_npc_varyings++;
+               else
+                  vs_data->num_f32_npc_varyings++;
+               break;
+            case INTERP_MODE_FLAT:
+               if (reg.f16)
+                  vs_data->num_f16_flat_varyings++;
+               else
+                  vs_data->num_f32_flat_varyings++;
+               break;
+            default:
+               unreachable("Unimplemented interpolation type.");
+            }
+
+            varyings[varyings_count++] = reg;
+         }
+      } else {
+         unreachable("Unsupported vertex output type.");
       }
    }
+
+   /* Always need the output position to be present. */
+   assert(out_pos_present);
+
+   /* Sort the varyings based on their type */
+   util_qsort_r(varyings,
+                varyings_count,
+                sizeof(*varyings),
+                pvr_compare_output_reg,
+                NULL);
+
+   for (int i = 0; i < varyings_count; i++) {
+      struct pvr_output_reg *reg = &varyings[i];
+      vs_data->outputs.indices[reg->location][reg->component] =
+         i + (out_pos_present ? 4 : 0);
+   }
+
+   vs_data->num_vertex_outputs = varyings_count + (out_pos_present ? 4 : 0);
+   vs_data->outputs.num_output_vars = vs_data->num_vertex_outputs;
+
+   /* The order of these system values are important */
+   if (psprite_present)
+      vs_data->outputs.point_size_index = vs_data->num_vertex_outputs++;
+   if (viewport_present)
+      vs_data->outputs.viewport_index = vs_data->num_vertex_outputs++;
+   if (layer_present)
+      vs_data->outputs.layer_index = vs_data->num_vertex_outputs++;
+   for (int i = 0; i < 8; i++) {
+      if (clip_present[i / 4][i % 4]) {
+         vs_data->outputs.clip_index[i / 4][i % 4] =
+            vs_data->num_vertex_outputs++;
+      }
+   }
+   for (int i = 0; i < 8; i++) {
+      if (cull_present[i / 4][i % 4]) {
+         vs_data->outputs.cull_index[i / 4][i % 4] =
+            vs_data->num_vertex_outputs++;
+      }
+   }
+
+   assert(vs_data->num_vertex_outputs);
+   /* TODO: This causes linking errors since the regs are setup in the compiler
+    * stuff. See if there is a better way of re-enabling this check.
+    * assert(vs_data->num_vertex_outputs <
+    *        rogue_reg_infos[ROGUE_REG_CLASS_VTXOUT].num);
+    */
 }
 
 /**
@@ -2187,88 +2347,6 @@ static void reserve_vs_input(struct rogue_vertex_inputs *inputs,
    inputs->base[i] = ~0;
    inputs->components[i] = components;
    inputs->num_input_vars++;
-}
-
-/**
- * \brief Reserves space for a vertex shader output.
- *
- * \param[in] outputs The vertex output data.
- * \param[in] idx The vertex output index.
- * \param[in] components The number of components in the output.
- */
-static void pvr_reserve_vs_output(struct rogue_vertex_outputs *outputs,
-                                  unsigned idx,
-                                  unsigned components,
-                                  enum glsl_interp_mode interp_mode)
-{
-   assert(components >= 1 && components <= 4);
-
-   assert(idx < ARRAY_SIZE(outputs->base));
-
-   outputs->base[idx] = ~0;
-   outputs->components[idx] = components;
-   outputs->interp_modes[idx] = interp_mode;
-   outputs->num_output_vars++;
-}
-
-/**
- * \brief Collects the vertex shader I/O data to feed-back to the driver.
- *
- * \sa #pvr_collect_io_data()
- *
- * \param[in] common_data Common build data.
- * \param[in] vs_data Vertex-specific build data.
- * \param[in] nir NIR vertex shader.
- */
-static void pvr_collect_io_data_vs(struct rogue_common_build_data *common_data,
-                                   struct rogue_vs_build_data *vs_data,
-                                   nir_shader *nir)
-{
-   ASSERTED unsigned num_outputs =
-      nir_count_variables_with_modes(nir, nir_var_shader_out);
-   ASSERTED bool out_pos_present = false;
-
-   /* Process outputs. */
-
-   /* We should always have at least a position variable. */
-   assert(num_outputs > 0 && "Unsupported number of vertex shader outputs.");
-
-   nir_foreach_shader_out_variable (var, nir) {
-      unsigned components = glsl_get_components(var->type);
-      enum glsl_interp_mode interp_mode = var->data.interpolation;
-
-      /* Check that outputs are F32. */
-      /* TODO: Support other types. */
-      assert(glsl_get_base_type(var->type) == GLSL_TYPE_FLOAT);
-      assert(glsl_type_is_32bit(var->type));
-
-      if (var->data.location == VARYING_SLOT_POS) {
-         assert(components == 4);
-         out_pos_present = true;
-
-         pvr_reserve_vs_output(&vs_data->outputs, 0, components, interp_mode);
-      } else if ((var->data.location >= VARYING_SLOT_VAR0) &&
-                 (var->data.location <= VARYING_SLOT_VAR31)) {
-         /* The first one is reserved for the position output. */
-         unsigned idx = (var->data.location - VARYING_SLOT_VAR0) + 1;
-         pvr_reserve_vs_output(&vs_data->outputs, idx, components, interp_mode);
-      } else {
-         unreachable("Unsupported vertex output type.");
-      }
-   }
-
-   /* Always need the output position to be present. */
-   assert(out_pos_present);
-
-   vs_data->num_vertex_outputs = pvr_alloc_vs_outputs(&vs_data->outputs);
-   assert(vs_data->num_vertex_outputs);
-   /* TODO: This causes linking errors since the regs are setup in the compiler
-    * stuff. See if there is a better way of re-enabling this check.
-    * assert(vs_data->num_vertex_outputs <
-    *        rogue_reg_infos[ROGUE_REG_CLASS_VTXOUT].num);
-    */
-
-   pvr_count_vs_varyings(vs_data);
 }
 
 /**
@@ -2293,7 +2371,11 @@ static void pvr_collect_io_data(struct rogue_build_ctx *ctx, nir_shader *nir)
       return pvr_collect_io_data_fs(common_data, &ctx->stage_data.fs, nir);
 
    case MESA_SHADER_VERTEX:
-      return pvr_collect_io_data_vs(common_data, &ctx->stage_data.vs, nir);
+      return pvr_collect_io_data_vs(
+         common_data,
+         &ctx->stage_data.vs,
+         ctx->nir[MESA_SHADER_FRAGMENT] ? &ctx->stage_data.fs : NULL,
+         nir);
 
    default:
       unreachable("Unsupported stage.");
