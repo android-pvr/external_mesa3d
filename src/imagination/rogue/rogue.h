@@ -876,6 +876,11 @@ static inline bool rogue_ref_is_special_reg(const rogue_ref *ref)
    return rogue_ref_is_reg(ref) && ref->reg->class == ROGUE_REG_CLASS_SPECIAL;
 }
 
+static inline bool rogue_ref_is_vtxout_reg(const rogue_ref *ref)
+{
+   return rogue_ref_is_reg(ref) && ref->reg->class == ROGUE_REG_CLASS_VTXOUT;
+}
+
 static inline bool rogue_ref_is_regarray(const rogue_ref *ref)
 {
    return ref->type == ROGUE_REF_TYPE_REGARRAY;
