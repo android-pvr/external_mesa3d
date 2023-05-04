@@ -37,6 +37,29 @@
  */
 
 /* Helpers. */
+static rogue_ref nir_ssa_reg_alu_src1(rogue_shader *shader,
+                                      const nir_alu_instr *alu,
+                                      unsigned src_num)
+{
+   assert(alu->src[src_num].src.is_ssa);
+   assert(alu->src[src_num].src.ssa->bit_size == 1);
+
+   unsigned index = alu->src[src_num].src.ssa->index;
+   unsigned num_components = alu->src[src_num].src.ssa->num_components;
+   unsigned num_components_used =
+      nir_ssa_alu_instr_src_components(alu, src_num);
+
+   if (num_components > 1) {
+      /* Select the component. */
+      unsigned read_mask = nir_alu_instr_src_read_mask(alu, src_num);
+      unsigned component = ffs(read_mask) - 1;
+      return rogue_ref_regarray(
+         rogue_ssa_vec_regarray(shader, num_components_used, index, component));
+   }
+
+   return rogue_ref_reg(rogue_ssa_reg(shader, index));
+}
+
 static rogue_ref nir_ssa_reg_alu_src32(rogue_shader *shader,
                                        const nir_alu_instr *alu,
                                        unsigned src_num)
@@ -56,6 +79,27 @@ static rogue_ref nir_ssa_reg_alu_src32(rogue_shader *shader,
       return rogue_ref_regarray(
          rogue_ssa_vec_regarray(shader, num_components_used, index, component));
    }
+
+   return rogue_ref_reg(rogue_ssa_reg(shader, index));
+}
+
+static rogue_ref nir_ssa_reg_alu_dst1(rogue_shader *shader,
+                                      const nir_alu_instr *alu,
+                                      unsigned *dst_components)
+{
+   assert(alu->dest.dest.is_ssa);
+   assert(alu->dest.dest.ssa.bit_size == 1);
+
+   unsigned index = alu->dest.dest.ssa.index;
+   unsigned num_components = alu->dest.dest.ssa.num_components;
+
+   if (dst_components)
+      *dst_components = num_components;
+
+   /* SSA, so always assigning to the entire vector. */
+   if (num_components > 1)
+      return rogue_ref_regarray(
+         rogue_ssa_vec_regarray(shader, num_components, index, 0));
 
    return rogue_ref_reg(rogue_ssa_reg(shader, index));
 }
@@ -1016,7 +1060,13 @@ static void trans_nir_alu_fexp2(rogue_builder *b, nir_alu_instr *alu)
    rogue_apply_alu_src_mods(fexp2, alu);
 }
 
-static void trans_nir_alu_fmin(rogue_builder *b, nir_alu_instr *alu)
+/* Conditionally sets the output to src0 or src1 depending on whether the
+ * comparison between them is true or false.
+ */
+static void trans_nir_alu_cmp_sel(rogue_builder *b,
+                                  nir_alu_instr *alu,
+                                  enum rogue_alu_op_mod comp,
+                                  enum rogue_alu_op_mod type)
 {
    unsigned dst_components;
    rogue_ref dst = nir_ssa_reg_alu_dst32(b->shader, alu, &dst_components);
@@ -1024,6 +1074,9 @@ static void trans_nir_alu_fmin(rogue_builder *b, nir_alu_instr *alu)
 
    rogue_ref src0 = nir_ssa_reg_alu_src32(b->shader, alu, 0);
    rogue_ref src1 = nir_ssa_reg_alu_src32(b->shader, alu, 1);
+
+   /* TODO: make sure that type is set correctly depending on the operation and
+    * the number of source bits. */
 
    rogue_alu_instr *tst_mbyp = rogue_MBYP(b, rogue_ref_io(ROGUE_IO_FT0), src0);
    rogue_set_instr_group_next(&tst_mbyp->instr, true);
@@ -1033,13 +1086,19 @@ static void trans_nir_alu_fmin(rogue_builder *b, nir_alu_instr *alu)
                                     rogue_ref_io(ROGUE_IO_P0),
                                     rogue_ref_io(ROGUE_IO_FT0),
                                     src1);
-   rogue_set_alu_op_mod(tst, ROGUE_ALU_OP_MOD_L);
-   rogue_set_alu_op_mod(tst, ROGUE_ALU_OP_MOD_F32);
+   rogue_set_alu_op_mod(tst, comp);
+   rogue_set_alu_op_mod(tst, type);
 
    rogue_CMOV(b, dst, rogue_ref_io(ROGUE_IO_P0), src0, src1);
 }
 
-static void trans_nir_alu_fmax(rogue_builder *b, nir_alu_instr *alu)
+/* Conditionally sets the output to src1 or src2 depending on whether the
+ * comparison between src0 and 0 is true or false.
+ */
+static void trans_nir_alu_cmp_zero_sel(rogue_builder *b,
+                                       nir_alu_instr *alu,
+                                       enum rogue_alu_op_mod comp,
+                                       enum rogue_alu_op_mod type)
 {
    unsigned dst_components;
    rogue_ref dst = nir_ssa_reg_alu_dst32(b->shader, alu, &dst_components);
@@ -1047,7 +1106,12 @@ static void trans_nir_alu_fmax(rogue_builder *b, nir_alu_instr *alu)
 
    rogue_ref src0 = nir_ssa_reg_alu_src32(b->shader, alu, 0);
    rogue_ref src1 = nir_ssa_reg_alu_src32(b->shader, alu, 1);
+   rogue_ref src2 = nir_ssa_reg_alu_src32(b->shader, alu, 2);
 
+   /* TODO: make sure that type is set correctly depending on the operation and
+    * the number of source bits. */
+
+   /* TODO: make a pseudo-op that's lowered to an MBYP+TST */
    rogue_alu_instr *tst_mbyp = rogue_MBYP(b, rogue_ref_io(ROGUE_IO_FT0), src0);
    rogue_set_instr_group_next(&tst_mbyp->instr, true);
 
@@ -1055,11 +1119,11 @@ static void trans_nir_alu_fmax(rogue_builder *b, nir_alu_instr *alu)
                                     rogue_ref_io(ROGUE_IO_FTT),
                                     rogue_ref_io(ROGUE_IO_P0),
                                     rogue_ref_io(ROGUE_IO_FT0),
-                                    src1);
-   rogue_set_alu_op_mod(tst, ROGUE_ALU_OP_MOD_G);
-   rogue_set_alu_op_mod(tst, ROGUE_ALU_OP_MOD_F32);
+                                    rogue_ref_imm(0));
+   rogue_set_alu_op_mod(tst, comp);
+   rogue_set_alu_op_mod(tst, type);
 
-   rogue_CMOV(b, dst, rogue_ref_io(ROGUE_IO_P0), src0, src1);
+   rogue_CMOV(b, dst, rogue_ref_io(ROGUE_IO_P0), src1, src2);
 }
 
 static void trans_nir_alu_fneg(rogue_builder *b, nir_alu_instr *alu)
@@ -1233,6 +1297,112 @@ static void trans_nir_alu_i2i64(rogue_builder *b, nir_alu_instr *alu)
    rogue_MOV(b, dst_hi, rogue_ref_imm(0));
 }
 
+/* Conditionally sets the output to 1 or 0 depending on whether the comparison
+ * is true or false. */
+static void trans_nir_alu_cmp_bin(rogue_builder *b,
+                                  nir_alu_instr *alu,
+                                  enum rogue_alu_op_mod comp,
+                                  enum rogue_alu_op_mod type)
+{
+   unsigned dst_components;
+   rogue_ref dst = nir_ssa_reg_alu_dst1(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   rogue_ref src0 = nir_ssa_reg_alu_src32(b->shader, alu, 0);
+   rogue_ref src1 = nir_ssa_reg_alu_src32(b->shader, alu, 1);
+
+   /* TODO: make sure that type is set correctly depending on the operation and
+    * the number of source bits. */
+
+   rogue_alu_instr *tst_mbyp = rogue_MBYP(b, rogue_ref_io(ROGUE_IO_FT0), src0);
+   rogue_set_instr_group_next(&tst_mbyp->instr, true);
+
+   rogue_alu_instr *tst = rogue_TST(b,
+                                    rogue_ref_io(ROGUE_IO_FTT),
+                                    rogue_ref_io(ROGUE_IO_P0),
+                                    rogue_ref_io(ROGUE_IO_FT0),
+                                    src1);
+   rogue_set_alu_op_mod(tst, comp);
+   rogue_set_alu_op_mod(tst, type);
+
+   rogue_CMOV(b,
+              dst,
+              rogue_ref_io(ROGUE_IO_P0),
+              rogue_ref_imm(1),
+              rogue_ref_imm(0));
+}
+
+static void trans_nir_alu_bcsel(rogue_builder *b, nir_alu_instr *alu)
+{
+   unsigned dst_components;
+   rogue_ref dst = nir_ssa_reg_alu_dst32(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   rogue_ref src0 = nir_ssa_reg_alu_src1(b->shader, alu, 0);
+   rogue_ref src1 = nir_ssa_reg_alu_src32(b->shader, alu, 1);
+   rogue_ref src2 = nir_ssa_reg_alu_src32(b->shader, alu, 2);
+
+   rogue_alu_instr *tst_mbyp = rogue_MBYP(b, rogue_ref_io(ROGUE_IO_FT0), src0);
+   rogue_set_instr_group_next(&tst_mbyp->instr, true);
+
+   rogue_alu_instr *tst = rogue_TST(b,
+                                    rogue_ref_io(ROGUE_IO_FTT),
+                                    rogue_ref_io(ROGUE_IO_P0),
+                                    rogue_ref_io(ROGUE_IO_FT0),
+                                    rogue_ref_imm(0));
+   rogue_set_alu_op_mod(tst, ROGUE_ALU_OP_MOD_NE);
+   rogue_set_alu_op_mod(tst, ROGUE_ALU_OP_MOD_U32);
+
+   rogue_CMOV(b, dst, rogue_ref_io(ROGUE_IO_P0), src1, src2);
+}
+
+static void trans_nir_alu_b2f32(rogue_builder *b, nir_alu_instr *alu)
+{
+   unsigned dst_components;
+   rogue_ref dst = nir_ssa_reg_alu_dst32(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   rogue_ref src = nir_ssa_reg_alu_src1(b->shader, alu, 0);
+
+   rogue_alu_instr *tst_mbyp = rogue_MBYP(b, rogue_ref_io(ROGUE_IO_FT0), src);
+   rogue_set_instr_group_next(&tst_mbyp->instr, true);
+
+   rogue_alu_instr *tst = rogue_TST(b,
+                                    rogue_ref_io(ROGUE_IO_FTT),
+                                    rogue_ref_io(ROGUE_IO_P0),
+                                    rogue_ref_io(ROGUE_IO_FT0),
+                                    rogue_ref_imm(0));
+   rogue_set_alu_op_mod(tst, ROGUE_ALU_OP_MOD_E);
+   rogue_set_alu_op_mod(tst, ROGUE_ALU_OP_MOD_U32);
+
+   rogue_CMOV(b,
+              dst,
+              rogue_ref_io(ROGUE_IO_P0),
+              rogue_ref_imm_f(0.0f),
+              rogue_ref_imm_f(1.0f));
+}
+
+/* TODO: needs additional testing/bindumping */
+static void trans_nir_alu_iand(rogue_builder *b, nir_alu_instr *alu)
+{
+   unsigned dst_components;
+   rogue_ref dst = nir_ssa_reg_alu_dst1(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   rogue_ref src0 = nir_ssa_reg_alu_src1(b->shader, alu, 0);
+   rogue_ref src1 = nir_ssa_reg_alu_src1(b->shader, alu, 1);
+
+   rogue_instr *byp1 = &rogue_BYP1(b, rogue_ref_io(ROGUE_IO_FT2), src0)->instr;
+   rogue_set_instr_group_next(byp1, true);
+   rogue_AND(b,
+             dst,
+             rogue_none(),
+             rogue_ref_io(ROGUE_IO_FT2),
+             rogue_none(),
+             src1);
+}
+
+#define OM(op_mod) ROGUE_ALU_OP_MOD_##op_mod
 static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
 {
    switch (alu->op) {
@@ -1262,10 +1432,22 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
       return trans_nir_alu_fexp2(b, alu);
 
    case nir_op_fmin:
-      return trans_nir_alu_fmin(b, alu);
+      return trans_nir_alu_cmp_sel(b, alu, OM(L), OM(F32));
 
    case nir_op_fmax:
-      return trans_nir_alu_fmax(b, alu);
+      return trans_nir_alu_cmp_sel(b, alu, OM(G), OM(F32));
+
+   case nir_op_imin:
+      return trans_nir_alu_cmp_sel(b, alu, OM(L), OM(S32));
+
+   case nir_op_imax:
+      return trans_nir_alu_cmp_sel(b, alu, OM(G), OM(S32));
+
+   case nir_op_umin:
+      return trans_nir_alu_cmp_sel(b, alu, OM(L), OM(U32));
+
+   case nir_op_umax:
+      return trans_nir_alu_cmp_sel(b, alu, OM(G), OM(U32));
 
    case nir_op_fneg:
       return trans_nir_alu_fneg(b, alu);
@@ -1282,6 +1464,9 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
    case nir_op_vec2:
       return trans_nir_alu_vecN(b, alu, 2);
 
+   case nir_op_vec3:
+      return trans_nir_alu_vecN(b, alu, 3);
+
    case nir_op_vec4:
       return trans_nir_alu_vecN(b, alu, 4);
 
@@ -1294,12 +1479,61 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
    case nir_op_i2i64:
       return trans_nir_alu_i2i64(b, alu);
 
+   case nir_op_flt:
+      return trans_nir_alu_cmp_bin(b, alu, OM(L), OM(F32));
+
+   case nir_op_fge:
+      return trans_nir_alu_cmp_bin(b, alu, OM(G), OM(F32));
+
+   case nir_op_feq:
+      return trans_nir_alu_cmp_bin(b, alu, OM(E), OM(F32));
+
+   case nir_op_fneu:
+      return trans_nir_alu_cmp_bin(b, alu, OM(NE), OM(F32));
+
+   case nir_op_ilt:
+      return trans_nir_alu_cmp_bin(b, alu, OM(L), OM(S32));
+
+   case nir_op_ige:
+      return trans_nir_alu_cmp_bin(b, alu, OM(G), OM(S32));
+
+   case nir_op_ieq:
+      return trans_nir_alu_cmp_bin(b, alu, OM(E), OM(S32));
+
+   case nir_op_ine:
+      return trans_nir_alu_cmp_bin(b, alu, OM(NE), OM(S32));
+
+   case nir_op_ult:
+      return trans_nir_alu_cmp_bin(b, alu, OM(L), OM(U32));
+
+   case nir_op_uge:
+      return trans_nir_alu_cmp_bin(b, alu, OM(G), OM(U32));
+
+   case nir_op_bcsel:
+      return trans_nir_alu_bcsel(b, alu);
+
+   case nir_op_b2f32:
+      return trans_nir_alu_b2f32(b, alu);
+
+   case nir_op_iand:
+      return trans_nir_alu_iand(b, alu);
+
+   case nir_op_fcsel:
+      return trans_nir_alu_cmp_zero_sel(b, alu, OM(NE), OM(F32));
+
+   case nir_op_fcsel_gt:
+      return trans_nir_alu_cmp_zero_sel(b, alu, OM(G), OM(F32));
+
+   case nir_op_fcsel_ge:
+      return trans_nir_alu_cmp_zero_sel(b, alu, OM(GE), OM(F32));
+
    default:
       break;
    }
 
    unreachable("Unimplemented NIR ALU instruction.");
 }
+#undef OM
 
 PUBLIC
 unsigned rogue_count_used_regs(const rogue_shader *shader,
@@ -1353,6 +1587,149 @@ static bool ssa_def_cb(nir_ssa_def *ssa, void *state)
    return true;
 }
 
+static rogue_block *trans_nir_block(rogue_builder *b, nir_block *block)
+{
+   rogue_block *_rogue_block = rogue_push_block(b);
+
+   nir_foreach_instr (instr, block) {
+      switch (instr->type) {
+      case nir_instr_type_alu:
+         trans_nir_alu(b, nir_instr_as_alu(instr));
+         break;
+
+      case nir_instr_type_intrinsic:
+         trans_nir_intrinsic(b, nir_instr_as_intrinsic(instr));
+         break;
+
+      case nir_instr_type_load_const:
+         trans_nir_load_const(b, nir_instr_as_load_const(instr));
+         break;
+
+      case nir_instr_type_jump:
+         trans_nir_jump(b, nir_instr_as_jump(instr));
+         break;
+
+      case nir_instr_type_tex:
+         trans_nir_tex(b, nir_instr_as_tex(instr));
+         break;
+
+      default:
+         unreachable("Unimplemented NIR instruction type.");
+      }
+   }
+
+   return _rogue_block;
+}
+
+static rogue_block *trans_nir_cf_nodes(rogue_builder *b,
+                                       struct exec_list *cf_node_list);
+
+static void trans_nir_if(rogue_builder *b, nir_if *nif)
+{
+   /* N.B. THIS CURRENTLY ONLY DOES SIMPLE IF/ELSE! */
+   /* TODO: more complex support for elifs with mask counter += 2, etc. (see isa
+    * doc) */
+   /* TODO: loop nesting counter? initially disallow and assert? */
+
+   /* Set P0 if the condition is true (not equal to 0). */
+   assert(nif->condition.is_ssa);
+   rogue_reg *if_cnd = rogue_ssa_reg(b->shader, nif->condition.ssa->index);
+
+   /* TODO: Just do a single argument ROGUE_ALU_OP_MOD_GZ without needing an
+    * MBYP */
+   rogue_alu_instr *cnd_tst_mbyp =
+      rogue_MBYP(b, rogue_ref_io(ROGUE_IO_FT0), rogue_ref_reg(if_cnd));
+   rogue_set_instr_group_next(&cnd_tst_mbyp->instr, true);
+
+   rogue_alu_instr *cnd_tst = rogue_TST(b,
+                                        rogue_ref_io(ROGUE_IO_FTT),
+                                        rogue_ref_io(ROGUE_IO_P0),
+                                        rogue_ref_io(ROGUE_IO_FT0),
+                                        rogue_ref_imm(0));
+   rogue_set_alu_op_mod(cnd_tst, ROGUE_ALU_OP_MOD_NE);
+   rogue_set_alu_op_mod(cnd_tst, ROGUE_ALU_OP_MOD_U32);
+
+   /* TODO LATER: branch allinst if no active instances to start, probably needs
+    * blocks to be cached */
+
+   /* Conditional mask count register. */
+   rogue_reg *cnd_mask_count[3] = {
+      rogue_ssa_reg(b->shader, b->shader->ctx->next_ssa_idx++),
+      rogue_ssa_reg(b->shader, b->shader->ctx->next_ssa_idx++),
+      rogue_ssa_reg(b->shader, b->shader->ctx->next_ssa_idx++),
+   };
+
+   rogue_ctrl_instr *ctrl = rogue_CNDST(b,
+                                        rogue_ref_io(ROGUE_IO_PE),
+                                        rogue_ref_reg(cnd_mask_count[0]),
+                                        rogue_ref_imm(0),
+                                        rogue_ref_val(1));
+   rogue_set_ctrl_op_mod(ctrl, ROGUE_CTRL_OP_MOD_P0_TRUE);
+   rogue_set_instr_exec_cond(&ctrl->instr, ROGUE_EXEC_COND_PE_ANY);
+
+   /* new block: trans_nir_cf_nodes for new block */
+   rogue_block *block = trans_nir_cf_nodes(b, &nif->then_list);
+
+   /* cndef */
+   ctrl = rogue_CNDEF(b,
+                      rogue_ref_io(ROGUE_IO_PE),
+                      rogue_ref_reg(cnd_mask_count[1]),
+                      rogue_ref_reg(cnd_mask_count[0]),
+                      rogue_ref_val(1));
+   rogue_set_ctrl_op_mod(ctrl, ROGUE_CTRL_OP_MOD_ALWAYS);
+   rogue_set_instr_exec_cond(&ctrl->instr, ROGUE_EXEC_COND_PE_ANY);
+
+   /* new block: trans_nir_cf_nodes for new block */
+   block = trans_nir_cf_nodes(b, &nif->else_list);
+
+   /* cndend */
+
+   /* If the else statement was empty, don't bother creating a new block. */
+   if (!list_is_empty(&block->instrs))
+      rogue_push_block(b);
+
+   ctrl = rogue_CNDEND(b,
+                       rogue_ref_io(ROGUE_IO_PE),
+                       rogue_ref_reg(cnd_mask_count[2]),
+                       rogue_ref_reg(cnd_mask_count[1]),
+                       rogue_ref_val(1));
+   rogue_set_instr_exec_cond(&ctrl->instr, ROGUE_EXEC_COND_PE_ANY);
+}
+
+static rogue_block *trans_nir_cf_nodes(rogue_builder *b,
+                                       struct exec_list *cf_node_list)
+{
+   rogue_block *start_block = NULL;
+
+   foreach_list_typed (nir_cf_node, node, node, cf_node_list) {
+      switch (node->type) {
+      case nir_cf_node_block: {
+         rogue_block *block = trans_nir_block(b, nir_cf_node_as_block(node));
+
+         if (!start_block)
+            start_block = block;
+
+         break;
+      }
+
+      case nir_cf_node_if:
+         trans_nir_if(b, nir_cf_node_as_if(node));
+         break;
+
+#if 0
+      case nir_cf_node_loop:
+         trans_nir_loop(ctx, nir_cf_node_as_loop(node));
+         break;
+#endif
+
+      default:
+         unreachable("Unsupported control flow node type.");
+      }
+   }
+
+   return start_block;
+}
+
 /**
  * \brief Translates a NIR shader to Rogue.
  *
@@ -1392,37 +1769,10 @@ rogue_shader *rogue_nir_to_rogue(rogue_build_ctx *ctx, const nir_shader *nir)
    }
    ++shader->ctx->next_ssa_idx;
 
+   nir_index_blocks(entry);
+
    /* Translate shader entrypoint. */
-   nir_foreach_block (block, entry) {
-      rogue_push_block(&b);
-
-      nir_foreach_instr (instr, block) {
-         switch (instr->type) {
-         case nir_instr_type_alu:
-            trans_nir_alu(&b, nir_instr_as_alu(instr));
-            break;
-
-         case nir_instr_type_intrinsic:
-            trans_nir_intrinsic(&b, nir_instr_as_intrinsic(instr));
-            break;
-
-         case nir_instr_type_load_const:
-            trans_nir_load_const(&b, nir_instr_as_load_const(instr));
-            break;
-
-         case nir_instr_type_jump:
-            trans_nir_jump(&b, nir_instr_as_jump(instr));
-            break;
-
-         case nir_instr_type_tex:
-            trans_nir_tex(&b, nir_instr_as_tex(instr));
-            break;
-
-         default:
-            unreachable("Unimplemented NIR instruction type.");
-         }
-      }
-   }
+   trans_nir_cf_nodes(&b, &entry->body);
    rogue_END(&b);
 
    /* Apply passes. */

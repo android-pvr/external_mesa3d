@@ -47,6 +47,8 @@ static const struct spirv_to_nir_options spirv_options = {
 static const nir_shader_compiler_options nir_options = {
    .fuse_ffma32 = true,
    .lower_bitops = true, /* TODO: Re-enable once supported. */
+   .max_unroll_iterations = 32,
+   .max_unroll_iterations_aggressive = 128,
 };
 
 static int rogue_glsl_type_size(const struct glsl_type *type, bool bindless)
@@ -228,9 +230,12 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
       NIR_PASS(progress, nir, nir_opt_algebraic);
       NIR_PASS(progress, nir, nir_opt_constant_folding);
 
+      NIR_PASS(progress, nir, nir_opt_if, 0);
+
       NIR_PASS(progress, nir, nir_opt_undef);
       NIR_PASS(progress, nir, nir_lower_undef_to_zero);
 
+      NIR_PASS(progress, nir, nir_opt_loop_unroll);
       NIR_PASS_V(nir, nir_opt_gcm, false);
    } while (progress);
 
