@@ -663,15 +663,10 @@ trans_nir_intrinsic_load_vulkan_descriptor(rogue_builder *b,
    rogue_ref64 desc_set_table_addr_entry =
       rogue_ssa_ref64(b->shader, desc_set_table_addr_entry_idx);
 
-   rogue_ADD64(b,
-               desc_set_table_addr_entry.lo32,
-               desc_set_table_addr_entry.hi32,
-               rogue_none(),
-               desc_set_table_base_addr.lo32,
-               desc_set_table_base_addr.hi32,
-               desc_set_table_addr_offset.lo32,
-               desc_set_table_addr_offset.hi32,
-               rogue_none());
+   rogue_IADD64(b,
+                desc_set_table_addr_entry.ref64,
+                desc_set_table_base_addr.ref64,
+                desc_set_table_addr_offset.ref64);
 
    /* Load the descriptor set address from the table. */
    unsigned desc_set_addr_base_idx = b->shader->ctx->next_ssa_idx++;
@@ -698,15 +693,10 @@ trans_nir_intrinsic_load_vulkan_descriptor(rogue_builder *b,
    rogue_ref64 desc_addr_entry =
       rogue_ssa_ref64(b->shader, desc_addr_entry_idx);
 
-   rogue_ADD64(b,
-               desc_addr_entry.lo32,
-               desc_addr_entry.hi32,
-               rogue_none(),
-               desc_set_addr_base.lo32,
-               desc_set_addr_base.hi32,
-               desc_addr_offset.lo32,
-               desc_addr_offset.hi32,
-               rogue_none());
+   rogue_IADD64(b,
+                desc_addr_entry.ref64,
+                desc_set_addr_base.ref64,
+                desc_addr_offset.ref64);
 
    /* Load the descriptor address from the set. */
    unsigned desc_addr_idx = intr->dest.ssa.index;
@@ -836,15 +826,10 @@ static void trans_nir_intrinsic_load_push_constant(rogue_builder *b,
    rogue_ref64 push_const_addr =
       rogue_ssa_ref64(b->shader, push_consts_addr_idx);
 
-   rogue_ADD64(b,
-               push_const_addr.lo32,
-               push_const_addr.hi32,
-               rogue_none(),
-               push_consts_base_addr.lo32,
-               push_consts_base_addr.hi32,
-               push_consts_addr_offset.lo32,
-               push_consts_addr_offset.hi32,
-               rogue_none());
+   rogue_IADD64(b,
+                push_const_addr.ref64,
+                push_consts_base_addr.ref64,
+                push_consts_addr_offset.ref64);
 
    /* Load the push constant. */
    unsigned load_size;
@@ -1226,25 +1211,29 @@ static void trans_nir_alu_vecN(rogue_builder *b, nir_alu_instr *alu, unsigned n)
    }
 }
 
+static void trans_nir_alu_iadd32(rogue_builder *b, nir_alu_instr *alu)
+{
+   unsigned dst_components;
+   rogue_ref dst = nir_ssa_reg_alu_dst32(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   rogue_ref src0 = nir_ssa_reg_alu_src32(b->shader, alu, 0);
+   rogue_ref src1 = nir_ssa_reg_alu_src32(b->shader, alu, 1);
+
+   rogue_alu_instr *iadd32 = rogue_IADD32(b, dst, src0, src1);
+   rogue_set_alu_op_mod(iadd32, ROGUE_ALU_OP_MOD_S);
+   rogue_apply_alu_src_mods(iadd32, alu, false);
+}
+
 static void trans_nir_alu_iadd64(rogue_builder *b, nir_alu_instr *alu)
 {
-   rogue_ref src0_lo, src0_hi;
-   rogue_ref src1_lo, src1_hi;
-   rogue_ref dst_lo, dst_hi;
+   rogue_ref dst = nir_ssa_reg_alu_dst64(b->shader, alu, NULL, NULL);
+   rogue_ref src0 = nir_ssa_reg_alu_src64(b->shader, alu, 0, NULL, NULL);
+   rogue_ref src1 = nir_ssa_reg_alu_src64(b->shader, alu, 1, NULL, NULL);
 
-   nir_ssa_reg_alu_dst64(b->shader, alu, &dst_lo, &dst_hi);
-   nir_ssa_reg_alu_src64(b->shader, alu, 0, &src0_lo, &src0_hi);
-   nir_ssa_reg_alu_src64(b->shader, alu, 1, &src1_lo, &src1_hi);
-
-   rogue_ADD64(b,
-               dst_lo,
-               dst_hi,
-               rogue_none(),
-               src0_lo,
-               src0_hi,
-               src1_lo,
-               src1_hi,
-               rogue_none());
+   rogue_alu_instr *iadd64 = rogue_IADD64(b, dst, src0, src1);
+   /* N.B. No sign flag support for add64. */
+   rogue_apply_alu_src_mods(iadd64, alu, false);
 }
 
 static void trans_nir_alu_iadd(rogue_builder *b, nir_alu_instr *alu)
@@ -1252,7 +1241,8 @@ static void trans_nir_alu_iadd(rogue_builder *b, nir_alu_instr *alu)
    unsigned bit_size = alu->dest.dest.ssa.bit_size;
 
    switch (bit_size) {
-      /* TODO: case 32: */
+   case 32:
+      return trans_nir_alu_iadd32(b, alu);
 
    case 64:
       return trans_nir_alu_iadd64(b, alu);
@@ -1264,18 +1254,29 @@ static void trans_nir_alu_iadd(rogue_builder *b, nir_alu_instr *alu)
    unreachable("Unsupported bit size.");
 }
 
+static void trans_nir_alu_imul32(rogue_builder *b, nir_alu_instr *alu)
+{
+   unsigned dst_components;
+   rogue_ref dst = nir_ssa_reg_alu_dst32(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   rogue_ref src0 = nir_ssa_reg_alu_src32(b->shader, alu, 0);
+   rogue_ref src1 = nir_ssa_reg_alu_src32(b->shader, alu, 1);
+
+   rogue_alu_instr *imul32 = rogue_IMUL32(b, dst, src0, src1);
+   rogue_set_alu_op_mod(imul32, ROGUE_ALU_OP_MOD_S);
+   rogue_apply_alu_src_mods(imul32, alu, false);
+}
+
 static void trans_nir_alu_imul64(rogue_builder *b, nir_alu_instr *alu)
 {
-   rogue_ref src0_lo, src0_hi;
-   rogue_ref src1_lo, src1_hi;
-   rogue_ref dst_lo, dst_hi;
-   rogue_ref imm_0 = rogue_ref_imm(0);
+   rogue_ref dst = nir_ssa_reg_alu_dst64(b->shader, alu, NULL, NULL);
+   rogue_ref src0 = nir_ssa_reg_alu_src32(b->shader, alu, 0);
+   rogue_ref src1 = nir_ssa_reg_alu_src32(b->shader, alu, 1);
 
-   nir_ssa_reg_alu_dst64(b->shader, alu, &dst_lo, &dst_hi);
-   nir_ssa_reg_alu_src64(b->shader, alu, 0, &src0_lo, &src0_hi);
-   nir_ssa_reg_alu_src64(b->shader, alu, 1, &src1_lo, &src1_hi);
-
-   rogue_MADD64(b, dst_lo, dst_hi, src0_lo, src1_lo, imm_0, imm_0, rogue_none());
+   rogue_alu_instr *imul64 = rogue_IMUL64(b, dst, src0, src1);
+   rogue_set_alu_op_mod(imul64, ROGUE_ALU_OP_MOD_S);
+   rogue_apply_alu_src_mods(imul64, alu, false);
 }
 
 static void trans_nir_alu_imul(rogue_builder *b, nir_alu_instr *alu)
@@ -1283,7 +1284,8 @@ static void trans_nir_alu_imul(rogue_builder *b, nir_alu_instr *alu)
    unsigned bit_size = alu->dest.dest.ssa.bit_size;
 
    switch (bit_size) {
-      /* TODO: case 32: */
+   case 32:
+      return trans_nir_alu_imul32(b, alu);
 
    case 64:
       return trans_nir_alu_imul64(b, alu);

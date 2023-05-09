@@ -1241,6 +1241,12 @@ enum rogue_alu_op {
    ROGUE_ALU_OP_FNEG,
    ROGUE_ALU_OP_FNABS,
 
+   ROGUE_ALU_OP_IADD32,
+   ROGUE_ALU_OP_IADD64,
+
+   ROGUE_ALU_OP_IMUL32,
+   ROGUE_ALU_OP_IMUL64,
+
    ROGUE_ALU_OP_COUNT,
 };
 
@@ -2952,6 +2958,45 @@ static struct rogue_ref64 rogue_shared_ref64(rogue_shader *shader,
       .lo32 = rogue_ref_regarray(rogue_shared_regarray(shader, 1, index)),
       .hi32 = rogue_ref_regarray(rogue_shared_regarray(shader, 1, index + 1)),
    };
+}
+
+static struct rogue_ref64
+rogue_ssa_ref64_from_regarray(rogue_shader *shader, rogue_regarray *regarray)
+{
+   assert(regarray->size == 2);
+   assert(regarray->regs[0]->class == ROGUE_REG_CLASS_SSA);
+
+   const struct rogue_reg_cache_key cache_key = {
+      .val = regarray->regs[0]->index,
+   };
+   assert(!cache_key.component);
+   assert(cache_key.vec);
+
+   unsigned index = cache_key.index;
+
+   return (rogue_ref64){
+      .ref64 = rogue_ref_regarray(rogue_ssa_vec_regarray(shader, 2, index, 0)),
+      .lo32 = rogue_ref_regarray(rogue_ssa_vec_regarray(shader, 1, index, 0)),
+      .hi32 = rogue_ref_regarray(rogue_ssa_vec_regarray(shader, 1, index, 1)),
+   };
+}
+
+static struct rogue_ref64
+rogue_ssa_ref64_from_alu_dst(rogue_shader *shader,
+                             const rogue_alu_instr *alu,
+                             unsigned dst_num)
+{
+   assert(rogue_ref_is_regarray(&alu->dst[dst_num].ref));
+   return rogue_ssa_ref64_from_regarray(shader, alu->dst[dst_num].ref.regarray);
+}
+
+static struct rogue_ref64
+rogue_ssa_ref64_from_alu_src(rogue_shader *shader,
+                             const rogue_alu_instr *alu,
+                             unsigned src_num)
+{
+   assert(rogue_ref_is_regarray(&alu->src[src_num].ref));
+   return rogue_ssa_ref64_from_regarray(shader, alu->src[src_num].ref.regarray);
 }
 
 #define ROGUE_NO_CONST_REG ~0

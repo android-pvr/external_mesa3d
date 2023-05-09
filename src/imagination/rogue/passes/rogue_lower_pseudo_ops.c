@@ -266,6 +266,102 @@ static inline bool rogue_lower_MOV(rogue_builder *b, rogue_alu_instr *mov)
    return true;
 }
 
+static inline bool rogue_lower_IADD32(rogue_builder *b, rogue_alu_instr *iadd32)
+{
+   rogue_alu_instr *add64_32 =
+      rogue_ADD64_32(b,
+                     iadd32->dst[0].ref,
+                     rogue_none(),
+                     iadd32->src[0].ref,
+                     rogue_ref_reg(rogue_const_reg(b->shader, 0)),
+                     iadd32->src[1].ref,
+                     rogue_none());
+
+   /* Propagate op/source mods. */
+   add64_32->mod = iadd32->mod;
+   add64_32->src[0].mod = iadd32->src[0].mod; /* abs/neg(S1 << 32 | S0) */
+   add64_32->src[2].mod = iadd32->src[1].mod; /* abs/neg(S2) */
+
+   rogue_merge_instr_comment(&add64_32->instr, &iadd32->instr, "iadd32");
+   rogue_instr_delete(&iadd32->instr);
+
+   return true;
+}
+
+static inline bool rogue_lower_IADD64(rogue_builder *b, rogue_alu_instr *iadd64)
+{
+   rogue_ref64 dst = rogue_ssa_ref64_from_alu_dst(b->shader, iadd64, 0);
+   rogue_ref64 src0 = rogue_ssa_ref64_from_alu_src(b->shader, iadd64, 0);
+   rogue_ref64 src1 = rogue_ssa_ref64_from_alu_src(b->shader, iadd64, 1);
+
+   rogue_alu_instr *add64 = rogue_ADD64(b,
+                                        dst.lo32,
+                                        dst.hi32,
+                                        rogue_none(),
+                                        src0.lo32,
+                                        src0.hi32,
+                                        src1.lo32,
+                                        src1.hi32,
+                                        rogue_none());
+
+   /* Propagate op/source mods. */
+   add64->mod = iadd64->mod;
+   add64->src[0].mod = iadd64->src[0].mod; /* abs/neg(S1 << 32 | S0) */
+   add64->src[2].mod = iadd64->src[1].mod; /* abs/neg(S3 << 32 | S2) */
+
+   rogue_merge_instr_comment(&add64->instr, &iadd64->instr, "iadd64");
+   rogue_instr_delete(&iadd64->instr);
+
+   return true;
+}
+
+static inline bool rogue_lower_IMUL32(rogue_builder *b, rogue_alu_instr *imul32)
+{
+   rogue_alu_instr *madd32 =
+      rogue_MADD32(b,
+                   imul32->dst[0].ref,
+                   rogue_none(),
+                   imul32->src[0].ref,
+                   imul32->src[1].ref,
+                   rogue_ref_reg(rogue_const_reg(b->shader, 0)),
+                   rogue_none());
+
+   /* Propagate op/source mods. */
+   madd32->mod = imul32->mod;
+   madd32->src[0].mod = imul32->src[0].mod; /* abs/neg(S0) */
+   madd32->src[1].mod = imul32->src[1].mod; /* abs/neg(S1) */
+
+   rogue_merge_instr_comment(&madd32->instr, &imul32->instr, "imul32");
+   rogue_instr_delete(&imul32->instr);
+
+   return true;
+}
+
+static inline bool rogue_lower_IMUL64(rogue_builder *b, rogue_alu_instr *imul64)
+{
+   rogue_ref64 dst = rogue_ssa_ref64_from_alu_dst(b->shader, imul64, 0);
+
+   rogue_alu_instr *madd64 =
+      rogue_MADD64(b,
+                   dst.lo32,
+                   dst.hi32,
+                   imul64->src[0].ref,
+                   imul64->src[1].ref,
+                   rogue_ref_reg(rogue_const_reg(b->shader, 0)),
+                   rogue_ref_reg(rogue_const_reg(b->shader, 0)),
+                   rogue_none());
+
+   /* Propagate op/source mods. */
+   madd64->mod = imul64->mod;
+   madd64->src[0].mod = imul64->src[0].mod; /* abs/neg(S0) */
+   madd64->src[1].mod = imul64->src[1].mod; /* abs/neg(S1) */
+
+   rogue_merge_instr_comment(&madd64->instr, &imul64->instr, "imul64");
+   rogue_instr_delete(&imul64->instr);
+
+   return true;
+}
+
 static inline bool rogue_lower_alu_instr(rogue_builder *b, rogue_alu_instr *alu)
 {
    switch (alu->op) {
@@ -292,6 +388,18 @@ static inline bool rogue_lower_alu_instr(rogue_builder *b, rogue_alu_instr *alu)
 
    case ROGUE_ALU_OP_ZEROSEL:
       return rogue_lower_ZEROSEL(b, alu);
+
+   case ROGUE_ALU_OP_IADD32:
+      return rogue_lower_IADD32(b, alu);
+
+   case ROGUE_ALU_OP_IADD64:
+      return rogue_lower_IADD64(b, alu);
+
+   case ROGUE_ALU_OP_IMUL32:
+      return rogue_lower_IMUL32(b, alu);
+
+   case ROGUE_ALU_OP_IMUL64:
+      return rogue_lower_IMUL64(b, alu);
 
    default:
       break;

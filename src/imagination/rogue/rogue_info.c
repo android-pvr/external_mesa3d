@@ -230,6 +230,8 @@ const rogue_alu_op_mod_info rogue_alu_op_mod_infos[ROGUE_ALU_OP_MOD_COUNT] = {
    [ROGUE_ALU_OP_MOD_S8] = { .str = "s8", .exclude = OM(F32) | OM(U16) | OM(S16) | OM(U8) | OM(U32) | OM(S32) },
    [ROGUE_ALU_OP_MOD_U32] = { .str = "u32", .exclude = OM(F32) | OM(U16) | OM(S16) | OM(U8) | OM(S8) | OM(S32) },
    [ROGUE_ALU_OP_MOD_S32] = { .str = "s32", .exclude = OM(F32) | OM(U16) | OM(S16) | OM(U8) | OM(S8) | OM(U32) },
+
+   [ROGUE_ALU_OP_MOD_S] = { .str = "s", },
 };
 #undef OM
 
@@ -1037,6 +1039,63 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
    [ROGUE_ALU_OP_FNABS] = { .str = "fnabs", .num_dsts = 1, .num_srcs = 1,
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
       .supported_src_types = { [0] = T(REG) | T(REGARRAY), },
+   },
+   [ROGUE_ALU_OP_IADD32] = { .str = "iadd32", .num_dsts = 1, .num_srcs = 2,
+      .supported_op_mods = OM(S),
+      .supported_src_mods = {
+         [0] = SM(ABS) | SM(NEG),
+         [1] = SM(ABS) | SM(NEG),
+      },
+      .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
+      .supported_src_types = {
+         [0] = T(REG) | T(REGARRAY),
+         [1] = T(REG) | T(REGARRAY),
+      },
+   },
+   [ROGUE_ALU_OP_IADD64] = { .str = "iadd64", .num_dsts = 1, .num_srcs = 2,
+      .supported_src_mods = {
+         [0] = SM(ABS) | SM(NEG),
+         [1] = SM(ABS) | SM(NEG),
+      },
+      .supported_dst_types = { [0] = T(REGARRAY), },
+      .supported_src_types = {
+         [0] = T(REGARRAY),
+         [1] = T(REGARRAY),
+      },
+      .dst_stride = {
+         [0] = 1,
+      },
+      .src_stride = {
+         [0] = 1,
+         [1] = 1,
+      },
+   },
+   [ROGUE_ALU_OP_IMUL32] = { .str = "imul32", .num_dsts = 1, .num_srcs = 2,
+      .supported_op_mods = OM(S),
+      .supported_src_mods = {
+         [0] = SM(ABS) | SM(NEG),
+         [1] = SM(ABS) | SM(NEG),
+      },
+      .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
+      .supported_src_types = {
+         [0] = T(REG) | T(REGARRAY),
+         [1] = T(REG) | T(REGARRAY),
+      },
+   },
+   [ROGUE_ALU_OP_IMUL64] = { .str = "imul64", .num_dsts = 1, .num_srcs = 2,
+      .supported_op_mods = OM(S),
+      .supported_src_mods = {
+         [0] = SM(ABS) | SM(NEG),
+         [1] = SM(ABS) | SM(NEG),
+      },
+      .supported_dst_types = { [0] = T(REGARRAY), },
+      .supported_src_types = {
+         [0] = T(REG) | T(REGARRAY),
+         [1] = T(REG) | T(REGARRAY),
+      },
+      .dst_stride = {
+         [0] = 1,
+      },
    },
 };
 #undef B
