@@ -994,8 +994,22 @@ static void rogue_encode_bitwise_instr(const rogue_bitwise_instr *bitwise,
       break;
 
    case ROGUE_BITWISE_OP_AND:
+   case ROGUE_BITWISE_OP_OR:
       instr_encoding->bitwise.phase1 = 1;
-      instr_encoding->bitwise.ph1.op = PH1OP_AND;
+
+      switch (bitwise->op) {
+      case ROGUE_BITWISE_OP_AND:
+         instr_encoding->bitwise.ph1.op = PH1OP_AND;
+         break;
+
+      case ROGUE_BITWISE_OP_OR:
+         instr_encoding->bitwise.ph1.op = PH1OP_OR;
+         break;
+
+      default:
+         unreachable("Unsupported bitwise op.");
+      }
+
       instr_encoding->bitwise.ph1.mska =
          !rogue_ref_is_io_none(&bitwise->src[0].ref);
       instr_encoding->bitwise.ph1.mskb =

@@ -1348,6 +1348,25 @@ static void trans_nir_alu_iand(rogue_builder *b, nir_alu_instr *alu)
              src1);
 }
 
+static void trans_nir_alu_ior(rogue_builder *b, nir_alu_instr *alu)
+{
+   unsigned dst_components;
+   rogue_ref dst = nir_ssa_reg_alu_dst1(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   rogue_ref src0 = nir_ssa_reg_alu_src1(b->shader, alu, 0);
+   rogue_ref src1 = nir_ssa_reg_alu_src1(b->shader, alu, 1);
+
+   rogue_instr *byp1 = &rogue_BYP1(b, rogue_ref_io(ROGUE_IO_FT2), src0)->instr;
+   rogue_set_instr_group_next(byp1, true);
+   rogue_OR(b,
+            dst,
+            rogue_none(),
+            rogue_ref_io(ROGUE_IO_FT2),
+            rogue_none(),
+            src1);
+}
+
 #define OM(op_mod) ROGUE_ALU_OP_MOD_##op_mod
 static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
 {
@@ -1463,6 +1482,9 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
 
    case nir_op_iand:
       return trans_nir_alu_iand(b, alu);
+
+   case nir_op_ior:
+      return trans_nir_alu_ior(b, alu);
 
    case nir_op_fcsel:
       return trans_nir_alu_cmp_zero_sel(b, alu, OM(NE), OM(F32), false);

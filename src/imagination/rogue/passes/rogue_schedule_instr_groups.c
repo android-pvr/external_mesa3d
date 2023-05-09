@@ -777,6 +777,7 @@ static void rogue_calc_bitwise_instrs_size(rogue_instr_group *group,
    case ROGUE_BITWISE_OP_LSL:
    case ROGUE_BITWISE_OP_SHR:
    case ROGUE_BITWISE_OP_AND:
+   case ROGUE_BITWISE_OP_OR:
       group->size.instrs[phase] = 1;
       break;
 

@@ -1770,6 +1770,7 @@ enum rogue_bitwise_op {
    ROGUE_BITWISE_OP_SHR,
 
    ROGUE_BITWISE_OP_AND,
+   ROGUE_BITWISE_OP_OR,
 
    /* TODO: Merge the two, just using different phases. */
    ROGUE_BITWISE_OP_BYP0,
