@@ -519,6 +519,36 @@ static void rogue_encode_alu_instr(const rogue_alu_instr *alu,
 
       break;
 
+   case ROGUE_ALU_OP_UPCK_S32:
+      instr_encoding->alu.op = ALUOP_SNGL;
+      instr_encoding->alu.sngl.snglop = SNGLOP_PCK;
+      instr_encoding->alu.sngl.ext0 = 1;
+
+      if (rogue_alu_src_mod_is_set(alu, 0, SM(E0)))
+         instr_encoding->alu.sngl.pck.upck.elem = TST_E0;
+      else if (rogue_alu_src_mod_is_set(alu, 0, SM(E1)))
+         instr_encoding->alu.sngl.pck.upck.elem = TST_E1;
+      else if (rogue_alu_src_mod_is_set(alu, 0, SM(E2)))
+         instr_encoding->alu.sngl.pck.upck.elem = TST_E2;
+      else if (rogue_alu_src_mod_is_set(alu, 0, SM(E3)))
+         instr_encoding->alu.sngl.pck.upck.elem = TST_E3;
+
+      instr_encoding->alu.sngl.pck.upck.rtz |=
+         rogue_alu_op_mod_is_set(alu, OM(ROUNDZERO));
+      instr_encoding->alu.sngl.pck.upck.scale |=
+         rogue_alu_op_mod_is_set(alu, OM(SCALE));
+
+      switch (alu->op) {
+      case ROGUE_ALU_OP_UPCK_S32:
+         instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_S32;
+         break;
+
+      default:
+         unreachable("Unsupported alu op.");
+      }
+
+      break;
+
    case ROGUE_ALU_OP_ADD64:
    case ROGUE_ALU_OP_ADD64_32:
    case ROGUE_ALU_OP_MADD32:
