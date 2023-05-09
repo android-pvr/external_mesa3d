@@ -1328,6 +1328,17 @@ static void trans_nir_alu_b2f32(rogue_builder *b, nir_alu_instr *alu)
    rogue_set_alu_op_mod(zerosel, ROGUE_ALU_OP_MOD_U32);
 }
 
+static void trans_nir_alu_f2i32(rogue_builder *b, nir_alu_instr *alu)
+{
+   unsigned dst_components;
+   rogue_ref dst = nir_ssa_reg_alu_dst32(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   rogue_ref src = nir_ssa_reg_alu_src32(b->shader, alu, 0);
+
+   rogue_PCK_S32(b, dst, src);
+}
+
 /* TODO: needs additional testing/bindumping */
 static void trans_nir_alu_iand(rogue_builder *b, nir_alu_instr *alu)
 {
@@ -1479,6 +1490,9 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
 
    case nir_op_b2f32:
       return trans_nir_alu_b2f32(b, alu);
+
+   case nir_op_f2i32:
+      return trans_nir_alu_f2i32(b, alu);
 
    case nir_op_iand:
       return trans_nir_alu_iand(b, alu);

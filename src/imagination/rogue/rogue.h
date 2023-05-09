@@ -1223,6 +1223,7 @@ enum rogue_alu_op {
    ROGUE_ALU_OP_MOVC,
 
    ROGUE_ALU_OP_PCK_U8888,
+   ROGUE_ALU_OP_PCK_S32,
 
    /* Pseudo-instructions. */
    ROGUE_ALU_OP_PSEUDO,

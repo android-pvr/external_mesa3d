@@ -493,6 +493,7 @@ static void rogue_encode_alu_instr(const rogue_alu_instr *alu,
    }
 
    case ROGUE_ALU_OP_PCK_U8888:
+   case ROGUE_ALU_OP_PCK_S32:
       instr_encoding->alu.op = ALUOP_SNGL;
       instr_encoding->alu.sngl.snglop = SNGLOP_PCK;
       instr_encoding->alu.sngl.ext0 = 1;
@@ -502,7 +503,20 @@ static void rogue_encode_alu_instr(const rogue_alu_instr *alu,
          rogue_alu_op_mod_is_set(alu, OM(ROUNDZERO));
       instr_encoding->alu.sngl.pck.pck.scale =
          rogue_alu_op_mod_is_set(alu, OM(SCALE));
-      instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_U8888;
+
+      switch (alu->op) {
+      case ROGUE_ALU_OP_PCK_U8888:
+         instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_U8888;
+         break;
+
+      case ROGUE_ALU_OP_PCK_S32:
+         instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_S32;
+         break;
+
+      default:
+         unreachable("Unsupported alu op.");
+      }
+
       break;
 
    case ROGUE_ALU_OP_ADD64:

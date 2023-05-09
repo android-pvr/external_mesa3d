@@ -949,6 +949,15 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       .src_repeat_mask = B(0),
       .max_repeat = 4,
    },
+   [ROGUE_ALU_OP_PCK_S32] = { .str = "pck.s32", .num_dsts = 1, .num_srcs = 1,
+      .supported_phases = P(2_PCK),
+      .phase_io[PH(2_PCK)] = { .dst[0] = IO(FT2), .src[0] = IO(IS3), },
+      .supported_op_mods = OM(ROUNDZERO),
+      .supported_dst_types = { [0] = T(REG), },
+      .supported_src_types = {
+         [0] = T(REG),
+      },
+   },
    [ROGUE_ALU_OP_MOV] = { .str = "mov", .num_dsts = 1, .num_srcs = 1,
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
       .supported_src_types = {
