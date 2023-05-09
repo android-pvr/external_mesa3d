@@ -1138,8 +1138,7 @@ static void trans_nir_alu_ffloor(rogue_builder *b, nir_alu_instr *alu)
 
    rogue_ref src = nir_ssa_reg_alu_src32(b->shader, alu, 0);
 
-   rogue_alu_instr *fadd = rogue_FADD(b, dst, src, rogue_ref_imm_f(0.0f));
-   rogue_set_alu_src_mod(fadd, 0, ROGUE_ALU_SRC_MOD_FLR);
+   rogue_FFLR(b, dst, src);
 }
 
 static void

@@ -1040,6 +1040,10 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
       .supported_src_types = { [0] = T(REG) | T(REGARRAY), },
    },
+   [ROGUE_ALU_OP_FFLR] = { .str = "fflr", .num_dsts = 1, .num_srcs = 1,
+      .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
+      .supported_src_types = { [0] = T(REG) | T(REGARRAY), },
+   },
    [ROGUE_ALU_OP_IADD32] = { .str = "iadd32", .num_dsts = 1, .num_srcs = 2,
       .supported_op_mods = OM(S),
       .supported_src_mods = {

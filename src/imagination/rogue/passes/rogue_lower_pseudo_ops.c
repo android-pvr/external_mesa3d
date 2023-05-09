@@ -64,6 +64,20 @@ static inline bool rogue_lower_FNABS(rogue_builder *b, rogue_alu_instr *fnabs)
    return true;
 }
 
+static inline bool rogue_lower_FFLR(rogue_builder *b, rogue_alu_instr *fflr)
+{
+   rogue_alu_instr *fadd =
+      rogue_FADD(b,
+                 fflr->dst[0].ref,
+                 fflr->src[0].ref,
+                 rogue_ref_reg(rogue_const_reg(b->shader, 0)));
+   rogue_merge_instr_comment(&fadd->instr, &fflr->instr, "fflr");
+   rogue_set_alu_src_mod(fadd, 0, ROGUE_ALU_SRC_MOD_FLR);
+   rogue_instr_delete(&fflr->instr);
+
+   return true;
+}
+
 /* TODO: Put movc into instruction groups where possible. */
 
 static inline bool rogue_lower_CND(rogue_builder *b,
@@ -379,6 +393,9 @@ static inline bool rogue_lower_alu_instr(rogue_builder *b, rogue_alu_instr *alu)
 
    case ROGUE_ALU_OP_FNABS:
       return rogue_lower_FNABS(b, alu);
+
+   case ROGUE_ALU_OP_FFLR:
+      return rogue_lower_FFLR(b, alu);
 
    case ROGUE_ALU_OP_CNDB:
       return rogue_lower_CNDB(b, alu);
