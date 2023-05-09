@@ -1145,6 +1145,18 @@ static void trans_nir_alu_fabs(rogue_builder *b, nir_alu_instr *alu)
    rogue_FABS(b, dst, src);
 }
 
+static void trans_nir_alu_ffloor(rogue_builder *b, nir_alu_instr *alu)
+{
+   unsigned dst_components;
+   rogue_ref dst = nir_ssa_reg_alu_dst32(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   rogue_ref src = nir_ssa_reg_alu_src32(b->shader, alu, 0);
+
+   rogue_alu_instr *fadd = rogue_FADD(b, dst, src, rogue_ref_imm_f(0.0f));
+   rogue_set_alu_src_mod(fadd, 0, ROGUE_ALU_SRC_MOD_FLR);
+}
+
 static void
 trans_nir_alu_fsin_cos(rogue_builder *b, nir_alu_instr *alu, bool cos)
 {
@@ -1427,6 +1439,9 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
 
    case nir_op_fneg:
       return trans_nir_alu_fneg(b, alu);
+
+   case nir_op_ffloor:
+      return trans_nir_alu_ffloor(b, alu);
 
    case nir_op_fabs:
       return trans_nir_alu_fabs(b, alu);
