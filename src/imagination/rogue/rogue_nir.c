@@ -261,7 +261,7 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
       NIR_PASS(progress, nir, nir_opt_algebraic);
       NIR_PASS(progress, nir, nir_opt_constant_folding);
 
-      NIR_PASS(progress, nir, nir_opt_remove_phis);  //
+      NIR_PASS(progress, nir, nir_opt_remove_phis);
 
       bool trivial_continues = false;
       NIR_PASS(trivial_continues, nir, nir_opt_trivial_continues);
@@ -298,7 +298,9 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
       progress = false;
 
       NIR_PASS(progress, nir, nir_opt_algebraic_late);
-      NIR_PASS_V(nir, nir_lower_to_source_mods, nir_lower_all_source_mods);
+      /*
+       * NIR_PASS_V(nir, nir_lower_to_source_mods, nir_lower_all_source_mods);
+       */
       NIR_PASS_V(nir, nir_opt_constant_folding);
       NIR_PASS_V(nir, nir_copy_prop);
       NIR_PASS_V(nir, nir_opt_dce);
@@ -308,11 +310,12 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
    /* Remove unused constant registers. */
    NIR_PASS_V(nir, nir_opt_dce);
 
-   /*
+   NIR_PASS_V(nir, nir_lower_bool_to_int32);
+
    if (nir->info.stage == MESA_SHADER_FRAGMENT &&
-       (nir->info.fs.uses_discard || nir->info.fs.uses_demote))
+       (nir->info.fs.uses_discard || nir->info.fs.uses_demote)) {
       NIR_PASS_V(nir, nir_opt_move_discards_to_top);
-   */
+   }
 
    /* NIR_PASS_V(nir, nir_opt_move, nir_move_load_ubo); */
    //

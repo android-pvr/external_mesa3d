@@ -127,7 +127,7 @@ static inline bool rogue_lower_CNDB(rogue_builder *b, rogue_alu_instr *cndb)
 {
    return rogue_lower_CND(b,
                           cndb,
-                          rogue_ref_reg(rogue_const_reg(b->shader, 1)),
+                          rogue_ref_reg(rogue_const_reg(b->shader, 143)),
                           rogue_ref_reg(rogue_const_reg(b->shader, 0)));
 }
 
@@ -376,6 +376,25 @@ static inline bool rogue_lower_IMUL64(rogue_builder *b, rogue_alu_instr *imul64)
    return true;
 }
 
+static inline bool rogue_lower_INEG(rogue_builder *b, rogue_alu_instr *ineg)
+{
+   rogue_alu_instr *add64_32 =
+      rogue_ADD64_32(b,
+                     ineg->dst[0].ref,
+                     rogue_none(),
+                     rogue_ref_reg(rogue_const_reg(b->shader, 0)),
+                     rogue_ref_reg(rogue_const_reg(b->shader, 0)),
+                     ineg->src[0].ref,
+                     rogue_none());
+
+   rogue_set_alu_src_mod(add64_32, 2, ROGUE_ALU_SRC_MOD_NEG);
+
+   rogue_merge_instr_comment(&add64_32->instr, &ineg->instr, "ineg");
+   rogue_instr_delete(&ineg->instr);
+
+   return true;
+}
+
 static inline bool rogue_lower_alu_instr(rogue_builder *b, rogue_alu_instr *alu)
 {
    switch (alu->op) {
@@ -417,6 +436,9 @@ static inline bool rogue_lower_alu_instr(rogue_builder *b, rogue_alu_instr *alu)
 
    case ROGUE_ALU_OP_IMUL64:
       return rogue_lower_IMUL64(b, alu);
+
+   case ROGUE_ALU_OP_INEG:
+      return rogue_lower_INEG(b, alu);
 
    default:
       break;

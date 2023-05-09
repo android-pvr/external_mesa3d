@@ -1224,8 +1224,10 @@ enum rogue_alu_op {
 
    ROGUE_ALU_OP_PCK_U8888,
    ROGUE_ALU_OP_PCK_S32,
+   ROGUE_ALU_OP_PCK_U32,
 
    ROGUE_ALU_OP_UPCK_S32,
+   ROGUE_ALU_OP_UPCK_U32,
 
    /* Pseudo-instructions. */
    ROGUE_ALU_OP_PSEUDO,
@@ -1247,6 +1249,8 @@ enum rogue_alu_op {
 
    ROGUE_ALU_OP_IMUL32,
    ROGUE_ALU_OP_IMUL64,
+
+   ROGUE_ALU_OP_INEG,
 
    ROGUE_ALU_OP_COUNT,
 };
