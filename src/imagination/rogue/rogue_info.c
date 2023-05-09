@@ -657,9 +657,20 @@ const rogue_io_info rogue_io_infos[ROGUE_IO_COUNT] = {
 #define B(n) BITFIELD64_BIT(n)
 const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
    [ROGUE_ALU_OP_INVALID] = { .str = "!INVALID!", },
-   [ROGUE_ALU_OP_MBYP] = { .str = "mbyp", .num_dsts = 1, .num_srcs = 1,
+   [ROGUE_ALU_OP_MBYP0] = { .str = "mbyp0", .num_dsts = 1, .num_srcs = 1,
       .supported_phases = P(0),
       .phase_io[PH(0)] = { .dst[0] = IO(FT0), .src[0] = IO(S0), },
+      .supported_src_mods = {
+         [0] = SM(ABS) | SM(NEG),
+      },
+      .supported_dst_types = { [0] = T(REG) | T(REGARRAY) | T(IO), },
+      .supported_src_types = {
+         [0] = T(REG) | T(REGARRAY),
+      },
+   },
+   [ROGUE_ALU_OP_MBYP1] = { .str = "mbyp1", .num_dsts = 1, .num_srcs = 1,
+      .supported_phases = P(1),
+      .phase_io[PH(1)] = { .dst[0] = IO(FT1), .src[0] = IO(S3), },
       .supported_src_mods = {
          [0] = SM(ABS) | SM(NEG),
       },
@@ -950,7 +961,7 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
          OM(F32) | OM(U16) | OM(S16) | OM(U8) | OM(S8) | OM(U32) | OM(S32),
       .supported_src_mods = {
          [0] = SM(ABS) | SM(NEG),
-         /* [1] = SM(ABS) | SM(NEG), */ /* TODO NEXT: phase 1 mbyp so these can be supported */
+         [1] = SM(ABS) | SM(NEG),
       },
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
       .supported_src_types = {
@@ -963,7 +974,7 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
          OM(F32) | OM(U16) | OM(S16) | OM(U8) | OM(S8) | OM(U32) | OM(S32),
       .supported_src_mods = {
          [0] = SM(ABS) | SM(NEG),
-         /* [1] = SM(ABS) | SM(NEG), */ /* TODO NEXT: phase 1 mbyp so these can be supported */
+         [1] = SM(ABS) | SM(NEG),
       },
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
       .supported_src_types = {

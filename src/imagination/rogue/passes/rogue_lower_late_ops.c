@@ -42,9 +42,9 @@
 static inline bool rogue_lower_CMOV(rogue_builder *b, rogue_alu_instr *cmov)
 {
    rogue_instr *instr_true =
-      &rogue_MBYP(b, cmov->dst[0].ref, cmov->src[1].ref)->instr;
+      &rogue_MBYP0(b, cmov->dst[0].ref, cmov->src[1].ref)->instr;
    rogue_instr *instr_false =
-      &rogue_MBYP(b, cmov->dst[0].ref, cmov->src[2].ref)->instr;
+      &rogue_MBYP0(b, cmov->dst[0].ref, cmov->src[2].ref)->instr;
 
    rogue_set_instr_exec_cond(instr_true, ROGUE_EXEC_COND_P0_TRUE);
    rogue_set_instr_exec_cond(instr_false, ROGUE_EXEC_COND_P0_FALSE);

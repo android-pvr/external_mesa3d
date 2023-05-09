@@ -46,7 +46,7 @@ static bool rogue_dce_alu_instr(rogue_alu_instr *alu)
 
    switch (alu->op) {
    case ROGUE_ALU_OP_MOV:
-   case ROGUE_ALU_OP_MBYP:
+   case ROGUE_ALU_OP_MBYP0:
       if (!alu->mod && rogue_instr_dst_src_equal(&alu->dst[0], &alu->src[0])) {
          rogue_instr_delete(&alu->instr);
          progress = true;

@@ -116,10 +116,7 @@ static inline void rogue_set_io_sel(rogue_instr_group_io_sel *map,
 
       if (!is_dst && io == ROGUE_IO_IS2) {
          enum rogue_io src = ROGUE_IO_S3;
-         enum rogue_io ft = ROGUE_IO_FTE;
-
-         *(rogue_instr_group_io_sel_ref(map, ROGUE_IO_IS0)) =
-            rogue_ref_io(ROGUE_IO_S3);
+         enum rogue_io ft = ROGUE_IO_FT1;
 
          /* Already set up. */
          if (io != ft)
@@ -536,7 +533,8 @@ static void rogue_calc_alu_instrs_size(rogue_instr_group *group,
                                        enum rogue_instr_phase phase)
 {
    switch (alu->op) {
-   case ROGUE_ALU_OP_MBYP:
+   case ROGUE_ALU_OP_MBYP0:
+   case ROGUE_ALU_OP_MBYP1:
    case ROGUE_ALU_OP_FRCP:
    case ROGUE_ALU_OP_FRSQ:
    case ROGUE_ALU_OP_FLOG2:

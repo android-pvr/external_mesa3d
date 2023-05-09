@@ -35,7 +35,7 @@
 
 static inline bool rogue_lower_FABS(rogue_builder *b, rogue_alu_instr *fabs)
 {
-   rogue_alu_instr *mbyp = rogue_MBYP(b, fabs->dst[0].ref, fabs->src[0].ref);
+   rogue_alu_instr *mbyp = rogue_MBYP0(b, fabs->dst[0].ref, fabs->src[0].ref);
    rogue_merge_instr_comment(&mbyp->instr, &fabs->instr, "fabs");
    rogue_set_alu_src_mod(mbyp, 0, ROGUE_ALU_SRC_MOD_ABS);
    rogue_instr_delete(&fabs->instr);
@@ -45,7 +45,7 @@ static inline bool rogue_lower_FABS(rogue_builder *b, rogue_alu_instr *fabs)
 
 static inline bool rogue_lower_FNEG(rogue_builder *b, rogue_alu_instr *fneg)
 {
-   rogue_alu_instr *mbyp = rogue_MBYP(b, fneg->dst[0].ref, fneg->src[0].ref);
+   rogue_alu_instr *mbyp = rogue_MBYP0(b, fneg->dst[0].ref, fneg->src[0].ref);
    rogue_merge_instr_comment(&mbyp->instr, &fneg->instr, "fneg");
    rogue_set_alu_src_mod(mbyp, 0, ROGUE_ALU_SRC_MOD_NEG);
    rogue_instr_delete(&fneg->instr);
@@ -55,7 +55,7 @@ static inline bool rogue_lower_FNEG(rogue_builder *b, rogue_alu_instr *fneg)
 
 static inline bool rogue_lower_FNABS(rogue_builder *b, rogue_alu_instr *fnabs)
 {
-   rogue_alu_instr *mbyp = rogue_MBYP(b, fnabs->dst[0].ref, fnabs->src[0].ref);
+   rogue_alu_instr *mbyp = rogue_MBYP0(b, fnabs->dst[0].ref, fnabs->src[0].ref);
    rogue_merge_instr_comment(&mbyp->instr, &fnabs->instr, "fnabs");
    rogue_set_alu_src_mod(mbyp, 0, ROGUE_ALU_SRC_MOD_ABS);
    rogue_set_alu_src_mod(mbyp, 0, ROGUE_ALU_SRC_MOD_NEG);
@@ -72,24 +72,28 @@ static inline bool rogue_lower_CND(rogue_builder *b,
                                    rogue_ref ref_false)
 {
    /* Source 0. */
-   rogue_alu_instr *tst_mbyp =
-      rogue_MBYP(b, rogue_ref_io(ROGUE_IO_FT0), cnd->src[0].ref);
-   rogue_set_instr_group_next(&tst_mbyp->instr, true);
-   rogue_merge_instr_comment(&tst_mbyp->instr, &cnd->instr, "cnd (src0)");
+   rogue_alu_instr *tst_mbyp0 =
+      rogue_MBYP0(b, rogue_ref_io(ROGUE_IO_FT0), cnd->src[0].ref);
+   rogue_set_instr_group_next(&tst_mbyp0->instr, true);
+   rogue_merge_instr_comment(&tst_mbyp0->instr, &cnd->instr, "cnd (src0)");
 
-   /* TODO: mbyp for src1 and modifiers */
+   /* Source 1. */
+   rogue_alu_instr *tst_mbyp1 =
+      rogue_MBYP1(b, rogue_ref_io(ROGUE_IO_FT1), cnd->src[1].ref);
+   rogue_set_instr_group_next(&tst_mbyp1->instr, true);
+   rogue_merge_instr_comment(&tst_mbyp1->instr, &cnd->instr, "cnd (src1)");
 
-   /* Source 1 and test. */
+   /* Test. */
    rogue_alu_instr *tst = rogue_TST(b,
                                     rogue_ref_io(ROGUE_IO_FTT),
                                     rogue_ref_io(ROGUE_IO_P0),
                                     rogue_ref_io(ROGUE_IO_FT0),
-                                    cnd->src[1].ref);
-   rogue_merge_instr_comment(&tst_mbyp->instr, &cnd->instr, "cnd (src1/test)");
+                                    rogue_ref_io(ROGUE_IO_FT1));
+   rogue_merge_instr_comment(&tst->instr, &cnd->instr, "cnd (test)");
 
    /* Propagate source modifiers and test condition. */
-   tst_mbyp->src[0].mod = cnd->src[0].mod;
-   tst->src[1].mod = cnd->src[1].mod;
+   tst_mbyp0->src[0].mod = cnd->src[0].mod;
+   tst_mbyp1->src[0].mod = cnd->src[1].mod;
    tst->mod = cnd->mod;
 
    /* Result: 0/1. */
@@ -122,23 +126,27 @@ static inline bool rogue_lower_ZEROSEL(rogue_builder *b,
                                        rogue_alu_instr *zerosel)
 {
    /* Source 0. */
-   rogue_alu_instr *tst_mbyp =
-      rogue_MBYP(b, rogue_ref_io(ROGUE_IO_FT0), zerosel->src[0].ref);
-   rogue_set_instr_group_next(&tst_mbyp->instr, true);
-   rogue_merge_instr_comment(&tst_mbyp->instr,
+   rogue_alu_instr *tst_mbyp0 =
+      rogue_MBYP0(b, rogue_ref_io(ROGUE_IO_FT0), zerosel->src[0].ref);
+   rogue_set_instr_group_next(&tst_mbyp0->instr, true);
+   rogue_merge_instr_comment(&tst_mbyp0->instr,
                              &zerosel->instr,
                              "zerosel (src)");
 
+   rogue_alu_instr *tst_mbyp1 =
+      rogue_MBYP1(b,
+                  rogue_ref_io(ROGUE_IO_FT1),
+                  rogue_ref_reg(rogue_const_reg(b->shader, 0)));
+   rogue_set_instr_group_next(&tst_mbyp1->instr, true);
+   rogue_merge_instr_comment(&tst_mbyp1->instr, &zerosel->instr, "zerosel (0)");
+
    /* Test != 0. */
-   rogue_alu_instr *tst =
-      rogue_TST(b,
-                rogue_ref_io(ROGUE_IO_FTT),
-                rogue_ref_io(ROGUE_IO_P0),
-                rogue_ref_io(ROGUE_IO_FT0),
-                rogue_ref_reg(rogue_const_reg(b->shader, 0)));
-   rogue_merge_instr_comment(&tst_mbyp->instr,
-                             &zerosel->instr,
-                             "zerosel (test)");
+   rogue_alu_instr *tst = rogue_TST(b,
+                                    rogue_ref_io(ROGUE_IO_FTT),
+                                    rogue_ref_io(ROGUE_IO_P0),
+                                    rogue_ref_io(ROGUE_IO_FT0),
+                                    rogue_ref_io(ROGUE_IO_FT1));
+   rogue_merge_instr_comment(&tst->instr, &zerosel->instr, "zerosel (test)");
 
    /* Propagate test condition. */
    tst->mod = zerosel->mod;
@@ -164,21 +172,29 @@ static inline bool rogue_lower_SETPRED(rogue_builder *b,
                                        rogue_alu_instr *setpred)
 {
    /* Source 0. */
-   rogue_alu_instr *tst_mbyp =
-      rogue_MBYP(b, rogue_ref_io(ROGUE_IO_FT0), setpred->src[0].ref);
-   rogue_set_instr_group_next(&tst_mbyp->instr, true);
-   rogue_merge_instr_comment(&tst_mbyp->instr,
+   rogue_alu_instr *tst_mbyp0 =
+      rogue_MBYP0(b, rogue_ref_io(ROGUE_IO_FT0), setpred->src[0].ref);
+   rogue_set_instr_group_next(&tst_mbyp0->instr, true);
+   rogue_merge_instr_comment(&tst_mbyp0->instr,
+                             &setpred->instr,
+                             "setpred (src)");
+
+   rogue_alu_instr *tst_mbyp1 =
+      rogue_MBYP1(b,
+                  rogue_ref_io(ROGUE_IO_FT1),
+                  rogue_ref_reg(rogue_const_reg(b->shader, 0)));
+   rogue_set_instr_group_next(&tst_mbyp1->instr, true);
+   rogue_merge_instr_comment(&tst_mbyp1->instr,
                              &setpred->instr,
                              "setpred (src)");
 
    /* Test != 0. */
-   rogue_alu_instr *tst =
-      rogue_TST(b,
-                rogue_ref_io(ROGUE_IO_FTT),
-                rogue_ref_io(ROGUE_IO_P0),
-                rogue_ref_io(ROGUE_IO_FT0),
-                rogue_ref_reg(rogue_const_reg(b->shader, 0)));
-   rogue_merge_instr_comment(&tst_mbyp->instr,
+   rogue_alu_instr *tst = rogue_TST(b,
+                                    rogue_ref_io(ROGUE_IO_FTT),
+                                    rogue_ref_io(ROGUE_IO_P0),
+                                    rogue_ref_io(ROGUE_IO_FT0),
+                                    rogue_ref_io(ROGUE_IO_FT1));
+   rogue_merge_instr_comment(&tst->instr,
                              &setpred->instr,
                              "setpred (test/set)");
 
@@ -240,7 +256,7 @@ static inline bool rogue_lower_MOV(rogue_builder *b, rogue_alu_instr *mov)
                                 rogue_ref_get_imm(&mov->src[0].ref)->imm.u32))
                      ->instr;
       } else {
-         instr = &rogue_MBYP(b, mov->dst[0].ref, mov->src[0].ref)->instr;
+         instr = &rogue_MBYP0(b, mov->dst[0].ref, mov->src[0].ref)->instr;
       }
    }
 

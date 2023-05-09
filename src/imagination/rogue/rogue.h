@@ -1196,7 +1196,8 @@ enum rogue_alu_op {
 
    /* Real instructions. */
 
-   ROGUE_ALU_OP_MBYP,
+   ROGUE_ALU_OP_MBYP0,
+   ROGUE_ALU_OP_MBYP1,
 
    ROGUE_ALU_OP_FRCP,
    ROGUE_ALU_OP_FRSQ,
