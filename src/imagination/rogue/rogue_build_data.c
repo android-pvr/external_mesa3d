@@ -47,7 +47,7 @@
  * \param[in] args The allocated iterator argument data.
  * \param[in] location The input varying location, or ~0 for the W coefficient.
  * \param[in] component The requested component.
- * \return The coefficient register index.
+ * \return The coefficient register index or ~0 if it does not exist.
  */
 PUBLIC
 unsigned rogue_coeff_index_fs(struct rogue_iterator_args *args,
@@ -68,7 +68,9 @@ unsigned rogue_coeff_index_fs(struct rogue_iterator_args *args,
    assert(location >= VARYING_SLOT_VAR0 && location <= VARYING_SLOT_VAR31);
    assert(i < args->num_fpu_iterators);
    assert(component < args->components[i]);
-   assert(args->base[i] != ~0);
+
+   if (args->base[i] == ~0)
+      return ~0;
 
    return args->base[i] + (ROGUE_COEFF_ALIGN * component);
 }

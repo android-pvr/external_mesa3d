@@ -2231,9 +2231,14 @@ static void pvr_collect_io_data_vs(struct rogue_common_build_data *common_data,
                .f16 = glsl_type_is_16bit(type),
                .mode = INTERP_MODE_SMOOTH
             };
+            unsigned fs_reg = fs_data
+                                 ? rogue_coeff_index_fs(&fs_data->iterator_args,
+                                                        var->data.location,
+                                                        reg.component)
+                                 : ~0;
 
             /* FS interpolation mode takes precedence over VS */
-            if (fs_data) {
+            if (fs_reg != ~0) {
                reg.mode = rogue_interp_mode_fs(&fs_data->iterator_args,
                                                reg.location,
                                                reg.component);
