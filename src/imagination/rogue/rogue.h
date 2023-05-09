@@ -1227,6 +1227,11 @@ enum rogue_alu_op {
    ROGUE_ALU_OP_PSEUDO,
    ROGUE_ALU_OP_MOV = ROGUE_ALU_OP_PSEUDO,
    ROGUE_ALU_OP_CMOV, /** Conditional move. */
+   ROGUE_ALU_OP_SETPRED, /** Set predicate register. */
+
+   ROGUE_ALU_OP_CNDB, /** Conditional check (0/1). */
+   ROGUE_ALU_OP_CNDSEL, /** Conditional select (src0/src1). */
+   ROGUE_ALU_OP_ZEROSEL, /** Zero-compare select (src0/src1). */
 
    ROGUE_ALU_OP_FABS,
    ROGUE_ALU_OP_FNEG,

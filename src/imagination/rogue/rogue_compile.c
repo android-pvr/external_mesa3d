@@ -1092,21 +1092,10 @@ static void trans_nir_alu_cmp_sel(rogue_builder *b,
    rogue_ref src0 = nir_ssa_reg_alu_src32(b->shader, alu, 0);
    rogue_ref src1 = nir_ssa_reg_alu_src32(b->shader, alu, 1);
 
-   /* TODO: make sure that type is set correctly depending on the operation and
-    * the number of source bits. */
-
-   rogue_alu_instr *tst_mbyp = rogue_MBYP(b, rogue_ref_io(ROGUE_IO_FT0), src0);
-   rogue_set_instr_group_next(&tst_mbyp->instr, true);
-
-   rogue_alu_instr *tst = rogue_TST(b,
-                                    rogue_ref_io(ROGUE_IO_FTT),
-                                    rogue_ref_io(ROGUE_IO_P0),
-                                    rogue_ref_io(ROGUE_IO_FT0),
-                                    src1);
-   rogue_set_alu_op_mod(tst, comp);
-   rogue_set_alu_op_mod(tst, type);
-
-   rogue_CMOV(b, dst, rogue_ref_io(ROGUE_IO_P0), src0, src1);
+   rogue_alu_instr *cndsel = rogue_CNDSEL(b, dst, src0, src1);
+   rogue_set_alu_op_mod(cndsel, comp);
+   rogue_set_alu_op_mod(cndsel, type);
+   rogue_apply_alu_src_mods(cndsel, alu, false);
 }
 
 /* Conditionally sets the output to src1 or src2 depending on whether the
@@ -1115,32 +1104,23 @@ static void trans_nir_alu_cmp_sel(rogue_builder *b,
 static void trans_nir_alu_cmp_zero_sel(rogue_builder *b,
                                        nir_alu_instr *alu,
                                        enum rogue_alu_op_mod comp,
-                                       enum rogue_alu_op_mod type)
+                                       enum rogue_alu_op_mod type,
+                                       bool is_bin)
 {
    unsigned dst_components;
    rogue_ref dst = nir_ssa_reg_alu_dst32(b->shader, alu, &dst_components);
    assert(dst_components == 1);
 
-   rogue_ref src0 = nir_ssa_reg_alu_src32(b->shader, alu, 0);
+   rogue_ref src0 = is_bin ? nir_ssa_reg_alu_src1(b->shader, alu, 0)
+                           : nir_ssa_reg_alu_src32(b->shader, alu, 0);
+
    rogue_ref src1 = nir_ssa_reg_alu_src32(b->shader, alu, 1);
    rogue_ref src2 = nir_ssa_reg_alu_src32(b->shader, alu, 2);
 
-   /* TODO: make sure that type is set correctly depending on the operation and
-    * the number of source bits. */
-
-   /* TODO: make a pseudo-op that's lowered to an MBYP+TST */
-   rogue_alu_instr *tst_mbyp = rogue_MBYP(b, rogue_ref_io(ROGUE_IO_FT0), src0);
-   rogue_set_instr_group_next(&tst_mbyp->instr, true);
-
-   rogue_alu_instr *tst = rogue_TST(b,
-                                    rogue_ref_io(ROGUE_IO_FTT),
-                                    rogue_ref_io(ROGUE_IO_P0),
-                                    rogue_ref_io(ROGUE_IO_FT0),
-                                    rogue_ref_imm(0));
-   rogue_set_alu_op_mod(tst, comp);
-   rogue_set_alu_op_mod(tst, type);
-
-   rogue_CMOV(b, dst, rogue_ref_io(ROGUE_IO_P0), src1, src2);
+   rogue_alu_instr *zerosel = rogue_ZEROSEL(b, dst, src0, src1, src2);
+   rogue_set_alu_op_mod(zerosel, comp);
+   rogue_set_alu_op_mod(zerosel, type);
+   rogue_apply_alu_src_mods(zerosel, alu, false);
 }
 
 static void trans_nir_alu_fneg(rogue_builder *b, nir_alu_instr *alu)
@@ -1328,49 +1308,10 @@ static void trans_nir_alu_cmp_bin(rogue_builder *b,
    rogue_ref src0 = nir_ssa_reg_alu_src32(b->shader, alu, 0);
    rogue_ref src1 = nir_ssa_reg_alu_src32(b->shader, alu, 1);
 
-   /* TODO: make sure that type is set correctly depending on the operation and
-    * the number of source bits. */
-
-   rogue_alu_instr *tst_mbyp = rogue_MBYP(b, rogue_ref_io(ROGUE_IO_FT0), src0);
-   rogue_set_instr_group_next(&tst_mbyp->instr, true);
-
-   rogue_alu_instr *tst = rogue_TST(b,
-                                    rogue_ref_io(ROGUE_IO_FTT),
-                                    rogue_ref_io(ROGUE_IO_P0),
-                                    rogue_ref_io(ROGUE_IO_FT0),
-                                    src1);
-   rogue_set_alu_op_mod(tst, comp);
-   rogue_set_alu_op_mod(tst, type);
-
-   rogue_CMOV(b,
-              dst,
-              rogue_ref_io(ROGUE_IO_P0),
-              rogue_ref_imm(1),
-              rogue_ref_imm(0));
-}
-
-static void trans_nir_alu_bcsel(rogue_builder *b, nir_alu_instr *alu)
-{
-   unsigned dst_components;
-   rogue_ref dst = nir_ssa_reg_alu_dst32(b->shader, alu, &dst_components);
-   assert(dst_components == 1);
-
-   rogue_ref src0 = nir_ssa_reg_alu_src1(b->shader, alu, 0);
-   rogue_ref src1 = nir_ssa_reg_alu_src32(b->shader, alu, 1);
-   rogue_ref src2 = nir_ssa_reg_alu_src32(b->shader, alu, 2);
-
-   rogue_alu_instr *tst_mbyp = rogue_MBYP(b, rogue_ref_io(ROGUE_IO_FT0), src0);
-   rogue_set_instr_group_next(&tst_mbyp->instr, true);
-
-   rogue_alu_instr *tst = rogue_TST(b,
-                                    rogue_ref_io(ROGUE_IO_FTT),
-                                    rogue_ref_io(ROGUE_IO_P0),
-                                    rogue_ref_io(ROGUE_IO_FT0),
-                                    rogue_ref_imm(0));
-   rogue_set_alu_op_mod(tst, ROGUE_ALU_OP_MOD_NE);
-   rogue_set_alu_op_mod(tst, ROGUE_ALU_OP_MOD_U32);
-
-   rogue_CMOV(b, dst, rogue_ref_io(ROGUE_IO_P0), src1, src2);
+   rogue_alu_instr *cndb = rogue_CNDB(b, dst, src0, src1);
+   rogue_set_alu_op_mod(cndb, comp);
+   rogue_set_alu_op_mod(cndb, type);
+   rogue_apply_alu_src_mods(cndb, alu, false);
 }
 
 static void trans_nir_alu_b2f32(rogue_builder *b, nir_alu_instr *alu)
@@ -1381,22 +1322,10 @@ static void trans_nir_alu_b2f32(rogue_builder *b, nir_alu_instr *alu)
 
    rogue_ref src = nir_ssa_reg_alu_src1(b->shader, alu, 0);
 
-   rogue_alu_instr *tst_mbyp = rogue_MBYP(b, rogue_ref_io(ROGUE_IO_FT0), src);
-   rogue_set_instr_group_next(&tst_mbyp->instr, true);
-
-   rogue_alu_instr *tst = rogue_TST(b,
-                                    rogue_ref_io(ROGUE_IO_FTT),
-                                    rogue_ref_io(ROGUE_IO_P0),
-                                    rogue_ref_io(ROGUE_IO_FT0),
-                                    rogue_ref_imm(0));
-   rogue_set_alu_op_mod(tst, ROGUE_ALU_OP_MOD_E);
-   rogue_set_alu_op_mod(tst, ROGUE_ALU_OP_MOD_U32);
-
-   rogue_CMOV(b,
-              dst,
-              rogue_ref_io(ROGUE_IO_P0),
-              rogue_ref_imm_f(0.0f),
-              rogue_ref_imm_f(1.0f));
+   rogue_alu_instr *zerosel =
+      rogue_ZEROSEL(b, dst, src, rogue_ref_imm_f(1.0f), rogue_ref_imm_f(0.0f));
+   rogue_set_alu_op_mod(zerosel, ROGUE_ALU_OP_MOD_NE);
+   rogue_set_alu_op_mod(zerosel, ROGUE_ALU_OP_MOD_U32);
 }
 
 /* TODO: needs additional testing/bindumping */
@@ -1527,7 +1456,7 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
       return trans_nir_alu_cmp_bin(b, alu, OM(G), OM(U32));
 
    case nir_op_bcsel:
-      return trans_nir_alu_bcsel(b, alu);
+      return trans_nir_alu_cmp_zero_sel(b, alu, OM(NE), OM(U32), true);
 
    case nir_op_b2f32:
       return trans_nir_alu_b2f32(b, alu);
@@ -1536,13 +1465,13 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
       return trans_nir_alu_iand(b, alu);
 
    case nir_op_fcsel:
-      return trans_nir_alu_cmp_zero_sel(b, alu, OM(NE), OM(F32));
+      return trans_nir_alu_cmp_zero_sel(b, alu, OM(NE), OM(F32), false);
 
    case nir_op_fcsel_gt:
-      return trans_nir_alu_cmp_zero_sel(b, alu, OM(G), OM(F32));
+      return trans_nir_alu_cmp_zero_sel(b, alu, OM(G), OM(F32), false);
 
    case nir_op_fcsel_ge:
-      return trans_nir_alu_cmp_zero_sel(b, alu, OM(GE), OM(F32));
+      return trans_nir_alu_cmp_zero_sel(b, alu, OM(GE), OM(F32), false);
 
    default:
       break;
@@ -1652,19 +1581,7 @@ static void trans_nir_if(rogue_builder *b, nir_if *nif)
    assert(nif->condition.is_ssa);
    rogue_reg *if_cnd = rogue_ssa_reg(b->shader, nif->condition.ssa->index);
 
-   /* TODO: Just do a single argument ROGUE_ALU_OP_MOD_GZ without needing an
-    * MBYP */
-   rogue_alu_instr *cnd_tst_mbyp =
-      rogue_MBYP(b, rogue_ref_io(ROGUE_IO_FT0), rogue_ref_reg(if_cnd));
-   rogue_set_instr_group_next(&cnd_tst_mbyp->instr, true);
-
-   rogue_alu_instr *cnd_tst = rogue_TST(b,
-                                        rogue_ref_io(ROGUE_IO_FTT),
-                                        rogue_ref_io(ROGUE_IO_P0),
-                                        rogue_ref_io(ROGUE_IO_FT0),
-                                        rogue_ref_imm(0));
-   rogue_set_alu_op_mod(cnd_tst, ROGUE_ALU_OP_MOD_NE);
-   rogue_set_alu_op_mod(cnd_tst, ROGUE_ALU_OP_MOD_U32);
+   rogue_SETPRED(b, rogue_ref_io(ROGUE_IO_P0), rogue_ref_reg(if_cnd));
 
    /* TODO LATER: branch allinst if no active instances to start, probably needs
     * blocks to be cached */

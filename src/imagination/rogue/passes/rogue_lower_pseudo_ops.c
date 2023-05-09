@@ -64,6 +64,133 @@ static inline bool rogue_lower_FNABS(rogue_builder *b, rogue_alu_instr *fnabs)
    return true;
 }
 
+/* TODO: Put movc into instruction groups where possible. */
+
+static inline bool rogue_lower_CND(rogue_builder *b,
+                                   rogue_alu_instr *cnd,
+                                   rogue_ref ref_true,
+                                   rogue_ref ref_false)
+{
+   /* Source 0. */
+   rogue_alu_instr *tst_mbyp =
+      rogue_MBYP(b, rogue_ref_io(ROGUE_IO_FT0), cnd->src[0].ref);
+   rogue_set_instr_group_next(&tst_mbyp->instr, true);
+   rogue_merge_instr_comment(&tst_mbyp->instr, &cnd->instr, "cnd (src0)");
+
+   /* TODO: mbyp for src1 and modifiers */
+
+   /* Source 1 and test. */
+   rogue_alu_instr *tst = rogue_TST(b,
+                                    rogue_ref_io(ROGUE_IO_FTT),
+                                    rogue_ref_io(ROGUE_IO_P0),
+                                    rogue_ref_io(ROGUE_IO_FT0),
+                                    cnd->src[1].ref);
+   rogue_merge_instr_comment(&tst_mbyp->instr, &cnd->instr, "cnd (src1/test)");
+
+   /* Propagate source modifiers and test condition. */
+   tst_mbyp->src[0].mod = cnd->src[0].mod;
+   tst->src[1].mod = cnd->src[1].mod;
+   tst->mod = cnd->mod;
+
+   /* Result: 0/1. */
+   rogue_alu_instr *cmov = rogue_CMOV(b,
+                                      cnd->dst[0].ref,
+                                      rogue_ref_io(ROGUE_IO_P0),
+                                      ref_true,
+                                      ref_false);
+   rogue_merge_instr_comment(&cmov->instr, &cnd->instr, "cnd (set result)");
+
+   rogue_instr_delete(&cnd->instr);
+
+   return true;
+}
+
+static inline bool rogue_lower_CNDB(rogue_builder *b, rogue_alu_instr *cndb)
+{
+   return rogue_lower_CND(b,
+                          cndb,
+                          rogue_ref_reg(rogue_const_reg(b->shader, 1)),
+                          rogue_ref_reg(rogue_const_reg(b->shader, 0)));
+}
+
+static inline bool rogue_lower_CNDSEL(rogue_builder *b, rogue_alu_instr *cndsel)
+{
+   return rogue_lower_CND(b, cndsel, cndsel->src[0].ref, cndsel->src[1].ref);
+}
+
+static inline bool rogue_lower_ZEROSEL(rogue_builder *b,
+                                       rogue_alu_instr *zerosel)
+{
+   /* Source 0. */
+   rogue_alu_instr *tst_mbyp =
+      rogue_MBYP(b, rogue_ref_io(ROGUE_IO_FT0), zerosel->src[0].ref);
+   rogue_set_instr_group_next(&tst_mbyp->instr, true);
+   rogue_merge_instr_comment(&tst_mbyp->instr,
+                             &zerosel->instr,
+                             "zerosel (src)");
+
+   /* Test != 0. */
+   rogue_alu_instr *tst =
+      rogue_TST(b,
+                rogue_ref_io(ROGUE_IO_FTT),
+                rogue_ref_io(ROGUE_IO_P0),
+                rogue_ref_io(ROGUE_IO_FT0),
+                rogue_ref_reg(rogue_const_reg(b->shader, 0)));
+   rogue_merge_instr_comment(&tst_mbyp->instr,
+                             &zerosel->instr,
+                             "zerosel (test)");
+
+   /* Propagate test condition. */
+   tst->mod = zerosel->mod;
+
+   /* Result: 0/1. */
+   rogue_alu_instr *cmov = rogue_CMOV(b,
+                                      zerosel->dst[0].ref,
+                                      rogue_ref_io(ROGUE_IO_P0),
+                                      zerosel->src[1].ref,
+                                      zerosel->src[2].ref);
+   rogue_merge_instr_comment(&cmov->instr,
+                             &zerosel->instr,
+                             "zerosel (set result)");
+
+   rogue_instr_delete(&zerosel->instr);
+
+   return true;
+}
+
+/* TODO: Just do a single argument ROGUE_ALU_OP_MOD_GZ without needing an MBYP.
+ */
+static inline bool rogue_lower_SETPRED(rogue_builder *b,
+                                       rogue_alu_instr *setpred)
+{
+   /* Source 0. */
+   rogue_alu_instr *tst_mbyp =
+      rogue_MBYP(b, rogue_ref_io(ROGUE_IO_FT0), setpred->src[0].ref);
+   rogue_set_instr_group_next(&tst_mbyp->instr, true);
+   rogue_merge_instr_comment(&tst_mbyp->instr,
+                             &setpred->instr,
+                             "setpred (src)");
+
+   /* Test != 0. */
+   rogue_alu_instr *tst =
+      rogue_TST(b,
+                rogue_ref_io(ROGUE_IO_FTT),
+                rogue_ref_io(ROGUE_IO_P0),
+                rogue_ref_io(ROGUE_IO_FT0),
+                rogue_ref_reg(rogue_const_reg(b->shader, 0)));
+   rogue_merge_instr_comment(&tst_mbyp->instr,
+                             &setpred->instr,
+                             "setpred (test/set)");
+
+   /* Set test condition (src != 0). */
+   rogue_set_alu_op_mod(tst, ROGUE_ALU_OP_MOD_NE);
+   rogue_set_alu_op_mod(tst, ROGUE_ALU_OP_MOD_U32);
+
+   rogue_instr_delete(&setpred->instr);
+
+   return true;
+}
+
 static inline bool rogue_lower_MOV(rogue_builder *b, rogue_alu_instr *mov)
 {
    rogue_instr *instr;
@@ -129,6 +256,9 @@ static inline bool rogue_lower_alu_instr(rogue_builder *b, rogue_alu_instr *alu)
    case ROGUE_ALU_OP_MOV:
       return rogue_lower_MOV(b, alu);
 
+   case ROGUE_ALU_OP_SETPRED:
+      return rogue_lower_SETPRED(b, alu);
+
    case ROGUE_ALU_OP_FABS:
       return rogue_lower_FABS(b, alu);
 
@@ -137,6 +267,15 @@ static inline bool rogue_lower_alu_instr(rogue_builder *b, rogue_alu_instr *alu)
 
    case ROGUE_ALU_OP_FNABS:
       return rogue_lower_FNABS(b, alu);
+
+   case ROGUE_ALU_OP_CNDB:
+      return rogue_lower_CNDB(b, alu);
+
+   case ROGUE_ALU_OP_CNDSEL:
+      return rogue_lower_CNDSEL(b, alu);
+
+   case ROGUE_ALU_OP_ZEROSEL:
+      return rogue_lower_ZEROSEL(b, alu);
 
    default:
       break;
