@@ -151,6 +151,7 @@ static void validate_regarray(rogue_validation_state *state,
 static void validate_dst(rogue_validation_state *state,
                          const rogue_instr_dst *dst,
                          uint64_t supported_dst_types,
+                         uint64_t supported_dst_mods,
                          unsigned i,
                          unsigned stride,
                          unsigned repeat,
@@ -167,6 +168,10 @@ static void validate_dst(rogue_validation_state *state,
 
    if (!rogue_ref_type_supported(dst->ref.type, supported_dst_types))
       validate_log(state, "Unsupported destination type.");
+
+   /* Check if destination modifiers are valid. */
+   if (!rogue_mods_supported(dst->mod, supported_dst_mods))
+      validate_log(state, "Unsupported destination modifiers.");
 
    if (rogue_ref_is_reg_or_regarray(&dst->ref) && stride != ~0U) {
       unsigned dst_size = stride + 1;
@@ -194,6 +199,7 @@ static void validate_dst(rogue_validation_state *state,
 static void validate_src(rogue_validation_state *state,
                          const rogue_instr_src *src,
                          uint64_t supported_src_types,
+                         uint64_t supported_src_mods,
                          unsigned i,
                          unsigned stride,
                          unsigned repeat,
@@ -210,6 +216,10 @@ static void validate_src(rogue_validation_state *state,
 
    if (!rogue_ref_type_supported(src->ref.type, supported_src_types))
       validate_log(state, "Unsupported source type.");
+
+   /* Check if destination modifiers are valid. */
+   if (!rogue_mods_supported(src->mod, supported_src_mods))
+      validate_log(state, "Unsupported source modifiers.");
 
    if (rogue_ref_is_reg_or_regarray(&src->ref) && stride != ~0U) {
       unsigned src_size = stride + 1;
@@ -293,6 +303,7 @@ static void validate_alu_instr(rogue_validation_state *state,
          validate_dst(state,
                       &alu->dst[i],
                       info->supported_dst_types[i],
+                      info->supported_dst_mods[i],
                       i,
                       info->dst_stride[i],
                       alu->instr.repeat,
@@ -305,6 +316,7 @@ static void validate_alu_instr(rogue_validation_state *state,
          validate_src(state,
                       &alu->src[i],
                       info->supported_src_types[i],
+                      info->supported_src_mods[i],
                       i,
                       info->src_stride[i],
                       alu->instr.repeat,
@@ -368,6 +380,7 @@ static void validate_backend_instr(rogue_validation_state *state,
          validate_dst(state,
                       &backend->dst[i],
                       info->supported_dst_types[i],
+                      info->supported_dst_mods[i],
                       i,
                       info->dst_stride[i],
                       backend->instr.repeat,
@@ -380,6 +393,7 @@ static void validate_backend_instr(rogue_validation_state *state,
          validate_src(state,
                       &backend->src[i],
                       info->supported_src_types[i],
+                      info->supported_src_mods[i],
                       i,
                       info->src_stride[i],
                       backend->instr.repeat,
@@ -450,6 +464,7 @@ static bool validate_ctrl_instr(rogue_validation_state *state,
          validate_dst(state,
                       &ctrl->dst[i],
                       info->supported_dst_types[i],
+                      info->supported_dst_mods[i],
                       i,
                       info->dst_stride[i],
                       ctrl->instr.repeat,
@@ -462,6 +477,7 @@ static bool validate_ctrl_instr(rogue_validation_state *state,
          validate_src(state,
                       &ctrl->src[i],
                       info->supported_src_types[i],
+                      info->supported_src_mods[i],
                       i,
                       info->src_stride[i],
                       ctrl->instr.repeat,
@@ -535,6 +551,7 @@ static void validate_bitwise_instr(rogue_validation_state *state,
          validate_dst(state,
                       &bitwise->dst[i],
                       info->supported_dst_types[i],
+                      info->supported_dst_mods[i],
                       i,
                       info->dst_stride[i],
                       bitwise->instr.repeat,
@@ -547,6 +564,7 @@ static void validate_bitwise_instr(rogue_validation_state *state,
          validate_src(state,
                       &bitwise->src[i],
                       info->supported_src_types[i],
+                      info->supported_src_mods[i],
                       i,
                       info->src_stride[i],
                       bitwise->instr.repeat,
