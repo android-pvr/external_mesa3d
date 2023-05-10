@@ -3151,6 +3151,46 @@ typedef struct rogue_compiler {
 
 rogue_compiler *rogue_compiler_create(const struct pvr_device_info *dev_info);
 
+static inline gl_shader_stage
+pvr_stage_to_mesa(enum pvr_stage_allocation pvr_stage)
+{
+   switch (pvr_stage) {
+   case PVR_STAGE_ALLOCATION_VERTEX_GEOMETRY:
+      return MESA_SHADER_VERTEX;
+
+   case PVR_STAGE_ALLOCATION_FRAGMENT:
+      return MESA_SHADER_FRAGMENT;
+
+   case PVR_STAGE_ALLOCATION_COMPUTE:
+      return MESA_SHADER_COMPUTE;
+
+   default:
+      break;
+   }
+
+   unreachable("Unsupported pvr_stage_allocation.");
+}
+
+static inline enum pvr_stage_allocation
+mesa_stage_to_pvr(gl_shader_stage mesa_stage)
+{
+   switch (mesa_stage) {
+   case MESA_SHADER_VERTEX:
+      return PVR_STAGE_ALLOCATION_VERTEX_GEOMETRY;
+
+   case MESA_SHADER_FRAGMENT:
+      return PVR_STAGE_ALLOCATION_FRAGMENT;
+
+   case MESA_SHADER_COMPUTE:
+      return PVR_STAGE_ALLOCATION_COMPUTE;
+
+   default:
+      break;
+   }
+
+   unreachable("Unsupported gl_shader_stage.");
+}
+
 /* Max number of I/O varying variables.
  * Fragment shader: MAX_VARYING + 1 (W coefficient).
  * Vertex shader: MAX_VARYING + 1 (position slot).
@@ -3376,7 +3416,7 @@ nir_shader *rogue_spirv_to_nir(rogue_build_ctx *ctx,
 /* Custom NIR passes. */
 void rogue_nir_pfo(nir_shader *shader);
 
-bool rogue_nir_lower_io(nir_shader *shader);
+bool rogue_nir_lower_io(nir_shader *shader, rogue_build_ctx *ctx, bool late);
 
 rogue_shader *rogue_nir_to_rogue(rogue_build_ctx *ctx, const nir_shader *nir);
 

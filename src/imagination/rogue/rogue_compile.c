@@ -104,49 +104,37 @@ static rogue_ref nir_ssa_reg_intr_dst32(rogue_shader *shader,
    return rogue_ref_reg(rogue_ssa_reg(shader, index));
 }
 
+static rogue_ref64 nir_ssa_reg_intr_dst64(rogue_shader *shader,
+                                          const nir_intrinsic_instr *intr)
+{
+   assert(intr->dest.is_ssa);
+   assert(intr->dest.ssa.bit_size == 64);
+   assert(intr->dest.ssa.num_components == 1);
+
+   return rogue_ssa_ref64(shader, intr->dest.ssa.index);
+}
+
 /* 64-bit restricted to scalars. */
-static rogue_ref nir_ssa_reg_alu_src64(rogue_shader *shader,
-                                       const nir_alu_instr *alu,
-                                       unsigned src_num,
-                                       rogue_ref *lo32,
-                                       rogue_ref *hi32)
+static rogue_ref64 nir_ssa_reg_alu_src64(rogue_shader *shader,
+                                         const nir_alu_instr *alu,
+                                         unsigned src_num)
 {
    assert(alu->src[src_num].src.is_ssa);
    assert(alu->src[src_num].src.ssa->bit_size == 64);
    assert(alu->src[src_num].src.ssa->num_components == 1);
    assert(nir_ssa_alu_instr_src_components(alu, src_num) == 1);
 
-   unsigned index = alu->src[src_num].src.ssa->index;
-   rogue_ref64 src = rogue_ssa_ref64(shader, index);
-
-   if (lo32)
-      *lo32 = src.lo32;
-
-   if (hi32)
-      *hi32 = src.hi32;
-
-   return src.ref64;
+   return rogue_ssa_ref64(shader, alu->src[src_num].src.ssa->index);
 }
 
-static rogue_ref nir_ssa_reg_alu_dst64(rogue_shader *shader,
-                                       const nir_alu_instr *alu,
-                                       rogue_ref *lo32,
-                                       rogue_ref *hi32)
+static rogue_ref64 nir_ssa_reg_alu_dst64(rogue_shader *shader,
+                                         const nir_alu_instr *alu)
 {
    assert(alu->dest.dest.is_ssa);
    assert(alu->dest.dest.ssa.bit_size == 64);
    assert(alu->dest.dest.ssa.num_components == 1);
 
-   unsigned index = alu->dest.dest.ssa.index;
-   rogue_ref64 dst = rogue_ssa_ref64(shader, index);
-
-   if (lo32)
-      *lo32 = dst.lo32;
-
-   if (hi32)
-      *hi32 = dst.hi32;
-
-   return dst.ref64;
+   return rogue_ssa_ref64(shader, alu->dest.dest.ssa.index);
 }
 
 static void trans_nir_jump(rogue_builder *b, nir_jump_instr *jump)
@@ -476,235 +464,93 @@ static void trans_nir_intrinsic_store_output(rogue_builder *b,
    unreachable("Unimplemented NIR store_output variant.");
 }
 
-static inline gl_shader_stage
-pvr_stage_to_mesa(enum pvr_stage_allocation pvr_stage)
+static void trans_nir_intrinsic_load_vulkan_desc_set_table_base_addr_img(
+   rogue_builder *b,
+   nir_intrinsic_instr *intr)
 {
-   switch (pvr_stage) {
-   case PVR_STAGE_ALLOCATION_VERTEX_GEOMETRY:
-      return MESA_SHADER_VERTEX;
+   assert(intr->dest.is_ssa);
+   assert(intr->dest.ssa.bit_size == 64);
+   rogue_ref64 dst = rogue_ssa_ref64(b->shader, intr->dest.ssa.index);
 
-   case PVR_STAGE_ALLOCATION_FRAGMENT:
-      return MESA_SHADER_FRAGMENT;
-
-   case PVR_STAGE_ALLOCATION_COMPUTE:
-      return MESA_SHADER_COMPUTE;
-
-   default:
-      break;
-   }
-
-   unreachable("Unsupported pvr_stage_allocation.");
-}
-
-static inline enum pvr_stage_allocation
-mesa_stage_to_pvr(gl_shader_stage mesa_stage)
-{
-   switch (mesa_stage) {
-   case MESA_SHADER_VERTEX:
-      return PVR_STAGE_ALLOCATION_VERTEX_GEOMETRY;
-
-   case MESA_SHADER_FRAGMENT:
-      return PVR_STAGE_ALLOCATION_FRAGMENT;
-
-   case MESA_SHADER_COMPUTE:
-      return PVR_STAGE_ALLOCATION_COMPUTE;
-
-   default:
-      break;
-   }
-
-   unreachable("Unsupported gl_shader_stage.");
-}
-static bool descriptor_is_dynamic(VkDescriptorType type)
-{
-   return (type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC ||
-           type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC);
-}
-
-/* TODO: Process this into loads in NIR instead. */
-static void
-trans_nir_intrinsic_load_vulkan_descriptor(rogue_builder *b,
-                                           nir_intrinsic_instr *intr)
-{
-   rogue_instr *instr;
-   unsigned desc_set = nir_src_comp_as_uint(intr->src[0], 0);
-   unsigned binding = nir_src_comp_as_uint(intr->src[0], 1);
-   ASSERTED VkDescriptorType desc_type = nir_src_comp_as_uint(intr->src[0], 2);
-   assert(desc_type == nir_intrinsic_desc_type(intr));
-
-   struct pvr_pipeline_layout *pipeline_layout =
+   /* Fetch shared registers containing descriptor set table address. */
+   enum pvr_stage_allocation pvr_stage = mesa_stage_to_pvr(b->shader->stage);
+   const struct pvr_pipeline_layout *pipeline_layout =
       b->shader->ctx->pipeline_layout;
+   assert(pipeline_layout->sh_reg_layout_per_stage[pvr_stage]
+             .descriptor_set_addrs_table.present);
 
-   unsigned desc_set_table_sh_reg;
-   unsigned desc_set_offset;
-   unsigned desc_offset;
+   unsigned desc_set_table_base_sh_reg =
+      pipeline_layout->sh_reg_layout_per_stage[pvr_stage]
+         .descriptor_set_addrs_table.offset;
+   rogue_ref64 src = rogue_shared_ref64(b->shader, desc_set_table_base_sh_reg);
 
-   if (pipeline_layout) {
-      /* Fetch shared registers containing descriptor set table address. */
-      enum pvr_stage_allocation pvr_stage = mesa_stage_to_pvr(b->shader->stage);
-      assert(pipeline_layout->sh_reg_layout_per_stage[pvr_stage]
-                .descriptor_set_addrs_table.present);
-      desc_set_table_sh_reg =
-         pipeline_layout->sh_reg_layout_per_stage[pvr_stage]
-            .descriptor_set_addrs_table.offset;
+   rogue_alu_instr *mov = rogue_MOV(b, dst.lo32, src.lo32);
+   rogue_add_instr_comment(&mov->instr,
+                           "load_vulkan_desc_set_table_base_addr_img.lo32");
 
-      /* Calculate offset for the descriptor set. */
-      assert(desc_set < pipeline_layout->set_count);
-      desc_set_offset = desc_set * sizeof(pvr_dev_addr_t); /* Table is an array
-                                                              of addresses. */
-
-      const struct pvr_descriptor_set_layout *set_layout =
-         pipeline_layout->set_layout[desc_set];
-      const struct pvr_descriptor_set_layout_mem_layout *mem_layout =
-         &set_layout->memory_layout_in_dwords_per_stage[pvr_stage];
-
-      /* Calculate offset for the descriptor/binding. */
-      assert(binding < set_layout->binding_count);
-
-      const struct pvr_descriptor_set_layout_binding *binding_layout =
-         pvr_get_descriptor_binding(set_layout, binding);
-      assert(binding_layout);
-
-      /* TODO: Handle secondaries. */
-      /* TODO: Handle bindings having multiple descriptors
-       * (VkDescriptorSetLayoutBinding->descriptorCount).
-       */
-
-      if (descriptor_is_dynamic(binding_layout->type))
-         desc_offset = set_layout->total_size_in_dwords;
-      else
-         desc_offset = mem_layout->primary_offset;
-
-      desc_offset +=
-         binding_layout->per_stage_offset_in_dwords[pvr_stage].primary;
-
-      desc_offset *= sizeof(uint32_t); /* DWORDs to bytes. */
-   } else {
-      /* Dummy defaults for offline compiler. */
-      /* TODO: Load these from an offline pipeline description
-       * if using the offline compiler.
-       */
-      desc_set_table_sh_reg = 0;
-      desc_set_offset = desc_set * sizeof(pvr_dev_addr_t);
-      desc_offset = binding * sizeof(pvr_dev_addr_t);
-   }
-
-   rogue_ref64 desc_set_table_base_sh =
-      rogue_shared_ref64(b->shader, desc_set_table_sh_reg);
-
-   unsigned desc_set_table_base_addr_idx = b->shader->ctx->next_ssa_idx++;
-   rogue_ref64 desc_set_table_base_addr =
-      rogue_ssa_ref64(b->shader, desc_set_table_base_addr_idx);
-
-   instr =
-      &rogue_MOV(b, desc_set_table_base_addr.lo32, desc_set_table_base_sh.lo32)
-          ->instr;
-   rogue_add_instr_comment(instr, "desc_set_table_base_addr.lo32");
-   instr =
-      &rogue_MOV(b, desc_set_table_base_addr.hi32, desc_set_table_base_sh.hi32)
-          ->instr;
-   rogue_add_instr_comment(instr, "desc_set_table_base_addr.hi32");
-
-   /* Offset the descriptor set table address to the descriptor set entry. */
-   unsigned desc_set_table_addr_offset_idx = b->shader->ctx->next_ssa_idx++;
-   rogue_ref64 desc_set_table_addr_offset =
-      rogue_ssa_ref64(b->shader, desc_set_table_addr_offset_idx);
-
-   rogue_MOV(b,
-             desc_set_table_addr_offset.lo32,
-             rogue_ref_imm(desc_set_offset));
-   rogue_MOV(b, desc_set_table_addr_offset.hi32, rogue_ref_imm(0));
-
-   unsigned desc_set_table_addr_entry_idx = b->shader->ctx->next_ssa_idx++;
-   rogue_ref64 desc_set_table_addr_entry =
-      rogue_ssa_ref64(b->shader, desc_set_table_addr_entry_idx);
-
-   rogue_IADD64(b,
-                desc_set_table_addr_entry.ref64,
-                desc_set_table_base_addr.ref64,
-                desc_set_table_addr_offset.ref64);
-
-   /* Load the descriptor set address from the table. */
-   unsigned desc_set_addr_base_idx = b->shader->ctx->next_ssa_idx++;
-   rogue_ref64 desc_set_addr_base =
-      rogue_ssa_ref64(b->shader, desc_set_addr_base_idx);
-
-   instr = &rogue_LD(b,
-                     desc_set_addr_base.ref64,
-                     rogue_ref_drc(0),
-                     rogue_ref_val(2),
-                     desc_set_table_addr_entry.ref64)
-               ->instr;
-   rogue_add_instr_comment(instr, "load descriptor set");
-
-   /* Offset the descriptor set address to the descriptor entry. */
-   unsigned desc_addr_offset_idx = b->shader->ctx->next_ssa_idx++;
-   rogue_ref64 desc_addr_offset =
-      rogue_ssa_ref64(b->shader, desc_addr_offset_idx);
-
-   rogue_MOV(b, desc_addr_offset.lo32, rogue_ref_imm(desc_offset));
-   rogue_MOV(b, desc_addr_offset.hi32, rogue_ref_imm(0));
-
-   unsigned desc_addr_entry_idx = b->shader->ctx->next_ssa_idx++;
-   rogue_ref64 desc_addr_entry =
-      rogue_ssa_ref64(b->shader, desc_addr_entry_idx);
-
-   rogue_IADD64(b,
-                desc_addr_entry.ref64,
-                desc_set_addr_base.ref64,
-                desc_addr_offset.ref64);
-
-   /* Load the descriptor address from the set. */
-   unsigned desc_addr_idx = intr->dest.ssa.index;
-   rogue_ref64 desc_addr = rogue_ssa_ref64(b->shader, desc_addr_idx);
-
-   instr = &rogue_LD(b,
-                     desc_addr.ref64,
-                     rogue_ref_drc(0),
-                     rogue_ref_val(2),
-                     desc_addr_entry.ref64)
-               ->instr;
-   rogue_add_instr_comment(instr, "load descriptor");
+   mov = rogue_MOV(b, dst.hi32, src.hi32);
+   rogue_add_instr_comment(&mov->instr,
+                           "load_vulkan_desc_set_table_base_addr_img.hi32");
 }
 
-static void trans_nir_intrinsic_load_global_constant(rogue_builder *b,
-                                                     nir_intrinsic_instr *intr)
+static void trans_nir_intrinsic_load_global32(rogue_builder *b,
+                                              nir_intrinsic_instr *intr,
+                                              bool constant)
 {
-   /* 64-bit source address. */
-   unsigned src_index = intr->src[0].ssa->index;
-   rogue_ref64 src_addr = rogue_ssa_ref64(b->shader, src_index);
-
    unsigned load_size;
    rogue_ref dst = nir_ssa_reg_intr_dst32(b->shader, intr, &load_size);
    assert(load_size <= 16); /* TODO: support even larger load sizes. */
 
-   rogue_instr *instr = &rogue_LD(b,
-                                  dst,
-                                  rogue_ref_drc(0),
-                                  rogue_ref_val(load_size),
-                                  src_addr.ref64)
-                            ->instr;
-   rogue_add_instr_comment(instr, "load_global_constant");
+   /* 64-bit source address. */
+   unsigned src_index = intr->src[0].ssa->index;
+   rogue_ref64 src_addr = rogue_ssa_ref64(b->shader, src_index);
+
+   rogue_backend_instr *ld = rogue_LD(b,
+                                      dst,
+                                      rogue_ref_drc(0),
+                                      rogue_ref_val(load_size),
+                                      src_addr.ref64);
+   rogue_add_instr_commentf(&ld->instr,
+                            constant ? "load_global_constant32x%u"
+                                     : "load_global32x%u",
+                            load_size);
+}
+
+static void trans_nir_intrinsic_load_global64(rogue_builder *b,
+                                              nir_intrinsic_instr *intr,
+                                              bool constant)
+{
+   rogue_ref64 dst = nir_ssa_reg_intr_dst64(b->shader, intr);
+
+   /* 64-bit source address. */
+   unsigned src_index = intr->src[0].ssa->index;
+   rogue_ref64 src_addr = rogue_ssa_ref64(b->shader, src_index);
+
+   rogue_backend_instr *ld =
+      rogue_LD(b, dst.ref64, rogue_ref_drc(0), rogue_ref_val(2), src_addr.ref64);
+   rogue_add_instr_comment(&ld->instr,
+                           constant ? "load_global_constant64"
+                                    : "load_global64");
 }
 
 static void trans_nir_intrinsic_load_global(rogue_builder *b,
-                                            nir_intrinsic_instr *intr)
+                                            nir_intrinsic_instr *intr,
+                                            bool constant)
 {
-   /* 64-bit source address. */
-   unsigned src_index = intr->src[0].ssa->index;
-   rogue_ref64 src_addr = rogue_ssa_ref64(b->shader, src_index);
+   unsigned bit_size = intr->dest.ssa.bit_size;
 
-   unsigned load_size;
-   rogue_ref dst = nir_ssa_reg_intr_dst32(b->shader, intr, &load_size);
-   assert(load_size <= 16); /* TODO: support even larger load sizes. */
+   switch (bit_size) {
+   case 32:
+      return trans_nir_intrinsic_load_global32(b, intr, constant);
 
-   rogue_instr *instr = &rogue_LD(b,
-                                  dst,
-                                  rogue_ref_drc(0),
-                                  rogue_ref_val(load_size),
-                                  src_addr.ref64)
-                            ->instr;
-   rogue_add_instr_comment(instr, "load_global");
+   case 64:
+      return trans_nir_intrinsic_load_global64(b, intr, constant);
+
+   default:
+      break;
+   }
+
+   unreachable("Unsupported bit size.");
 }
 
 static void trans_nir_intrinsic_store_global(rogue_builder *b,
@@ -848,14 +694,15 @@ static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
    case nir_intrinsic_store_output:
       return trans_nir_intrinsic_store_output(b, intr);
 
-   case nir_intrinsic_load_vulkan_descriptor:
-      return trans_nir_intrinsic_load_vulkan_descriptor(b, intr);
+   case nir_intrinsic_load_vulkan_desc_set_table_base_addr_img:
+      return trans_nir_intrinsic_load_vulkan_desc_set_table_base_addr_img(b,
+                                                                          intr);
 
    case nir_intrinsic_load_global_constant:
-      return trans_nir_intrinsic_load_global_constant(b, intr);
+      return trans_nir_intrinsic_load_global(b, intr, true);
 
    case nir_intrinsic_load_global:
-      return trans_nir_intrinsic_load_global(b, intr);
+      return trans_nir_intrinsic_load_global(b, intr, false);
 
    case nir_intrinsic_store_global:
       return trans_nir_intrinsic_store_global(b, intr);
@@ -1179,11 +1026,11 @@ static void trans_nir_alu_iadd32(rogue_builder *b, nir_alu_instr *alu)
 
 static void trans_nir_alu_iadd64(rogue_builder *b, nir_alu_instr *alu)
 {
-   rogue_ref dst = nir_ssa_reg_alu_dst64(b->shader, alu, NULL, NULL);
-   rogue_ref src0 = nir_ssa_reg_alu_src64(b->shader, alu, 0, NULL, NULL);
-   rogue_ref src1 = nir_ssa_reg_alu_src64(b->shader, alu, 1, NULL, NULL);
+   rogue_ref64 dst = nir_ssa_reg_alu_dst64(b->shader, alu);
+   rogue_ref64 src0 = nir_ssa_reg_alu_src64(b->shader, alu, 0);
+   rogue_ref64 src1 = nir_ssa_reg_alu_src64(b->shader, alu, 1);
 
-   rogue_alu_instr *iadd64 = rogue_IADD64(b, dst, src0, src1);
+   rogue_alu_instr *iadd64 = rogue_IADD64(b, dst.ref64, src0.ref64, src1.ref64);
    /* N.B. No sign flag support for add64. */
    rogue_apply_alu_src_mods(iadd64, alu, false);
 }
@@ -1222,11 +1069,11 @@ static void trans_nir_alu_imul32(rogue_builder *b, nir_alu_instr *alu)
 
 static void trans_nir_alu_imul64(rogue_builder *b, nir_alu_instr *alu)
 {
-   rogue_ref dst = nir_ssa_reg_alu_dst64(b->shader, alu, NULL, NULL);
+   rogue_ref64 dst = nir_ssa_reg_alu_dst64(b->shader, alu);
    rogue_ref src0 = nir_ssa_reg_alu_src32(b->shader, alu, 0);
    rogue_ref src1 = nir_ssa_reg_alu_src32(b->shader, alu, 1);
 
-   rogue_alu_instr *imul64 = rogue_IMUL64(b, dst, src0, src1);
+   rogue_alu_instr *imul64 = rogue_IMUL64(b, dst.ref64, src0, src1);
    rogue_set_alu_op_mod(imul64, ROGUE_ALU_OP_MOD_S);
    rogue_apply_alu_src_mods(imul64, alu, false);
 }
@@ -1264,11 +1111,10 @@ static void trans_nir_alu_i2i64(rogue_builder *b, nir_alu_instr *alu)
 {
    rogue_ref src = nir_ssa_reg_alu_src32(b->shader, alu, 0);
 
-   rogue_ref dst_lo, dst_hi;
-   nir_ssa_reg_alu_dst64(b->shader, alu, &dst_lo, &dst_hi);
+   rogue_ref64 dst = nir_ssa_reg_alu_dst64(b->shader, alu);
 
-   rogue_MOV(b, dst_lo, src);
-   rogue_MOV(b, dst_hi, rogue_ref_imm(0));
+   rogue_MOV(b, dst.lo32, src);
+   rogue_MOV(b, dst.hi32, rogue_ref_imm(0));
 }
 
 /* Conditionally sets the output to 1 or 0 depending on whether the comparison
@@ -1456,26 +1302,18 @@ trans_nir_unpack_64_2x32_split(rogue_builder *b, nir_alu_instr *alu, bool hi32)
    rogue_ref dst = nir_ssa_reg_alu_dst32(b->shader, alu, &dst_components);
    assert(dst_components == 1);
 
-   rogue_ref src;
-   nir_ssa_reg_alu_src64(b->shader,
-                         alu,
-                         0,
-                         hi32 ? NULL : &src,
-                         hi32 ? &src : NULL);
-
-   rogue_MOV(b, dst, src);
+   rogue_ref64 src = nir_ssa_reg_alu_src64(b->shader, alu, 0);
+   rogue_MOV(b, dst, hi32 ? src.hi32 : src.lo32);
 }
 
 static void trans_nir_pack_64_2x32_split(rogue_builder *b, nir_alu_instr *alu)
 {
-   rogue_ref dst_lo32, dst_hi32;
-   nir_ssa_reg_alu_dst64(b->shader, alu, &dst_lo32, &dst_hi32);
-
+   rogue_ref64 dst = nir_ssa_reg_alu_dst64(b->shader, alu);
    rogue_ref src0 = nir_ssa_reg_alu_src32(b->shader, alu, 0);
    rogue_ref src1 = nir_ssa_reg_alu_src32(b->shader, alu, 1);
 
-   rogue_MOV(b, dst_lo32, src0);
-   rogue_MOV(b, dst_hi32, src1);
+   rogue_MOV(b, dst.lo32, src0);
+   rogue_MOV(b, dst.hi32, src1);
 }
 
 #define OM(op_mod) ROGUE_ALU_OP_MOD_##op_mod

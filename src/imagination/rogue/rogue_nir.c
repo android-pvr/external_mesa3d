@@ -42,6 +42,7 @@ static const struct spirv_to_nir_options spirv_options = {
 
    .ubo_addr_format = nir_address_format_64bit_global,
    .ssbo_addr_format = nir_address_format_64bit_global,
+   .push_const_addr_format = nir_address_format_32bit_offset,
 };
 
 static const nir_shader_compiler_options nir_options = {
@@ -60,8 +61,8 @@ static const nir_shader_compiler_options nir_options = {
    .support_16bit_alu = true,
    .max_unroll_iterations = 32,
    .max_unroll_iterations_aggressive = 128,
-   /* TODO: don't lower the native int64 ops we actually support. */
-   .lower_int64_options = ~0,
+   /* TODO: exclude the remaining native int64 ops we actually support. */
+   .lower_int64_options = ~0 & ~nir_lower_iadd64,
 };
 
 static int rogue_glsl_type_size(const struct glsl_type *type, bool bindless)
@@ -200,7 +201,7 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
    NIR_PASS_V(nir,
               nir_lower_explicit_io,
               nir_var_mem_push_const,
-              nir_address_format_32bit_offset);
+              spirv_options.push_const_addr_format);
 
    NIR_PASS_V(nir,
               nir_lower_explicit_io,
@@ -214,7 +215,7 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
               spirv_options.ssbo_addr_format);
    NIR_PASS_V(nir, nir_lower_io_to_scalar, nir_var_mem_ssbo);
 
-   NIR_PASS_V(nir, rogue_nir_lower_io);
+   NIR_PASS_V(nir, rogue_nir_lower_io, ctx, false);
 
    nir_lower_compute_system_values_options compute_sysval_options = {};
    if (nir->info.stage == MESA_SHADER_COMPUTE)
@@ -226,7 +227,7 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
     * id, but to not eliminate the local invocation id by making it a const 0
     * also need to check if that's actually what vtx0 is...
     */
-   NIR_PASS_V(nir, rogue_nir_lower_io);
+   NIR_PASS_V(nir, rogue_nir_lower_io, ctx, true);
 
    NIR_PASS_V(nir, nir_lower_vars_to_ssa);
 
@@ -260,6 +261,8 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
       NIR_PASS(progress, nir, nir_opt_dead_cf);
       NIR_PASS(progress, nir, nir_opt_cse);
       NIR_PASS(progress, nir, nir_opt_peephole_select, ~0, true, true);
+
+      NIR_PASS(progress, nir, nir_lower_int64);
 
       NIR_PASS(progress, nir, nir_opt_algebraic);
       NIR_PASS(progress, nir, nir_opt_constant_folding);
@@ -295,21 +298,6 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
 
    /* NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_function_temp |
     * nir_var_shader_in | nir_var_shader_out, NULL); */
-
-   progress = false;
-   NIR_PASS(progress, nir, nir_lower_int64);
-
-   /* If we lowered actual int64 arithmetic (not folded into the address
-    * calculations), then clean up after the lowering.
-    */
-   if (progress) {
-      do {
-         progress = false;
-
-         NIR_PASS(progress, nir, nir_opt_algebraic);
-         NIR_PASS(progress, nir, nir_opt_dce);
-      } while (progress);
-   }
 
    /* Late algebraic opts. */
    do {

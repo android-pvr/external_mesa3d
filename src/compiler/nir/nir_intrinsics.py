@@ -1890,7 +1890,7 @@ system_value("ray_query_global_intel", 1, bit_sizes=[64])
 # it's in normalized coordinates in the range [0, 1] across the point.
 intrinsic("load_point_coord_maybe_flipped", dest_comp=2, bit_sizes=[32])
 
-# Imagination-specific compute intrinsics.
+# Imagination-specific intrinsics.
 # Most compute system vars can be supplied as their individual components, allowing
 # us to skip setting up unused ones.
 
@@ -1902,3 +1902,13 @@ intrinsic("load_local_invocation_id_yz_img", dest_comp=1, flags=[CAN_ELIMINATE, 
 intrinsic("load_workgroup_id_x_img", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER], bit_sizes=[32])
 intrinsic("load_workgroup_id_y_img", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER], bit_sizes=[32])
 intrinsic("load_workgroup_id_z_img", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER], bit_sizes=[32])
+
+# load_vulkan_desc_set_table_base_addr_img()
+intrinsic("load_vulkan_desc_set_table_base_addr_img", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER], bit_sizes=[64])
+# load_vulkan_desc_set_table_addr_img(set_num)
+intrinsic("load_vulkan_desc_set_table_addr_img", src_comp=[1], dest_comp=1, indices=[DESC_SET], flags=[CAN_ELIMINATE, CAN_REORDER], bit_sizes=[64])
+# load_vulkan_desc_set_addr_img(set_addr, binding_num) [desc_type]
+intrinsic("load_vulkan_desc_set_addr_img", src_comp=[1, 1], dest_comp=1, indices=[DESC_SET, BINDING, DESC_TYPE], flags=[CAN_ELIMINATE, CAN_REORDER], bit_sizes=[64])
+
+# load_push_consts_base_addr_img()
+intrinsic("load_push_consts_base_addr_img", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER], bit_sizes=[64])
