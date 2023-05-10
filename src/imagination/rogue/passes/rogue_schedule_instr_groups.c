@@ -781,14 +781,17 @@ static void rogue_calc_bitwise_instrs_size(rogue_instr_group *group,
                                            enum rogue_instr_phase phase)
 {
    switch (bitwise->op) {
-   case ROGUE_BITWISE_OP_LSL:
+   case ROGUE_BITWISE_OP_BYP0S:
+   case ROGUE_BITWISE_OP_LSL0:
+   case ROGUE_BITWISE_OP_LSL2:
    case ROGUE_BITWISE_OP_SHR:
+   case ROGUE_BITWISE_OP_ASR:
    case ROGUE_BITWISE_OP_AND:
    case ROGUE_BITWISE_OP_OR:
       group->size.instrs[phase] = 1;
       break;
 
-   case ROGUE_BITWISE_OP_BYP0:
+   case ROGUE_BITWISE_OP_BYP0B:
       group->size.instrs[phase] = 1;
 
       if (rogue_ref_is_val(&bitwise->src[1].ref)) {
@@ -798,10 +801,6 @@ static void rogue_calc_bitwise_instrs_size(rogue_instr_group *group,
          if (rogue_ref_get_val(&bitwise->src[1].ref) & 0xffff0000)
             group->size.instrs[phase] = 5;
       }
-      break;
-
-   case ROGUE_BITWISE_OP_BYP1:
-      group->size.instrs[phase] = 1;
       break;
 
    default:

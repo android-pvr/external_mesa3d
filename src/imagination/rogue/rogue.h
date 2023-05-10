@@ -1780,15 +1780,16 @@ enum rogue_bitwise_op {
    ROGUE_BITWISE_OP_INVALID = 0,
 
    /* Real instructions. */
-   ROGUE_BITWISE_OP_LSL,
+   ROGUE_BITWISE_OP_LSL0,
+   ROGUE_BITWISE_OP_LSL2,
    ROGUE_BITWISE_OP_SHR,
+   ROGUE_BITWISE_OP_ASR,
 
    ROGUE_BITWISE_OP_AND,
    ROGUE_BITWISE_OP_OR,
 
-   /* TODO: Merge the two, just using different phases. */
-   ROGUE_BITWISE_OP_BYP0,
-   ROGUE_BITWISE_OP_BYP1,
+   ROGUE_BITWISE_OP_BYP0B,
+   ROGUE_BITWISE_OP_BYP0S,
 
    /* Pseudo-instructions. */
    ROGUE_BITWISE_OP_PSEUDO,
@@ -1962,9 +1963,15 @@ static inline enum rogue_io rogue_instr_src_io_src(const rogue_instr *instr,
    }
 
    case ROGUE_INSTR_TYPE_CTRL: {
-      /* TODO after phase_io is added to relevant control instructions as well.
-       */
-      break;
+      const rogue_ctrl_instr *ctrl = rogue_instr_as_ctrl(instr);
+      const rogue_ctrl_op_info *info = &rogue_ctrl_op_infos[ctrl->op];
+      return info->phase_io.src[src_index];
+   }
+
+   case ROGUE_INSTR_TYPE_BITWISE: {
+      const rogue_bitwise_instr *bitwise = rogue_instr_as_bitwise(instr);
+      const rogue_bitwise_op_info *info = &rogue_bitwise_op_infos[bitwise->op];
+      return info->phase_io[phase].src[src_index];
    }
 
    default:

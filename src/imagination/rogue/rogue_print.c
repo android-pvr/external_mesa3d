@@ -428,6 +428,17 @@ static inline void rogue_print_bitwise_src(FILE *fp, const rogue_instr_src *src)
    rogue_print_ref(fp, &src->ref);
 }
 
+static inline void rogue_print_bitwise_mods(FILE *fp,
+                                            const rogue_bitwise_instr *bitwise)
+{
+   uint64_t mod = bitwise->mod;
+   while (mod) {
+      enum rogue_bitwise_op_mod op_mod = u_bit_scan64(&mod);
+      assert(op_mod < ROGUE_BITWISE_OP_MOD_COUNT);
+      fprintf(fp, ".%s", rogue_bitwise_op_mod_infos[op_mod].str);
+   }
+}
+
 static inline void rogue_print_bitwise_instr(FILE *fp,
                                              const rogue_bitwise_instr *bitwise)
 {
@@ -435,7 +446,7 @@ static inline void rogue_print_bitwise_instr(FILE *fp,
 
    fprintf(fp, "%s", info->str);
 
-   /* rogue_print_bitwise_mods(fp, bitwise); */
+   rogue_print_bitwise_mods(fp, bitwise);
 
    for (unsigned i = 0; i < info->num_dsts; ++i) {
       if (i > 0)

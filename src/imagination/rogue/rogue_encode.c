@@ -1033,18 +1033,36 @@ static void rogue_encode_ctrl_instr(const rogue_ctrl_instr *ctrl,
 }
 #undef OM
 
+#define OM(op_mod) ROGUE_BITWISE_OP_MOD_##op_mod
 static void rogue_encode_bitwise_instr(const rogue_bitwise_instr *bitwise,
                                        unsigned instr_size,
                                        rogue_instr_encoding *instr_encoding)
 {
    switch (bitwise->op) {
-   case ROGUE_BITWISE_OP_LSL:
+   case ROGUE_BITWISE_OP_LSL0:
       instr_encoding->bitwise.phase0 = 1;
       instr_encoding->bitwise.ph0.shft = SHFT1_LSL;
       break;
 
+   case ROGUE_BITWISE_OP_LSL2:
+      instr_encoding->bitwise.ph2.shft = SHFT2_LSL;
+      break;
+
    case ROGUE_BITWISE_OP_SHR:
       instr_encoding->bitwise.ph2.shft = SHFT2_SHR;
+      break;
+
+   case ROGUE_BITWISE_OP_ASR:
+      if (rogue_bitwise_op_mod_is_set(bitwise, OM(TWB)))
+         instr_encoding->bitwise.ph2.shft = SHFT2_ASR_TWB;
+      else if (rogue_bitwise_op_mod_is_set(bitwise, OM(PWB)))
+         instr_encoding->bitwise.ph2.shft = SHFT2_ASR_PWB;
+      else if (rogue_bitwise_op_mod_is_set(bitwise, OM(MTB)))
+         instr_encoding->bitwise.ph2.shft = SHFT2_ASR_MTB;
+      else if (rogue_bitwise_op_mod_is_set(bitwise, OM(FTB)))
+         instr_encoding->bitwise.ph2.shft = SHFT2_ASR_FTB;
+      else
+         unreachable("Missing sign-bit position modifier.");
       break;
 
    case ROGUE_BITWISE_OP_AND:
@@ -1070,7 +1088,7 @@ static void rogue_encode_bitwise_instr(const rogue_bitwise_instr *bitwise,
          !rogue_ref_is_io_none(&bitwise->src[2].ref);
       break;
 
-   case ROGUE_BITWISE_OP_BYP0: {
+   case ROGUE_BITWISE_OP_BYP0B: {
       instr_encoding->bitwise.phase0 = 1;
       instr_encoding->bitwise.ph0.cnt_byp = 1;
       instr_encoding->bitwise.ph0.shft = SHFT1_BYP;
@@ -1094,7 +1112,7 @@ static void rogue_encode_bitwise_instr(const rogue_bitwise_instr *bitwise,
       break;
    }
 
-   case ROGUE_BITWISE_OP_BYP1:
+   case ROGUE_BITWISE_OP_BYP0S:
       instr_encoding->bitwise.phase0 = 1;
       instr_encoding->bitwise.ph0.shft = SHFT1_BYP;
       break;
@@ -1103,6 +1121,7 @@ static void rogue_encode_bitwise_instr(const rogue_bitwise_instr *bitwise,
       unreachable("Invalid bitwise op.");
    }
 }
+#undef OM
 
 static void rogue_encode_instr_group_instrs(rogue_instr_group *group,
                                             struct util_dynarray *binary)

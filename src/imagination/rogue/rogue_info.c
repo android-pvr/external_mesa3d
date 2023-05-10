@@ -553,13 +553,25 @@ const rogue_bitwise_op_mod_info
 
 #define P(type) BITFIELD64_BIT(ROGUE_INSTR_PHASE_##type)
 #define PH(type) ROGUE_INSTR_PHASE_##type
+#define OM(op_mod) BITFIELD64_BIT(ROGUE_BITWISE_OP_MOD_##op_mod)
 #define IO(io) ROGUE_IO_##io
 #define T(type) BITFIELD64_BIT(ROGUE_REF_TYPE_##type - 1)
 const rogue_bitwise_op_info rogue_bitwise_op_infos[ROGUE_BITWISE_OP_COUNT] = {
    [ROGUE_BITWISE_OP_INVALID] = { .str = "", },
-   [ROGUE_BITWISE_OP_LSL] = { .str = "lsl", .num_dsts = 1, .num_srcs = 2,
+   [ROGUE_BITWISE_OP_LSL0] = { .str = "lsl", .num_dsts = 1, .num_srcs = 2,
       .supported_phases = P(0_SHIFT1),
       .phase_io[PH(0_SHIFT1)] = { .dst[0] = IO(FT2), .src[0] = IO(S2), .src[1] = IO(S1), },
+      .supported_dst_types = {
+         [0] = T(REG) | T(REGARRAY) | T(IO),
+      },
+      .supported_src_types = {
+         [0] = T(REG) | T(REGARRAY) | T(IO),
+         [1] = T(REG) | T(REGARRAY) | T(IO) | T(IMM),
+      },
+   },
+   [ROGUE_BITWISE_OP_LSL2] = { .str = "lsl", .num_dsts = 1, .num_srcs = 2,
+      .supported_phases = P(2_SHIFT2),
+      .phase_io[PH(2_SHIFT2)] = { .dst[0] = IO(FT5), .src[0] = IO(FT4), .src[1] = IO(S4), },
       .supported_dst_types = {
          [0] = T(REG) | T(REGARRAY) | T(IO),
       },
@@ -571,6 +583,18 @@ const rogue_bitwise_op_info rogue_bitwise_op_infos[ROGUE_BITWISE_OP_COUNT] = {
    [ROGUE_BITWISE_OP_SHR] = { .str = "shr", .num_dsts = 1, .num_srcs = 2,
       .supported_phases = P(2_SHIFT2),
       .phase_io[PH(2_SHIFT2)] = { .dst[0] = IO(FT5), .src[0] = IO(FT4), .src[1] = IO(S4), },
+      .supported_dst_types = {
+         [0] = T(REG) | T(REGARRAY) | T(IO),
+      },
+      .supported_src_types = {
+         [0] = T(REG) | T(REGARRAY) | T(IO),
+         [1] = T(REG) | T(REGARRAY) | T(IO) | T(IMM),
+      },
+   },
+   [ROGUE_BITWISE_OP_ASR] = { .str = "asr", .num_dsts = 1, .num_srcs = 2,
+      .supported_phases = P(2_SHIFT2),
+      .phase_io[PH(2_SHIFT2)] = { .dst[0] = IO(FT5), .src[0] = IO(FT4), .src[1] = IO(S4), },
+      .supported_op_mods = OM(TWB) | OM(PWB) | OM(MTB) | OM(FTB),
       .supported_dst_types = {
          [0] = T(REG) | T(REGARRAY) | T(IO),
       },
@@ -605,7 +629,7 @@ const rogue_bitwise_op_info rogue_bitwise_op_infos[ROGUE_BITWISE_OP_COUNT] = {
          [3] = T(REG) | T(REGARRAY) | T(IO) | T(IMM),
       },
    },
-   [ROGUE_BITWISE_OP_BYP0] = { .str = "byp", .num_dsts = 2, .num_srcs = 2,
+   [ROGUE_BITWISE_OP_BYP0B] = { .str = "byp", .num_dsts = 2, .num_srcs = 2,
       .supported_phases = P(0_BITMASK),
       .phase_io[PH(0_BITMASK)] = { .dst[1] = IO(FT1), },
       .supported_dst_types = {
@@ -617,7 +641,7 @@ const rogue_bitwise_op_info rogue_bitwise_op_infos[ROGUE_BITWISE_OP_COUNT] = {
          [1] = T(REG) | T(REGARRAY) | T(IO) | T(VAL),
       },
    },
-   [ROGUE_BITWISE_OP_BYP1] = { .str = "byp", .num_dsts = 1, .num_srcs = 1,
+   [ROGUE_BITWISE_OP_BYP0S] = { .str = "byp", .num_dsts = 1, .num_srcs = 1,
       .supported_phases = P(0_SHIFT1),
       .phase_io[PH(0_SHIFT1)] = { .dst[0] = IO(FT2), .src[0] = IO(S2) },
       .supported_dst_types = {
@@ -630,6 +654,7 @@ const rogue_bitwise_op_info rogue_bitwise_op_infos[ROGUE_BITWISE_OP_COUNT] = {
 };
 #undef T
 #undef IO
+#undef OM
 #undef PH
 #undef P
 

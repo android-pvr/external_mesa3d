@@ -234,7 +234,7 @@ static inline bool rogue_lower_MOV(rogue_builder *b, rogue_alu_instr *mov)
          rogue_reg *imm_mov = rogue_ssa_reg(b->shader, imm_mov_idx);
          src = rogue_ref_reg(imm_mov);
 
-         rogue_BYP0(
+         rogue_BYP0B(
             b,
             rogue_ref_io(ROGUE_IO_FT0),
             src,
@@ -262,12 +262,12 @@ static inline bool rogue_lower_MOV(rogue_builder *b, rogue_alu_instr *mov)
        * we need to do a bitwise bypass.
        */
       if (rogue_ref_is_imm(&mov->src[0].ref)) {
-         instr = &rogue_BYP0(b,
-                             rogue_ref_io(ROGUE_IO_FT0),
-                             mov->dst[0].ref,
-                             rogue_ref_io(ROGUE_IO_S0),
-                             rogue_ref_val(
-                                rogue_ref_get_imm(&mov->src[0].ref)->imm.u32))
+         instr = &rogue_BYP0B(b,
+                              rogue_ref_io(ROGUE_IO_FT0),
+                              mov->dst[0].ref,
+                              rogue_ref_io(ROGUE_IO_S0),
+                              rogue_ref_val(
+                                 rogue_ref_get_imm(&mov->src[0].ref)->imm.u32))
                      ->instr;
       } else {
          instr = &rogue_MBYP0(b, mov->dst[0].ref, mov->src[0].ref)->instr;
