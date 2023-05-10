@@ -1473,6 +1473,35 @@ static void trans_nir_ushr(rogue_builder *b, nir_alu_instr *alu)
    rogue_SHR(b, dst, rogue_ref_io(ROGUE_IO_FT4), src1);
 }
 
+static void
+trans_nir_unpack_64_2x32_split(rogue_builder *b, nir_alu_instr *alu, bool hi32)
+{
+   unsigned dst_components;
+   rogue_ref dst = nir_ssa_reg_alu_dst32(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   rogue_ref src;
+   nir_ssa_reg_alu_src64(b->shader,
+                         alu,
+                         0,
+                         hi32 ? NULL : &src,
+                         hi32 ? &src : NULL);
+
+   rogue_MOV(b, dst, src);
+}
+
+static void trans_nir_pack_64_2x32_split(rogue_builder *b, nir_alu_instr *alu)
+{
+   rogue_ref dst_lo32, dst_hi32;
+   nir_ssa_reg_alu_dst64(b->shader, alu, &dst_lo32, &dst_hi32);
+
+   rogue_ref src0 = nir_ssa_reg_alu_src32(b->shader, alu, 0);
+   rogue_ref src1 = nir_ssa_reg_alu_src32(b->shader, alu, 1);
+
+   rogue_MOV(b, dst_lo32, src0);
+   rogue_MOV(b, dst_hi32, src1);
+}
+
 #define OM(op_mod) ROGUE_ALU_OP_MOD_##op_mod
 static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
 {
@@ -1633,6 +1662,15 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
 
    case nir_op_ushr:
       return trans_nir_ushr(b, alu);
+
+   case nir_op_unpack_64_2x32_split_x:
+      return trans_nir_unpack_64_2x32_split(b, alu, false);
+
+   case nir_op_unpack_64_2x32_split_y:
+      return trans_nir_unpack_64_2x32_split(b, alu, true);
+
+   case nir_op_pack_64_2x32_split:
+      return trans_nir_pack_64_2x32_split(b, alu);
 
    default:
       break;

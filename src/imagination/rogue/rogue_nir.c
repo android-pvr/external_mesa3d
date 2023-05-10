@@ -58,6 +58,8 @@ static const nir_shader_compiler_options nir_options = {
    .support_16bit_alu = true,
    .max_unroll_iterations = 32,
    .max_unroll_iterations_aggressive = 128,
+   /* TODO: don't lower the native int64 ops we actually support. */
+   .lower_int64_options = ~0,
 };
 
 static int rogue_glsl_type_size(const struct glsl_type *type, bool bindless)
@@ -291,6 +293,21 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
 
    /* NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_function_temp |
     * nir_var_shader_in | nir_var_shader_out, NULL); */
+
+   progress = false;
+   NIR_PASS(progress, nir, nir_lower_int64);
+
+   /* If we lowered actual int64 arithmetic (not folded into the address
+    * calculations), then clean up after the lowering.
+    */
+   if (progress) {
+      do {
+         progress = false;
+
+         NIR_PASS(progress, nir, nir_opt_algebraic);
+         NIR_PASS(progress, nir, nir_opt_dce);
+      } while (progress);
+   }
 
    /* Late algebraic opts. */
    do {
