@@ -576,75 +576,28 @@ static void trans_nir_intrinsic_store_global(rogue_builder *b,
    rogue_add_instr_comment(instr, "store_global");
 }
 
-/* TODO: Process this into loads in NIR instead. */
-static void trans_nir_intrinsic_load_push_constant(rogue_builder *b,
-                                                   nir_intrinsic_instr *intr)
+static void trans_nir_load_push_consts_base_addr_img(rogue_builder *b,
+                                                     nir_intrinsic_instr *intr)
 {
-   rogue_instr *instr;
-   unsigned offset = nir_src_as_uint(intr->src[0]);
-   struct pvr_pipeline_layout *pipeline_layout =
+   assert(intr->dest.is_ssa);
+   assert(intr->dest.ssa.bit_size == 64);
+   rogue_ref64 dst = rogue_ssa_ref64(b->shader, intr->dest.ssa.index);
+
+   /* Fetch shared registers containing push constants address. */
+   enum pvr_stage_allocation pvr_stage = mesa_stage_to_pvr(b->shader->stage);
+   const struct pvr_pipeline_layout *pipeline_layout =
       b->shader->ctx->pipeline_layout;
+   assert(
+      pipeline_layout->sh_reg_layout_per_stage[pvr_stage].push_consts.present);
+   unsigned push_consts_sh_reg =
+      pipeline_layout->sh_reg_layout_per_stage[pvr_stage].push_consts.offset;
 
-   unsigned push_consts_sh_reg;
+   rogue_ref64 src = rogue_shared_ref64(b->shader, push_consts_sh_reg);
 
-   if (pipeline_layout) {
-      /* Fetch shared registers containing push constants address. */
-      enum pvr_stage_allocation pvr_stage = mesa_stage_to_pvr(b->shader->stage);
-      assert(pipeline_layout->sh_reg_layout_per_stage[pvr_stage]
-                .push_consts.present);
-      push_consts_sh_reg =
-         pipeline_layout->sh_reg_layout_per_stage[pvr_stage].push_consts.offset;
-   } else {
-      /* Dummy defaults for offline compiler. */
-      /* TODO: Load these from an offline pipeline description
-       * if using the offline compiler.
-       */
-      push_consts_sh_reg = 0;
-   }
-
-   rogue_ref64 push_consts_base_sh =
-      rogue_shared_ref64(b->shader, push_consts_sh_reg);
-
-   unsigned push_consts_base_addr_idx = b->shader->ctx->next_ssa_idx++;
-   rogue_ref64 push_consts_base_addr =
-      rogue_ssa_ref64(b->shader, push_consts_base_addr_idx);
-
-   instr =
-      &rogue_MOV(b, push_consts_base_addr.lo32, push_consts_base_sh.lo32)->instr;
-   rogue_add_instr_comment(instr, "push_consts_base_addr.lo32");
-   instr =
-      &rogue_MOV(b, push_consts_base_addr.hi32, push_consts_base_sh.hi32)->instr;
-   rogue_add_instr_comment(instr, "push_consts_base_addr.hi32");
-
-   /* Offset the push constants base address to the desired entry. */
-   unsigned push_consts_addr_offset_idx = b->shader->ctx->next_ssa_idx++;
-   rogue_ref64 push_consts_addr_offset =
-      rogue_ssa_ref64(b->shader, push_consts_addr_offset_idx);
-
-   rogue_MOV(b, push_consts_addr_offset.lo32, rogue_ref_imm(offset));
-   rogue_MOV(b, push_consts_addr_offset.hi32, rogue_ref_imm(0));
-
-   unsigned push_consts_addr_idx = b->shader->ctx->next_ssa_idx++;
-   rogue_ref64 push_const_addr =
-      rogue_ssa_ref64(b->shader, push_consts_addr_idx);
-
-   rogue_IADD64(b,
-                push_const_addr.ref64,
-                push_consts_base_addr.ref64,
-                push_consts_addr_offset.ref64);
-
-   /* Load the push constant. */
-   unsigned load_size;
-   rogue_ref dst = nir_ssa_reg_intr_dst32(b->shader, intr, &load_size);
-   assert(load_size <= 16); /* TODO: support even larger load sizes. */
-
-   instr = &rogue_LD(b,
-                     dst,
-                     rogue_ref_drc(0),
-                     rogue_ref_val(load_size),
-                     push_const_addr.ref64)
-               ->instr;
-   rogue_add_instr_commentf(instr, "load push_constant (offset 0x%x)", offset);
+   rogue_alu_instr *mov = rogue_MOV(b, dst.lo32, src.lo32);
+   rogue_add_instr_comment(&mov->instr, "load_push_consts_base_addr_img.lo32");
+   mov = rogue_MOV(b, dst.hi32, src.hi32);
+   rogue_add_instr_comment(&mov->instr, "load_push_consts_base_addr_img.hi32");
 }
 
 static void
@@ -707,8 +660,8 @@ static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
    case nir_intrinsic_store_global:
       return trans_nir_intrinsic_store_global(b, intr);
 
-   case nir_intrinsic_load_push_constant:
-      return trans_nir_intrinsic_load_push_constant(b, intr);
+   case nir_intrinsic_load_push_consts_base_addr_img:
+      return trans_nir_load_push_consts_base_addr_img(b, intr);
 
    case nir_intrinsic_load_local_invocation_id_x_img:
       return trans_nir_intrinsic_load_local_invocation_id_img(b, intr, false);

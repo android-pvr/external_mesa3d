@@ -126,7 +126,7 @@ static bool lower_load_push_constant_to_scalar(nir_builder *b,
    if (ROGUE_DEBUG(BURST_LOADS))
       return false;
 
-   /* Scalarize the load_global_constant. */
+   /* Scalarize the load_push_constant. */
    b->cursor = nir_before_instr(&intr->instr);
 
    assert(intr->dest.is_ssa);
@@ -308,6 +308,33 @@ static bool lower_load_vulkan_desc_set_addr_img(nir_builder *b,
    return true;
 }
 
+static bool lower_load_push_constant(nir_builder *b, nir_intrinsic_instr *intr)
+{
+   b->cursor = nir_before_instr(&intr->instr);
+
+   /* This will be handled in rogue_nir_to_rogue, load the base address from
+    * shareds. */
+   nir_ssa_def *push_consts_base_addr = nir_load_push_consts_base_addr_img(b);
+
+   /* Calculate offset for the push constant. */
+   assert(intr->src[0].is_ssa);
+   nir_ssa_def *offset = intr->src[0].ssa;
+   unsigned load_align = intr->dest.ssa.bit_size / 8;
+
+   /* Load the push constant. */
+   nir_ssa_def *push_const = nir_load_global_constant(
+      b,
+      nir_iadd(b, push_consts_base_addr, nir_u2u64(b, offset)),
+      load_align,
+      intr->dest.ssa.num_components,
+      intr->dest.ssa.bit_size);
+
+   nir_ssa_def_rewrite_uses(&intr->dest.ssa, push_const);
+   nir_instr_remove(&intr->instr);
+
+   return true;
+}
+
 static bool lower_intrinsic(nir_builder *b,
                             nir_intrinsic_instr *instr,
                             rogue_build_ctx *ctx,
@@ -340,6 +367,9 @@ static bool lower_intrinsic(nir_builder *b,
 
       case nir_intrinsic_load_vulkan_desc_set_addr_img:
          return lower_load_vulkan_desc_set_addr_img(b, instr, ctx);
+
+      case nir_intrinsic_load_push_constant:
+         return lower_load_push_constant(b, instr);
 
       default:
          break;
