@@ -344,6 +344,10 @@ pvr_generate_load_op_shader(struct pvr_device *device,
    if (result != VK_SUCCESS)
       goto err_free_usc_frag_prog_bo;
 
+   /* Manually hard coding `texture_kicks` to 1 since we'll pack everything into
+    * one buffer to be DMAed. See `pvr_load_op_data_create_and_upload()`, where
+    * we upload the buffer and upload the code section.
+    */
    result = pvr_pds_unitex_state_program_create_and_upload(
       device,
       allocator,

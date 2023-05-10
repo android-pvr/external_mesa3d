@@ -114,38 +114,71 @@ void pvr_uscgen_passthrough_vtx(struct util_dynarray *binary, bool rta)
 void pvr_uscgen_load_op(struct util_dynarray *binary,
                         const struct pvr_load_op *load_op)
 {
+   const struct usc_mrt_setup *mrt_setup;
+   uint32_t next_sh_reg = 0;
+
    rogue_builder b;
-   rogue_reg *dst;
-   rogue_reg *src;
    rogue_shader *shader = rogue_shader_create(NULL, MESA_SHADER_NONE);
    rogue_set_shader_name(shader, "load_op");
    rogue_builder_init(&b, shader);
    rogue_push_block(&b);
 
-   /* Clears. */
-   assert(load_op->clears_loads_state.rt_clear_mask == 1);
-   u_foreach_bit (rt_clear, load_op->clears_loads_state.rt_clear_mask) {
-      VkFormat fmt = load_op->clears_loads_state.dest_vk_format[rt_clear];
+   /* TODO: Handle depth and stencil ops.  */
+   if (load_op->is_hw_object)
+      mrt_setup = &load_op->hw_render->init_setup;
+   else
+      assert(!"Handle load op at the subpass level.");
 
-      /* TODO: Calculate/ingest the proper offsets when
-       * supporting additional clears.
-       */
-      dst = rogue_pixout_reg(shader, rt_clear);
-      src = rogue_shared_reg(shader, rt_clear);
+   u_foreach_bit (attachment_idx, load_op->clears_loads_state.rt_clear_mask) {
+      VkFormat fmt = load_op->clears_loads_state.dest_vk_format[attachment_idx];
+      uint32_t accum_size_dwords =
+         DIV_ROUND_UP(pvr_get_pbe_accum_format_size_in_bytes(fmt),
+                      sizeof(uint32_t));
 
-      switch (vk_format_get_blocksizebits(fmt)) {
-      case 32:
-         rogue_MOV(&b, rogue_ref_reg(dst), rogue_ref_reg(src));
-         break;
+      struct usc_mrt_resource *mrt_resource =
+         &mrt_setup->mrt_resources[attachment_idx];
 
-      default:
-         unreachable("Unsupported format block size.");
+      char comment[50];
+      snprintf(comment, sizeof(comment), "clear_attachment_%d", attachment_idx);
+
+      /* TODO: Handle spilling to tile buffers. */
+      assert(mrt_resource->type == USC_MRT_RESOURCE_TYPE_OUTPUT_REG);
+
+      /* pvr_hw_pass always allocates the output regs with 4-byte alignment */
+      assert(mrt_resource->reg.offset == 0);
+
+      assert(accum_size_dwords ==
+             DIV_ROUND_UP(mrt_resource->intermediate_size, sizeof(uint32_t)));
+
+      for (int i = 0; i < accum_size_dwords; i++) {
+         rogue_reg *dst =
+            rogue_pixout_reg(shader, mrt_resource->reg.output_reg + i);
+         rogue_reg *src = rogue_shared_reg(shader, next_sh_reg++);
+         rogue_instr *instr =
+            &rogue_MOV(&b, rogue_ref_reg(dst), rogue_ref_reg(src))->instr;
+         rogue_add_instr_comment(instr, comment);
       }
    }
 
-   /* Loads. */
-   /* TODO: Implement. */
-   assert(load_op->clears_loads_state.rt_load_mask == 0);
+   u_foreach_bit (attachment_idx, load_op->clears_loads_state.rt_load_mask) {
+      struct usc_mrt_resource *mrt_resource =
+         &mrt_setup->mrt_resources[attachment_idx];
+
+      /* TODO: Handle spilling to tile buffers. */
+      assert(mrt_resource->type == USC_MRT_RESOURCE_TYPE_OUTPUT_REG);
+
+      /* TODO: Need to do a masked write to the output regs to handle this? */
+      /* Is this ever non 0? Ignoring tile buffers. */
+      assert(mrt_resource->reg.offset == 0);
+
+      /* TODO: Emit instruction for the LOAD_OP_LOAD. */
+      /* Final output should go to mrt_resource->reg.output_reg + byte offset.
+       */
+      /* The descriptor can be found at `next_sh_reg`. */
+      assert(!"Unimplemented");
+
+      next_sh_reg += sizeof(struct pvr_combined_image_sampler_descriptor) / 4;
+   }
 
    /* TODO: Unsupported options. */
    assert(load_op->clears_loads_state.unresolved_msaa_mask == 0);
