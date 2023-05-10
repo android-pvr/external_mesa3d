@@ -39,17 +39,22 @@ static inline void rogue_set_io_sel(rogue_instr_group_io_sel *map,
                                     rogue_ref *ref,
                                     bool is_dst)
 {
-   /* Skip unassigned I/Os. */
-   if (rogue_ref_is_io_none(ref))
-      return;
+   enum rogue_io target_io = io;
 
-   /* Skip replacing values with I/O. */
+   /* Skip replacing values with I/O *and* don't replace the operand.
+    * Some ops allow their operands to be either a value or register (via I/O).
+    */
    if (rogue_ref_is_val(ref))
       return;
 
-   /* Early skip I/Os that have already been assigned (e.g. for grouping). */
-   if (rogue_ref_is_io(ref) && rogue_ref_get_io(ref) == io)
+   /* Skip unassigned I/Os...
+    * ...and I/Os that have already been assigned (e.g. for grouping).
+    */
+   if (rogue_ref_is_io_none(ref) ||
+       (rogue_ref_is_io(ref) && rogue_ref_get_io(ref) == io)) {
+      *ref = rogue_ref_io(target_io);
       return;
+   }
 
    if (alu == ROGUE_ALU_MAIN) {
       /* Hookup feedthrough outputs to W0 using IS4. */
@@ -125,14 +130,19 @@ static inline void rogue_set_io_sel(rogue_instr_group_io_sel *map,
          io = src;
       }
    } else if (alu == ROGUE_ALU_BITWISE) {
-      /* TODO: This is temporary because we just have BYP0, do it properly. */
-      if (is_dst)
-         io = ROGUE_IO_W0;
+      if (is_dst) {
+         if (io == ROGUE_IO_FT5 || io == ROGUE_IO_FT4 || io == ROGUE_IO_FT1)
+            io = ROGUE_IO_W0;
+         else if (io == ROGUE_IO_FT3)
+            io = ROGUE_IO_W1;
+      }
    }
 
    /* Set if not already set. */
    if (rogue_ref_is_null(rogue_instr_group_io_sel_ref(map, io)))
       *(rogue_instr_group_io_sel_ref(map, io)) = *ref;
+
+   *ref = rogue_ref_io(target_io);
 }
 
 /* TODO NEXT: Abort if anything in sel map is already set. */
@@ -152,7 +162,6 @@ static void rogue_lower_alu_io(rogue_alu_instr *alu, rogue_instr_group *group)
                        info->phase_io[phase].dst[u],
                        &alu->dst[u].ref,
                        true);
-      alu->dst[u].ref = rogue_ref_io(info->phase_io[phase].dst[u]);
    }
 
    for (unsigned u = 0; u < info->num_srcs; ++u) {
@@ -164,7 +173,6 @@ static void rogue_lower_alu_io(rogue_alu_instr *alu, rogue_instr_group *group)
                        info->phase_io[phase].src[u],
                        &alu->src[u].ref,
                        false);
-      alu->src[u].ref = rogue_ref_io(info->phase_io[phase].src[u]);
    }
 }
 
@@ -182,7 +190,6 @@ static void rogue_lower_backend_io(rogue_backend_instr *backend,
                        info->phase_io.dst[u],
                        &backend->dst[u].ref,
                        true);
-      backend->dst[u].ref = rogue_ref_io(info->phase_io.dst[u]);
    }
 
    for (unsigned u = 0; u < info->num_srcs; ++u) {
@@ -194,7 +201,6 @@ static void rogue_lower_backend_io(rogue_backend_instr *backend,
                        info->phase_io.src[u],
                        &backend->src[u].ref,
                        false);
-      backend->src[u].ref = rogue_ref_io(info->phase_io.src[u]);
    }
 }
 
@@ -212,7 +218,6 @@ static void rogue_lower_ctrl_io(rogue_ctrl_instr *ctrl,
                        info->phase_io.dst[u],
                        &ctrl->dst[u].ref,
                        true);
-      ctrl->dst[u].ref = rogue_ref_io(info->phase_io.dst[u]);
    }
 
    for (unsigned u = 0; u < info->num_srcs; ++u) {
@@ -224,7 +229,6 @@ static void rogue_lower_ctrl_io(rogue_ctrl_instr *ctrl,
                        info->phase_io.src[u],
                        &ctrl->src[u].ref,
                        false);
-      ctrl->src[u].ref = rogue_ref_io(info->phase_io.src[u]);
    }
 }
 
@@ -243,7 +247,6 @@ static void rogue_lower_bitwise_io(rogue_bitwise_instr *bitwise,
                        info->phase_io[phase].dst[u],
                        &bitwise->dst[u].ref,
                        true);
-      bitwise->dst[u].ref = rogue_ref_io(info->phase_io[phase].dst[u]);
    }
 
    for (unsigned u = 0; u < info->num_srcs; ++u) {
@@ -255,7 +258,6 @@ static void rogue_lower_bitwise_io(rogue_bitwise_instr *bitwise,
                        info->phase_io[phase].src[u],
                        &bitwise->src[u].ref,
                        false);
-      bitwise->src[u].ref = rogue_ref_io(info->phase_io[phase].src[u]);
    }
 }
 

@@ -1156,7 +1156,8 @@ static void trans_nir_alu_f2i32(rogue_builder *b, nir_alu_instr *alu)
 
    rogue_ref src = nir_ssa_reg_alu_src32(b->shader, alu, 0, NULL);
 
-   rogue_PCK_S32(b, dst, src);
+   rogue_alu_instr *pck_s32 = rogue_PCK_S32(b, dst, src);
+   rogue_set_alu_op_mod(pck_s32, ROGUE_ALU_OP_MOD_ROUNDZERO);
 }
 
 static void trans_nir_alu_f2u32(rogue_builder *b, nir_alu_instr *alu)
@@ -1167,7 +1168,8 @@ static void trans_nir_alu_f2u32(rogue_builder *b, nir_alu_instr *alu)
 
    rogue_ref src = nir_ssa_reg_alu_src32(b->shader, alu, 0, NULL);
 
-   rogue_PCK_U32(b, dst, src);
+   rogue_alu_instr *pck_u32 = rogue_PCK_U32(b, dst, src);
+   rogue_set_alu_op_mod(pck_u32, ROGUE_ALU_OP_MOD_ROUNDZERO);
 }
 
 static void trans_nir_alu_i2f32(rogue_builder *b, nir_alu_instr *alu)
@@ -1178,7 +1180,8 @@ static void trans_nir_alu_i2f32(rogue_builder *b, nir_alu_instr *alu)
 
    rogue_ref src = nir_ssa_reg_alu_src32(b->shader, alu, 0, NULL);
 
-   rogue_UPCK_S32(b, dst, src);
+   rogue_alu_instr *upck_s32 = rogue_UPCK_S32(b, dst, src);
+   rogue_set_alu_op_mod(upck_s32, ROGUE_ALU_OP_MOD_ROUNDZERO);
 }
 
 static void trans_nir_alu_u2f32(rogue_builder *b, nir_alu_instr *alu)
@@ -1189,7 +1192,8 @@ static void trans_nir_alu_u2f32(rogue_builder *b, nir_alu_instr *alu)
 
    rogue_ref src = nir_ssa_reg_alu_src32(b->shader, alu, 0, NULL);
 
-   rogue_UPCK_U32(b, dst, src);
+   rogue_alu_instr *upck_u32 = rogue_UPCK_U32(b, dst, src);
+   rogue_set_alu_op_mod(upck_u32, ROGUE_ALU_OP_MOD_ROUNDZERO);
 }
 
 static void trans_nir_alu_iand(rogue_builder *b, nir_alu_instr *alu)
