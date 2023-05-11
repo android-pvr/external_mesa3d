@@ -54,6 +54,7 @@ static const nir_shader_compiler_options nir_options = {
    .lower_fpow = true,
    .lower_fsat = true,
    .lower_fsqrt = true,
+   .lower_ftrunc = true,
    .lower_rotate = true, /* TODO: add nir option to convert ror to rol then
                             enable this. */
    .has_fused_comp_and_csel = true,
@@ -69,6 +70,69 @@ static const nir_shader_compiler_options nir_options = {
 static int rogue_glsl_type_size(const struct glsl_type *type, bool bindless)
 {
    return glsl_count_attribute_slots(type, false);
+}
+
+static void rogue_nir_opt_loop(struct rogue_build_ctx *ctx, nir_shader *nir)
+{
+   bool progress;
+
+   do {
+      progress = false;
+
+      NIR_PASS(progress, nir, nir_opt_combine_stores, nir_var_all);
+      NIR_PASS(progress,
+               nir,
+               nir_remove_dead_variables,
+               (nir_variable_mode)(nir_var_function_temp | nir_var_shader_temp),
+               NULL);
+
+      NIR_PASS(progress, nir, nir_lower_var_copies);
+      NIR_PASS(progress, nir, nir_lower_vars_to_ssa);
+
+      NIR_PASS(progress, nir, nir_opt_copy_prop_vars);
+      NIR_PASS(progress, nir, nir_opt_dead_write_vars);
+
+      NIR_PASS(progress, nir, nir_copy_prop);
+      NIR_PASS(progress, nir, nir_lower_phis_to_scalar, true);
+      NIR_PASS(progress, nir, nir_opt_dce);
+      NIR_PASS(progress, nir, nir_opt_dead_cf);
+      NIR_PASS(progress, nir, nir_opt_cse);
+      NIR_PASS(progress, nir, nir_opt_peephole_select, ~0, true, true);
+
+      NIR_PASS(progress, nir, nir_lower_int64);
+      NIR_PASS(progress, nir, nir_lower_alu);
+
+      NIR_PASS(progress, nir, nir_opt_algebraic);
+      NIR_PASS(progress, nir, nir_opt_constant_folding);
+
+      NIR_PASS(progress, nir, nir_opt_remove_phis);
+
+      bool trivial_continues = false;
+      NIR_PASS(trivial_continues, nir, nir_opt_trivial_continues);
+      if (trivial_continues) {
+         progress |= true;
+         NIR_PASS(progress, nir, nir_copy_prop);
+         NIR_PASS(progress, nir, nir_opt_dce);
+         NIR_PASS(progress, nir, nir_opt_remove_phis);
+      }
+
+      NIR_PASS(progress,
+               nir,
+               nir_opt_if,
+               nir_opt_if_aggressive_last_continue |
+                  nir_opt_if_optimize_phi_true_false);
+      NIR_PASS(progress, nir, nir_opt_dead_cf);
+      NIR_PASS(progress, nir, nir_opt_conditional_discard);
+      NIR_PASS(progress, nir, nir_opt_remove_phis);
+      NIR_PASS(progress, nir, nir_opt_cse);
+
+      NIR_PASS(progress, nir, nir_opt_undef);
+      NIR_PASS(progress, nir, nir_lower_undef_to_zero);
+
+      NIR_PASS(progress, nir, nir_opt_deref);
+      NIR_PASS(progress, nir, nir_lower_alu_to_scalar, NULL, NULL);
+      NIR_PASS(progress, nir, nir_opt_loop_unroll);
+   } while (progress);
 }
 
 /**
@@ -239,66 +303,20 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
    NIR_PASS_V(nir, nir_opt_deref);
    NIR_PASS_V(nir, nir_lower_samplers);
 
-   /* Algebraic opts. */
-   do {
-      progress = false;
+   rogue_nir_opt_loop(ctx, nir);
 
-      NIR_PASS(progress, nir, nir_opt_combine_stores, nir_var_all);
-      NIR_PASS(progress,
-               nir,
-               nir_remove_dead_variables,
-               (nir_variable_mode)(nir_var_function_temp | nir_var_shader_temp),
-               NULL);
+   nir_lower_idiv_options idiv_options = {
+      .allow_fp16 = false,
+   };
 
-      NIR_PASS(progress, nir, nir_lower_var_copies);
-      NIR_PASS(progress, nir, nir_lower_vars_to_ssa);
+   bool idiv_progress = false;
+   NIR_PASS(idiv_progress, nir, nir_opt_idiv_const, 32);
+   NIR_PASS(idiv_progress, nir, nir_lower_idiv, &idiv_options);
 
-      NIR_PASS(progress, nir, nir_opt_copy_prop_vars);
-      NIR_PASS(progress, nir, nir_opt_dead_write_vars);
+   if (idiv_progress)
+      rogue_nir_opt_loop(ctx, nir);
 
-      NIR_PASS(progress, nir, nir_copy_prop);
-      NIR_PASS(progress, nir, nir_lower_phis_to_scalar, true);
-      NIR_PASS(progress, nir, nir_opt_dce);
-      NIR_PASS(progress, nir, nir_opt_dead_cf);
-      NIR_PASS(progress, nir, nir_opt_cse);
-      NIR_PASS(progress, nir, nir_opt_peephole_select, ~0, true, true);
-
-      NIR_PASS(progress, nir, nir_lower_int64);
-
-      NIR_PASS(progress, nir, nir_opt_algebraic);
-      NIR_PASS(progress, nir, nir_opt_constant_folding);
-
-      NIR_PASS(progress, nir, nir_opt_remove_phis);
-
-      bool trivial_continues = false;
-      NIR_PASS(trivial_continues, nir, nir_opt_trivial_continues);
-      if (trivial_continues) {
-         progress |= true;
-         NIR_PASS(progress, nir, nir_copy_prop);
-         NIR_PASS(progress, nir, nir_opt_dce);
-         NIR_PASS(progress, nir, nir_opt_remove_phis);
-      }
-
-      NIR_PASS(progress,
-               nir,
-               nir_opt_if,
-               nir_opt_if_aggressive_last_continue |
-                  nir_opt_if_optimize_phi_true_false);
-      NIR_PASS(progress, nir, nir_opt_dead_cf);
-      NIR_PASS(progress, nir, nir_opt_conditional_discard);
-      NIR_PASS(progress, nir, nir_opt_remove_phis);
-      NIR_PASS(progress, nir, nir_opt_cse);
-
-      NIR_PASS(progress, nir, nir_opt_undef);
-      NIR_PASS(progress, nir, nir_lower_undef_to_zero);
-
-      NIR_PASS(progress, nir, nir_opt_deref);
-      NIR_PASS(progress, nir, nir_lower_alu_to_scalar, NULL, NULL);
-      NIR_PASS(progress, nir, nir_opt_loop_unroll);
-   } while (progress);
-
-   /* NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_function_temp |
-    * nir_var_shader_in | nir_var_shader_out, NULL); */
+   NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_function_temp, NULL);
 
    /* Late algebraic opts. */
    do {
