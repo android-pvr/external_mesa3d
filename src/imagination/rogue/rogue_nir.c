@@ -62,7 +62,8 @@ static const nir_shader_compiler_options nir_options = {
    .max_unroll_iterations = 32,
    .max_unroll_iterations_aggressive = 128,
    /* TODO: exclude the remaining native int64 ops we actually support. */
-   .lower_int64_options = ~0 & ~nir_lower_iadd64,
+   .lower_int64_options = ~0 & ~nir_lower_iadd64 & ~nir_lower_iabs64 &
+                          ~nir_lower_ineg64,
 };
 
 static int rogue_glsl_type_size(const struct glsl_type *type, bool bindless)

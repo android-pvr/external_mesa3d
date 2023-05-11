@@ -33,33 +33,36 @@
  * \brief Contains the rogue_lower_pseudo_ops pass.
  */
 
-static inline bool rogue_lower_FABS(rogue_builder *b, rogue_alu_instr *fabs)
+static const char *rogue_neg_abs_str(bool neg, bool abs)
 {
-   rogue_alu_instr *mbyp = rogue_MBYP0(b, fabs->dst[0].ref, fabs->src[0].ref);
-   rogue_merge_instr_comment(&mbyp->instr, &fabs->instr, "fabs");
-   rogue_set_alu_src_mod(mbyp, 0, ROGUE_ALU_SRC_MOD_ABS);
-   rogue_instr_delete(&fabs->instr);
+   static const char *str[] = {
+      [0] = "",
+      [1] = "neg",
+      [2] = "abs",
+      [3] = "nabs",
+   };
 
-   return true;
+   return str[neg | (abs << 1)];
 }
 
-static inline bool rogue_lower_FNEG(rogue_builder *b, rogue_alu_instr *fneg)
+static inline bool
+rogue_lower_FNEGABS(rogue_builder *b, rogue_alu_instr *alu, bool neg, bool abs)
 {
-   rogue_alu_instr *mbyp = rogue_MBYP0(b, fneg->dst[0].ref, fneg->src[0].ref);
-   rogue_merge_instr_comment(&mbyp->instr, &fneg->instr, "fneg");
-   rogue_set_alu_src_mod(mbyp, 0, ROGUE_ALU_SRC_MOD_NEG);
-   rogue_instr_delete(&fneg->instr);
+   assert(neg || abs);
 
-   return true;
-}
+   rogue_alu_instr *mbyp = rogue_MBYP0(b, alu->dst[0].ref, alu->src[0].ref);
+   rogue_merge_instr_commentf(&mbyp->instr,
+                              &alu->instr,
+                              "f%s",
+                              rogue_neg_abs_str(neg, abs));
 
-static inline bool rogue_lower_FNABS(rogue_builder *b, rogue_alu_instr *fnabs)
-{
-   rogue_alu_instr *mbyp = rogue_MBYP0(b, fnabs->dst[0].ref, fnabs->src[0].ref);
-   rogue_merge_instr_comment(&mbyp->instr, &fnabs->instr, "fnabs");
-   rogue_set_alu_src_mod(mbyp, 0, ROGUE_ALU_SRC_MOD_ABS);
-   rogue_set_alu_src_mod(mbyp, 0, ROGUE_ALU_SRC_MOD_NEG);
-   rogue_instr_delete(&fnabs->instr);
+   if (neg)
+      rogue_set_alu_src_mod(mbyp, 0, ROGUE_ALU_SRC_MOD_NEG);
+
+   if (abs)
+      rogue_set_alu_src_mod(mbyp, 0, ROGUE_ALU_SRC_MOD_ABS);
+
+   rogue_instr_delete(&alu->instr);
 
    return true;
 }
@@ -351,20 +354,69 @@ static inline bool rogue_lower_IMUL64(rogue_builder *b, rogue_alu_instr *imul64)
    return true;
 }
 
-static inline bool rogue_lower_INEG(rogue_builder *b, rogue_alu_instr *ineg)
+static inline bool rogue_lower_INEGABS32(rogue_builder *b,
+                                         rogue_alu_instr *alu,
+                                         bool neg,
+                                         bool abs)
 {
+   assert(neg || abs);
+
    rogue_alu_instr *add64_32 = rogue_ADD64_32(b,
-                                              ineg->dst[0].ref,
+                                              alu->dst[0].ref,
                                               rogue_none(),
                                               rogue_ref_imm(0),
                                               rogue_ref_imm(0),
-                                              ineg->src[0].ref,
+                                              alu->src[0].ref,
                                               rogue_none());
 
-   rogue_set_alu_src_mod(add64_32, 2, ROGUE_ALU_SRC_MOD_NEG);
+   rogue_set_alu_op_mod(add64_32, ROGUE_ALU_OP_MOD_S);
 
-   rogue_merge_instr_comment(&add64_32->instr, &ineg->instr, "ineg");
-   rogue_instr_delete(&ineg->instr);
+   if (neg)
+      rogue_set_alu_src_mod(add64_32, 2, ROGUE_ALU_SRC_MOD_NEG);
+
+   if (abs)
+      rogue_set_alu_src_mod(add64_32, 2, ROGUE_ALU_SRC_MOD_ABS);
+
+   rogue_merge_instr_commentf(&add64_32->instr,
+                              &alu->instr,
+                              "i%s32",
+                              rogue_neg_abs_str(neg, abs));
+   rogue_instr_delete(&alu->instr);
+
+   return true;
+}
+
+static inline bool rogue_lower_INEGABS64(rogue_builder *b,
+                                         rogue_alu_instr *alu,
+                                         bool neg,
+                                         bool abs)
+{
+   assert(neg || abs);
+
+   rogue_ref64 dst = rogue_ssa_ref64_from_alu_dst(b->shader, alu, 0);
+   rogue_ref64 src = rogue_ssa_ref64_from_alu_src(b->shader, alu, 0);
+
+   rogue_alu_instr *add64_32 = rogue_ADD64_32(b,
+                                              dst.lo32,
+                                              dst.hi32,
+                                              src.lo32,
+                                              src.hi32,
+                                              rogue_ref_imm(0),
+                                              rogue_none());
+
+   rogue_set_alu_op_mod(add64_32, ROGUE_ALU_OP_MOD_S);
+
+   if (neg)
+      rogue_set_alu_src_mod(add64_32, 2, ROGUE_ALU_SRC_MOD_NEG);
+
+   if (abs)
+      rogue_set_alu_src_mod(add64_32, 2, ROGUE_ALU_SRC_MOD_ABS);
+
+   rogue_merge_instr_commentf(&add64_32->instr,
+                              &alu->instr,
+                              "i%s32",
+                              rogue_neg_abs_str(neg, abs));
+   rogue_instr_delete(&alu->instr);
 
    return true;
 }
@@ -383,13 +435,13 @@ static inline bool rogue_lower_alu_instr(rogue_builder *b, rogue_alu_instr *alu)
       return rogue_lower_SETPRED(b, alu);
 
    case ROGUE_ALU_OP_FABS:
-      return rogue_lower_FABS(b, alu);
+      return rogue_lower_FNEGABS(b, alu, false, true);
 
    case ROGUE_ALU_OP_FNEG:
-      return rogue_lower_FNEG(b, alu);
+      return rogue_lower_FNEGABS(b, alu, true, false);
 
    case ROGUE_ALU_OP_FNABS:
-      return rogue_lower_FNABS(b, alu);
+      return rogue_lower_FNEGABS(b, alu, true, true);
 
    case ROGUE_ALU_OP_FFLR:
       return rogue_lower_FFLR(b, alu);
@@ -415,8 +467,17 @@ static inline bool rogue_lower_alu_instr(rogue_builder *b, rogue_alu_instr *alu)
    case ROGUE_ALU_OP_IMUL64:
       return rogue_lower_IMUL64(b, alu);
 
-   case ROGUE_ALU_OP_INEG:
-      return rogue_lower_INEG(b, alu);
+   case ROGUE_ALU_OP_INEG32:
+      return rogue_lower_INEGABS32(b, alu, true, false);
+
+   case ROGUE_ALU_OP_INEG64:
+      return rogue_lower_INEGABS64(b, alu, true, false);
+
+   case ROGUE_ALU_OP_IABS32:
+      return rogue_lower_INEGABS32(b, alu, false, true);
+
+   case ROGUE_ALU_OP_IABS64:
+      return rogue_lower_INEGABS64(b, alu, false, true);
 
    default:
       break;

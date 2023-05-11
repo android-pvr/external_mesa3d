@@ -182,7 +182,7 @@ static void trans_nir_jump(rogue_builder *b, nir_jump_instr *jump)
       break;
    }
 
-   unreachable("Unimplemented NIR jump instruction type.");
+   unreachable("Unsupported NIR jump instruction type.");
 }
 
 static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
@@ -223,7 +223,7 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
          break;
       }
 
-      unreachable("Unimplemented NIR tex instruction op.");
+      unreachable("Unsupported NIR tex instruction op.");
    }
 
    assert(smp_coords);
@@ -251,39 +251,55 @@ static void trans_nir_tex(rogue_builder *b, nir_tex_instr *tex)
       break;
    }
 
-   unreachable("Unimplemented NIR tex instruction op.");
+   unreachable("Unsupported NIR tex instruction op.");
+}
+
+static void trans_nir_load_const32(rogue_builder *b,
+                                   nir_load_const_instr *load_const)
+{
+   unsigned dst_index = load_const->def.index;
+   rogue_reg *dst = rogue_ssa_reg(b->shader, dst_index);
+
+   uint32_t imm = nir_const_value_as_uint(load_const->value[0], 32);
+
+   rogue_alu_instr *mov = rogue_MOV(b, rogue_ref_reg(dst), rogue_ref_imm(imm));
+   rogue_add_instr_comment(&mov->instr, "load_const_32");
+}
+
+static void trans_nir_load_const64(rogue_builder *b,
+                                   nir_load_const_instr *load_const)
+{
+   unsigned dst_index = load_const->def.index;
+   rogue_ref64 dst = rogue_ssa_ref64(b->shader, dst_index);
+
+   uint64_t imm = nir_const_value_as_uint(load_const->value[0], 64);
+   rogue_ref imm_lo32 = rogue_ref_imm(imm & 0xffffffff);
+   rogue_ref imm_hi32 = rogue_ref_imm((imm >> 32) & 0xffffffff);
+
+   rogue_alu_instr *mov = rogue_MOV(b, dst.lo32, imm_lo32);
+   rogue_add_instr_comment(&mov->instr, "load_const_64.lo32");
+
+   mov = rogue_MOV(b, dst.hi32, imm_hi32);
+   rogue_add_instr_comment(&mov->instr, "load_const_64.hi32");
 }
 
 static void trans_nir_load_const(rogue_builder *b,
                                  nir_load_const_instr *load_const)
 {
-   unsigned dst_index = load_const->def.index;
    unsigned bit_size = load_const->def.bit_size;
+
    switch (bit_size) {
-   case 32: {
-      rogue_reg *dst = rogue_ssa_reg(b->shader, dst_index);
-      uint32_t imm = nir_const_value_as_uint(load_const->value[0], 32);
-      rogue_MOV(b, rogue_ref_reg(dst), rogue_ref_imm(imm));
+   case 32:
+      return trans_nir_load_const32(b, load_const);
 
-      break;
-   }
-
-   case 64: {
-      uint64_t imm = nir_const_value_as_uint(load_const->value[0], 64);
-
-      rogue_ref64 dst = rogue_ssa_ref64(b->shader, dst_index);
-      rogue_ref imm_lo32 = rogue_ref_imm(imm & 0xffffffff);
-      rogue_ref imm_hi32 = rogue_ref_imm((imm >> 32) & 0xffffffff);
-
-      rogue_MOV(b, dst.lo32, imm_lo32);
-      rogue_MOV(b, dst.hi32, imm_hi32);
-
-      break;
-   }
+   case 64:
+      return trans_nir_load_const64(b, load_const);
 
    default:
-      unreachable("Unimplemented NIR load_const bit size.");
+      break;
    }
+
+   unreachable("Unsupported load_const bit size.");
 }
 
 static void trans_nir_intrinsic_load_input_fs(rogue_builder *b,
@@ -441,7 +457,7 @@ static void trans_nir_intrinsic_load_input(rogue_builder *b,
       break;
    }
 
-   unreachable("Unimplemented NIR load_input variant.");
+   unreachable("Unsupported NIR load_input variant.");
 }
 
 static void trans_nir_intrinsic_store_output_fs(rogue_builder *b,
@@ -492,16 +508,14 @@ static void trans_nir_intrinsic_store_output(rogue_builder *b,
       break;
    }
 
-   unreachable("Unimplemented NIR store_output variant.");
+   unreachable("Unsupported NIR store_output variant.");
 }
 
 static void trans_nir_intrinsic_load_vulkan_desc_set_table_base_addr_img(
    rogue_builder *b,
    nir_intrinsic_instr *intr)
 {
-   assert(intr->dest.is_ssa);
-   assert(intr->dest.ssa.bit_size == 64);
-   rogue_ref64 dst = rogue_ssa_ref64(b->shader, intr->dest.ssa.index);
+   rogue_ref64 dst = nir_ssa_reg_intr_dst64(b->shader, intr);
 
    /* Fetch shared registers containing descriptor set table address. */
    enum pvr_stage_allocation pvr_stage = mesa_stage_to_pvr(b->shader->stage);
@@ -576,7 +590,7 @@ static void trans_nir_intrinsic_load_global(rogue_builder *b,
       break;
    }
 
-   unreachable("Unsupported bit size.");
+   unreachable("Unsupported load_global bit size.");
 }
 
 static void trans_nir_intrinsic_store_global(rogue_builder *b,
@@ -708,7 +722,7 @@ static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
       break;
    }
 
-   unreachable("Unimplemented NIR intrinsic instruction.");
+   unreachable("Unsupported NIR intrinsic instruction.");
 }
 
 static void trans_nir_alu_pack_unorm_4x8(rogue_builder *b, nir_alu_instr *alu)
@@ -1033,7 +1047,7 @@ static void trans_nir_alu_iadd(rogue_builder *b, nir_alu_instr *alu)
       break;
    }
 
-   unreachable("Unsupported bit size.");
+   unreachable("Unsupported iadd bit size.");
 }
 
 static void trans_nir_alu_imul32(rogue_builder *b, nir_alu_instr *alu)
@@ -1076,10 +1090,10 @@ static void trans_nir_alu_imul(rogue_builder *b, nir_alu_instr *alu)
       break;
    }
 
-   unreachable("Unsupported bit size.");
+   unreachable("Unsupported imul bit size.");
 }
 
-static void trans_nir_alu_ineg(rogue_builder *b, nir_alu_instr *alu)
+static void trans_nir_alu_ineg32(rogue_builder *b, nir_alu_instr *alu)
 {
    unsigned dst_components;
    rogue_ref dst = nir_ssa_reg_alu_dst32(b->shader, alu, &dst_components);
@@ -1087,7 +1101,70 @@ static void trans_nir_alu_ineg(rogue_builder *b, nir_alu_instr *alu)
 
    rogue_ref src = nir_ssa_reg_alu_src32(b->shader, alu, 0, NULL);
 
-   rogue_INEG(b, dst, src);
+   rogue_INEG32(b, dst, src);
+}
+
+static void trans_nir_alu_ineg64(rogue_builder *b, nir_alu_instr *alu)
+{
+   rogue_ref64 dst = nir_ssa_reg_alu_dst64(b->shader, alu);
+   rogue_ref64 src = nir_ssa_reg_alu_src64(b->shader, alu, 0);
+
+   rogue_INEG64(b, dst.ref64, src.ref64);
+}
+
+static void trans_nir_alu_ineg(rogue_builder *b, nir_alu_instr *ineg)
+{
+   unsigned bit_size = nir_dest_bit_size(ineg->dest.dest);
+
+   switch (bit_size) {
+   case 32:
+      return trans_nir_alu_ineg32(b, ineg);
+
+   case 64:
+      return trans_nir_alu_ineg64(b, ineg);
+
+   default:
+      break;
+   }
+
+   unreachable("Unsupported ineg bit size.");
+}
+
+static void trans_nir_alu_iabs32(rogue_builder *b, nir_alu_instr *alu)
+{
+   unsigned dst_components;
+   rogue_ref dst = nir_ssa_reg_alu_dst32(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   rogue_ref src = nir_ssa_reg_alu_src32(b->shader, alu, 0, NULL);
+
+   rogue_IABS32(b, dst, src);
+}
+
+static void trans_nir_alu_iabs64(rogue_builder *b, nir_alu_instr *alu)
+{
+   rogue_ref64 dst = nir_ssa_reg_alu_dst64(b->shader, alu);
+   rogue_ref64 src = nir_ssa_reg_alu_src64(b->shader, alu, 0);
+
+   rogue_IABS64(b, dst.ref64, src.ref64);
+}
+
+static void trans_nir_alu_iabs(rogue_builder *b, nir_alu_instr *iabs)
+{
+   unsigned bit_size = nir_dest_bit_size(iabs->dest.dest);
+
+   switch (bit_size) {
+   case 32:
+      return trans_nir_alu_iabs32(b, iabs);
+
+   case 64:
+      return trans_nir_alu_iabs64(b, iabs);
+
+   default:
+      break;
+   }
+
+   unreachable("Unsupported ineg bit size.");
 }
 
 static void trans_nir_alu_i2i64(rogue_builder *b, nir_alu_instr *alu)
@@ -1383,6 +1460,9 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
    case nir_op_ineg:
       return trans_nir_alu_ineg(b, alu);
 
+   case nir_op_iabs:
+      return trans_nir_alu_iabs(b, alu);
+
    case nir_op_i2i64:
       return trans_nir_alu_i2i64(b, alu);
 
@@ -1480,7 +1560,7 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
       break;
    }
 
-   unreachable("Unimplemented NIR ALU instruction.");
+   unreachable("Unsupported NIR ALU instruction.");
 }
 #undef OM
 
@@ -1563,7 +1643,7 @@ static rogue_block *trans_nir_block(rogue_builder *b, nir_block *block)
          break;
 
       default:
-         unreachable("Unimplemented NIR instruction type.");
+         unreachable("Unsupported NIR instruction type.");
       }
    }
 
