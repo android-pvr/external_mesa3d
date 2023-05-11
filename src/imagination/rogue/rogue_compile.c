@@ -1570,6 +1570,12 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
    case nir_op_fcsel_ge:
       return trans_nir_alu_cmp_zero_sel(b, alu, OM(GE), OM(F32));
 
+   case nir_op_i32csel_gt:
+      return trans_nir_alu_cmp_zero_sel(b, alu, OM(G), OM(S32));
+
+   case nir_op_i32csel_ge:
+      return trans_nir_alu_cmp_zero_sel(b, alu, OM(GE), OM(S32));
+
    case nir_op_ishr:
       return trans_nir_ishr(b, alu);
 
