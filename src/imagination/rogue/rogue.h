@@ -519,18 +519,24 @@ static inline void rogue_add_instr_comment(rogue_instr *instr,
       ralloc_asprintf_append(&instr->comment, ", %s", comment);
 }
 
-static inline void PRINTFLIKE(2, 3)
-   rogue_add_instr_commentf(rogue_instr *instr, const char *fmt, ...)
+static inline void
+rogue_add_instr_vscommentf(rogue_instr *instr, const char *fmt, va_list args)
 {
-   va_list args;
-   va_start(args, fmt);
-
    if (!instr->comment) {
       instr->comment = ralloc_vasprintf(instr, fmt, args);
    } else {
       ralloc_strcat(&instr->comment, ", ");
       ralloc_vasprintf_append(&instr->comment, fmt, args);
    }
+}
+
+static inline void PRINTFLIKE(2, 3)
+   rogue_add_instr_commentf(rogue_instr *instr, const char *fmt, ...)
+{
+   va_list args;
+   va_start(args, fmt);
+
+   rogue_add_instr_vscommentf(instr, fmt, args);
 
    va_end(args);
 }
@@ -550,6 +556,21 @@ static inline void rogue_merge_instr_comment(rogue_instr *to,
 {
    rogue_copy_instr_comment(to, from);
    rogue_add_instr_comment(to, comment);
+}
+
+static inline void PRINTFLIKE(3, 4)
+   rogue_merge_instr_commentf(rogue_instr *to,
+                              const rogue_instr *from,
+                              const char *fmt,
+                              ...)
+{
+   va_list args;
+   va_start(args, fmt);
+
+   rogue_copy_instr_comment(to, from);
+   rogue_add_instr_vscommentf(to, fmt, args);
+
+   va_end(args);
 }
 
 typedef union rogue_imm_t {
