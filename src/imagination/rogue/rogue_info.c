@@ -1055,18 +1055,18 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       .supported_phases = P(2_PCK),
       .phase_io[PH(2_PCK)] = { .dst[0] = IO(FT2), .src[0] = IO(IS3), },
       .supported_op_mods = OM(ROUNDZERO),
-      .supported_dst_types = { [0] = T(REG), },
+      .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
       .supported_src_types = {
-         [0] = T(REG),
+         [0] = T(REG) | T(REGARRAY),
       },
    },
    [ROGUE_ALU_OP_PCK_U32] = { .str = "pck.u32", .num_dsts = 1, .num_srcs = 1,
       .supported_phases = P(2_PCK),
       .phase_io[PH(2_PCK)] = { .dst[0] = IO(FT2), .src[0] = IO(IS3), },
       .supported_op_mods = OM(ROUNDZERO),
-      .supported_dst_types = { [0] = T(REG), },
+      .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
       .supported_src_types = {
-         [0] = T(REG),
+         [0] = T(REG) | T(REGARRAY),
       },
    },
    [ROGUE_ALU_OP_UPCK_S32] = { .str = "upck.s32", .num_dsts = 1, .num_srcs = 1,
@@ -1076,9 +1076,9 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       .supported_src_mods = {
          [0] = SM(E0) | SM(E1) | SM(E2) | SM(E3),
       },
-      .supported_dst_types = { [0] = T(REG), },
+      .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
       .supported_src_types = {
-         [0] = T(REG),
+         [0] = T(REG) | T(REGARRAY),
       },
    },
    [ROGUE_ALU_OP_UPCK_U32] = { .str = "upck.u32", .num_dsts = 1, .num_srcs = 1,
@@ -1088,9 +1088,9 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       .supported_src_mods = {
          [0] = SM(E0) | SM(E1) | SM(E2) | SM(E3),
       },
-      .supported_dst_types = { [0] = T(REG), },
+      .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
       .supported_src_types = {
-         [0] = T(REG),
+         [0] = T(REG) | T(REGARRAY),
       },
    },
    [ROGUE_ALU_OP_MOV] = { .str = "mov", .num_dsts = 1, .num_srcs = 1,
