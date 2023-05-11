@@ -1093,6 +1093,32 @@ static void trans_nir_alu_imul(rogue_builder *b, nir_alu_instr *alu)
    unreachable("Unsupported imul bit size.");
 }
 
+static void trans_nir_alu_umul_high(rogue_builder *b, nir_alu_instr *alu)
+{
+   ASSERTED unsigned dst_components;
+   rogue_ref dst = nir_ssa_reg_alu_dst32(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   rogue_ref src0 = nir_ssa_reg_alu_src32(b->shader, alu, 0, NULL);
+   rogue_ref src1 = nir_ssa_reg_alu_src32(b->shader, alu, 1, NULL);
+
+   rogue_alu_instr *umul_high = rogue_UMUL_HIGH(b, dst, src0, src1);
+   rogue_apply_alu_src_mods(umul_high, alu, false);
+}
+
+static void trans_nir_alu_umul_low(rogue_builder *b, nir_alu_instr *alu)
+{
+   ASSERTED unsigned dst_components;
+   rogue_ref dst = nir_ssa_reg_alu_dst32(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   rogue_ref src0 = nir_ssa_reg_alu_src32(b->shader, alu, 0, NULL);
+   rogue_ref src1 = nir_ssa_reg_alu_src32(b->shader, alu, 1, NULL);
+
+   rogue_alu_instr *umul_low = rogue_UMUL_LOW(b, dst, src0, src1);
+   rogue_apply_alu_src_mods(umul_low, alu, false);
+}
+
 static void trans_nir_alu_ineg32(rogue_builder *b, nir_alu_instr *alu)
 {
    unsigned dst_components;
@@ -1456,6 +1482,12 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
 
    case nir_op_imul:
       return trans_nir_alu_imul(b, alu);
+
+   case nir_op_umul_high:
+      return trans_nir_alu_umul_high(b, alu);
+
+   case nir_op_umul_low:
+      return trans_nir_alu_umul_low(b, alu);
 
    case nir_op_ineg:
       return trans_nir_alu_ineg(b, alu);

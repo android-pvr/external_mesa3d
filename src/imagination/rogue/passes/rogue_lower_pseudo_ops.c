@@ -354,6 +354,38 @@ static inline bool rogue_lower_IMUL64(rogue_builder *b, rogue_alu_instr *imul64)
    return true;
 }
 
+static inline bool
+rogue_lower_UMUL_HILO(rogue_builder *b, rogue_alu_instr *umul_hilo, bool high)
+{
+   rogue_ref dst_lo = high ? rogue_none() : umul_hilo->dst[0].ref;
+   rogue_ref dst_hi = high ? umul_hilo->dst[0].ref : rogue_none();
+
+   rogue_ref src0 = umul_hilo->src[0].ref;
+   rogue_ref src1 = umul_hilo->src[1].ref;
+
+   rogue_alu_instr *madd64 = rogue_MADD64(b,
+                                          dst_lo,
+                                          dst_hi,
+                                          src0,
+                                          src1,
+                                          rogue_ref_imm(0),
+                                          rogue_ref_imm(0),
+                                          rogue_none());
+
+   /* Propagate op/source mods. */
+   madd64->mod = umul_hilo->mod;
+   madd64->src[0].mod = umul_hilo->src[0].mod; /* abs/neg(S0) */
+   madd64->src[1].mod = umul_hilo->src[1].mod; /* abs/neg(S1) */
+
+   rogue_merge_instr_commentf(&madd64->instr,
+                              &umul_hilo->instr,
+                              "umul_%s",
+                              high ? "high" : "low");
+   rogue_instr_delete(&umul_hilo->instr);
+
+   return true;
+}
+
 static inline bool rogue_lower_INEGABS32(rogue_builder *b,
                                          rogue_alu_instr *alu,
                                          bool neg,
@@ -466,6 +498,12 @@ static inline bool rogue_lower_alu_instr(rogue_builder *b, rogue_alu_instr *alu)
 
    case ROGUE_ALU_OP_IMUL64:
       return rogue_lower_IMUL64(b, alu);
+
+   case ROGUE_ALU_OP_UMUL_HIGH:
+      return rogue_lower_UMUL_HILO(b, alu, true);
+
+   case ROGUE_ALU_OP_UMUL_LOW:
+      return rogue_lower_UMUL_HILO(b, alu, false);
 
    case ROGUE_ALU_OP_INEG32:
       return rogue_lower_INEGABS32(b, alu, true, false);
