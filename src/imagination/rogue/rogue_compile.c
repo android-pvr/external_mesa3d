@@ -860,6 +860,34 @@ static void trans_nir_alu_fexp2(rogue_builder *b, nir_alu_instr *alu)
    rogue_apply_alu_src_mods(fexp2, alu, false);
 }
 
+static void trans_nir_alu_fddx(rogue_builder *b, nir_alu_instr *alu, bool fine)
+{
+   unsigned dst_components;
+   rogue_ref dst = nir_ssa_reg_alu_dst32(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   rogue_ref src = nir_ssa_reg_alu_src32(b->shader, alu, 0, NULL);
+
+   rogue_alu_instr *fdsx = fine ? rogue_FDSXF(b, dst, src)
+                                : rogue_FDSX(b, dst, src);
+
+   rogue_apply_alu_src_mods(fdsx, alu, false);
+}
+
+static void trans_nir_alu_fddy(rogue_builder *b, nir_alu_instr *alu, bool fine)
+{
+   unsigned dst_components;
+   rogue_ref dst = nir_ssa_reg_alu_dst32(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   rogue_ref src = nir_ssa_reg_alu_src32(b->shader, alu, 0, NULL);
+
+   rogue_alu_instr *fdsy = fine ? rogue_FDSYF(b, dst, src)
+                                : rogue_FDSY(b, dst, src);
+
+   rogue_apply_alu_src_mods(fdsy, alu, false);
+}
+
 /* Conditionally sets the output to src0 or src1 depending on whether the
  * comparison between them is true or false.
  */
@@ -1434,6 +1462,20 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
 
    case nir_op_fexp2:
       return trans_nir_alu_fexp2(b, alu);
+
+   case nir_op_fddx:
+   case nir_op_fddx_coarse:
+      return trans_nir_alu_fddx(b, alu, false);
+
+   case nir_op_fddx_fine:
+      return trans_nir_alu_fddx(b, alu, true);
+
+   case nir_op_fddy:
+   case nir_op_fddy_coarse:
+      return trans_nir_alu_fddy(b, alu, false);
+
+   case nir_op_fddy_fine:
+      return trans_nir_alu_fddy(b, alu, true);
 
    case nir_op_fmin:
       return trans_nir_alu_cmp_sel(b, alu, OM(L), OM(F32));

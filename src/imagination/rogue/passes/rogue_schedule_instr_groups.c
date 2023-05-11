@@ -542,6 +542,10 @@ static void rogue_calc_alu_instrs_size(rogue_instr_group *group,
    case ROGUE_ALU_OP_FLOG2:
    case ROGUE_ALU_OP_FLOGCN:
    case ROGUE_ALU_OP_FEXP2:
+   case ROGUE_ALU_OP_FDSX:
+   case ROGUE_ALU_OP_FDSY:
+   case ROGUE_ALU_OP_FDSXF:
+   case ROGUE_ALU_OP_FDSYF:
       if (rogue_alu_src_mod_is_set(alu, 0, SM(NEG)) ||
           rogue_alu_src_mod_is_set(alu, 0, SM(ABS))) {
          group->size.instrs[phase] = 2;

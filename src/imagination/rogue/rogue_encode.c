@@ -269,6 +269,10 @@ static void rogue_encode_alu_instr(const rogue_alu_instr *alu,
    case ROGUE_ALU_OP_FSINC:
    case ROGUE_ALU_OP_FARCTANC:
    case ROGUE_ALU_OP_FRED:
+   case ROGUE_ALU_OP_FDSX:
+   case ROGUE_ALU_OP_FDSY:
+   case ROGUE_ALU_OP_FDSXF:
+   case ROGUE_ALU_OP_FDSYF:
       instr_encoding->alu.op = ALUOP_SNGL;
 
       switch (alu->op) {
@@ -307,6 +311,22 @@ static void rogue_encode_alu_instr(const rogue_alu_instr *alu,
 
       case ROGUE_ALU_OP_FRED:
          instr_encoding->alu.sngl.snglop = SNGLOP_RED;
+         break;
+
+      case ROGUE_ALU_OP_FDSX:
+         instr_encoding->alu.sngl.snglop = SNGLOP_DSX;
+         break;
+
+      case ROGUE_ALU_OP_FDSY:
+         instr_encoding->alu.sngl.snglop = SNGLOP_DSY;
+         break;
+
+      case ROGUE_ALU_OP_FDSXF:
+         instr_encoding->alu.sngl.snglop = SNGLOP_DSXF;
+         break;
+
+      case ROGUE_ALU_OP_FDSYF:
+         instr_encoding->alu.sngl.snglop = SNGLOP_DSYF;
          break;
 
       default:
