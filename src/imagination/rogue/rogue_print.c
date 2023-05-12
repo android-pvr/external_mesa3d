@@ -140,6 +140,9 @@ rogue_print_reg_raw(FILE *fp, enum rogue_reg_class class, unsigned index)
    if (info->num != 1)
       fprintf(fp, "%" PRIu32, index);
    RESET(fp);
+
+   if (class == ROGUE_REG_CLASS_SPECIAL && rogue_special_reg_infos[index].str)
+      fprintf(fp, " (%s)", rogue_special_reg_infos[index].str);
 }
 
 PUBLIC void rogue_print_reg(FILE *fp, const rogue_reg *reg, enum rogue_idx idx)
@@ -176,6 +179,14 @@ PUBLIC void rogue_print_regarray_raw(FILE *fp,
    }
    fputs("]", fp);
    RESET(fp);
+
+   if (class == ROGUE_REG_CLASS_SPECIAL &&
+       rogue_special_reg_infos[base_index].str) {
+      fprintf(fp,
+              " (%s .. %s)",
+              rogue_special_reg_infos[base_index].str,
+              rogue_special_reg_infos[size + base_index - 1].str);
+   }
 }
 
 PUBLIC void rogue_print_regarray(FILE *fp, const rogue_regarray *regarray)

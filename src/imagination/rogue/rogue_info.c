@@ -29,7 +29,11 @@
  * \brief Contains information and definitions for defined types and structures.
  */
 
-/* TODO: Adjust according to core configurations. */
+/* TODO: Adjust according to core configurations:
+ * At compiler ctx init time, make a copy of these structs and overwrite
+ * nums, valid bits, etc. accordingly.
+ */
+
 /* TODO: Remaining restrictions, e.g. some registers are only
  * usable by a particular instruction (vertex output) etc. */
 #define S(n) BITFIELD64_BIT(ROGUE_IO_S##n - 1)
@@ -39,16 +43,109 @@ const rogue_reg_class_info rogue_reg_class_infos[ROGUE_REG_CLASS_COUNT] = {
    [ROGUE_REG_CLASS_TEMP] = { .name = "temp", .str = "r", .num = 248, },
    [ROGUE_REG_CLASS_COEFF] = { .name = "coeff", .str = "cf", .num = 4096, .supported_io_srcs = S(0) | S(2) | S(3), },
    [ROGUE_REG_CLASS_SHARED] = { .name = "shared", .str = "sh", .num = 4096, .supported_io_srcs = S(0) | S(2) | S(3), },
-   [ROGUE_REG_CLASS_SPECIAL] = { .name = "special", .str = "sr", .num = 240, }, /* TODO NEXT: Only S1, S2, S4. */
-   [ROGUE_REG_CLASS_INTERNAL] = { .name = "internal", .str = "i", .num = 8, },
+   [ROGUE_REG_CLASS_SPECIAL] = { .name = "special", .str = "sr", .num = ROGUE_SPECIAL_REG_COUNT, }, /* TODO NEXT: Only S1, S2, S4. */
+   [ROGUE_REG_CLASS_INTERNAL] = { .name = "internal", .str = "i", .num = 0, },
    [ROGUE_REG_CLASS_CONST] = { .name = "const", .str = "sc", .num = 240, },
-   [ROGUE_REG_CLASS_PIXOUT] = { .name = "pixout", .str = "po", .num = 8, .supported_io_srcs = S(0) | S(2) | S(3), },
+   [ROGUE_REG_CLASS_PIXOUT] = { .name = "pixout", .str = "po", .num = 4, .supported_io_srcs = S(0) | S(2) | S(3), },
    [ROGUE_REG_CLASS_VTXIN] = { .name = "vtxin", .str = "vi", .num = 248, },
    [ROGUE_REG_CLASS_VTXOUT] = { .name = "vtxout", .str = "vo", .num = 256, },
    [ROGUE_REG_CLASS_IDX0] = { .name = "index0", .str = "idx0", .num = 1, },
    [ROGUE_REG_CLASS_IDX1] = { .name = "index1", .str = "idx1", .num = 1, },
 };
 #undef S
+
+#define SR(reg) ROGUE_SPECIAL_REG_##reg
+const rogue_special_reg_info rogue_special_reg_infos[ROGUE_SPECIAL_REG_COUNT] = {
+   [SR(CONSTS_0_START) ... SR(CONSTS_0_END)] = { .valid = true, },
+
+   [SR(PIXOUT_0)] = { .str = "pixout0", .valid = true, .needs_olchk = true, },
+   [SR(PIXOUT_1)] = { .str = "pixout1", .valid = true, .needs_olchk = true, },
+   [SR(PIXOUT_2)] = { .str = "pixout2", .valid = true, .needs_olchk = true, },
+   [SR(PIXOUT_3)] = { .str = "pixout3", .valid = true, .needs_olchk = true, },
+
+   [SR(INTL_0)] = { .str = "internal0", },
+   [SR(INTL_1)] = { .str = "internal1", },
+   [SR(INTL_2)] = { .str = "internal2", },
+   [SR(INTL_3)] = { .str = "internal3", },
+   [SR(INTL_4)] = { .str = "internal4", },
+   [SR(INTL_5)] = { .str = "internal5", },
+   [SR(INTL_6)] = { .str = "internal6", },
+   [SR(INTL_7)] = { .str = "internal7", },
+
+   [SR(FACE_ORIENT)] = { .str = "face_orientation", .valid = true, },
+   [SR(CLUSTER_NUM)] = { .str = "cluster_number", .valid = true, },
+   [SR(OUTPUT_PART)] = { .str = "output_partition", .valid = true, .needs_olchk = true, },
+   [SR(TASK_ID)] = { .str = "task_id", .valid = true, },
+   [SR(SLOT_NUM)] = { .str = "slot_num", .valid = true, },
+   [SR(TILE_X_PIX)] = { .str = "tile_x_pixels", .valid = true, },
+   [SR(TILE_Y_PIX)] = { .str = "tile_6_pixels", .valid = true, },
+   [SR(INST_NUM)] = { .str = "instance_num_in_slot", .valid = true, },
+   [SR(DM_TASK_TYPE)] = { .str = "data_master_and_task_type", .valid = true, },
+   [SR(SAMP_NUM)] = { .str = "sample_number", .valid = true, },
+
+   [SR(TILED_LD_COMP_0)] = { .str = "tiled_ld_component_0", .valid = true, .needs_olchk = true, },
+   [SR(TILED_LD_COMP_1)] = { .str = "tiled_ld_component_1", .valid = true, .needs_olchk = true, },
+   [SR(TILED_LD_COMP_2)] = { .str = "tiled_ld_component_2", .valid = true, .needs_olchk = true, },
+   [SR(TILED_LD_COMP_3)] = { .str = "tiled_ld_component_3", .valid = true, .needs_olchk = true, },
+
+   [SR(TILED_ST_COMP_0)] = { .str = "tiled_st_component_0", .valid = true, .needs_olchk = true, },
+   [SR(TILED_ST_COMP_1)] = { .str = "tiled_st_component_1", .valid = true, .needs_olchk = true, },
+   [SR(TILED_ST_COMP_2)] = { .str = "tiled_st_component_2", .valid = true, .needs_olchk = true, },
+   [SR(TILED_ST_COMP_3)] = { .str = "tiled_st_component_3", .valid = true, .needs_olchk = true, },
+
+   [SR(BATCH_NUM)] = { .str = "batch_num", .valid = true, },
+   [SR(INST_VALID)] = { .str = "instance_valid", .valid = true, },
+
+   [SR(CONSTS_1_START) ... SR(CONSTS_1_END)] = { .valid = true, },
+
+   [SR(TILE_XY)] = { .str = "tile_xy_coords", .valid = true, },
+
+   [SR(X_P)] = { .str = "x_pixel_mode", .valid = true, },
+   [SR(X_S)] = { .str = "x_sample_mode", .valid = true, },
+
+   [SR(Y_P)] = { .str = "y_pixel_mode", .valid = true, },
+   [SR(Y_S)] = { .str = "y_sample_mode", .valid = true, },
+
+   [SR(SH_ALLOC_SIZE)] = { .str = "sh_alloc_size", .valid = true, },
+
+   [SR(G0)] = { .str = "global0", },
+   [SR(G1)] = { .str = "global1", },
+   [SR(G2)] = { .str = "global2", },
+   [SR(G3)] = { .str = "global3", },
+   [SR(G4)] = { .str = "global4", },
+   [SR(G5)] = { .str = "global5", },
+   [SR(G6)] = { .str = "global6", },
+   [SR(G7)] = { .str = "global7", },
+
+   [SR(LOCAL_ADDR_INST_NUM)] = { .str = "local_addr_inst_num", .valid = true, },
+
+   [SR(TILE_X_P)] = { .str = "x_in_tile_pixel_mode", .valid = true, },
+   [SR(TILE_X_S)] = { .str = "x_in_tile_sample_mode", .valid = true, },
+   [SR(TILE_Y_P)] = { .str = "y_in_tile_pixel_mode", .valid = true, },
+   [SR(TILE_Y_S)] = { .str = "y_in_tile_sample_mode", .valid = true, },
+
+   [SR(RENDER_TGT_ID)] = { .str = "render_target_id", },
+
+   [SR(TILED_LD_COMP_4)] = { .str = "tiled_ld_component_4", .needs_olchk = true, },
+   [SR(TILED_LD_COMP_5)] = { .str = "tiled_ld_component_5", .needs_olchk = true, },
+   [SR(TILED_LD_COMP_6)] = { .str = "tiled_ld_component_6", .needs_olchk = true, },
+   [SR(TILED_LD_COMP_7)] = { .str = "tiled_ld_component_7", .needs_olchk = true, },
+
+   [SR(TILED_ST_COMP_4)] = { .str = "tiled_st_component_4", .needs_olchk = true, },
+   [SR(TILED_ST_COMP_5)] = { .str = "tiled_st_component_5", .needs_olchk = true, },
+   [SR(TILED_ST_COMP_6)] = { .str = "tiled_st_component_6", .needs_olchk = true, },
+   [SR(TILED_ST_COMP_7)] = { .str = "tiled_st_component_7", .needs_olchk = true, },
+
+   [SR(CONSTS_2_START) ... SR(CONSTS_2_END)] = { .valid = true, },
+
+   [SR(TIMER_80NS)] = { .str = "timer_80ns", .valid = true, },
+
+   [SR(PIXOUT_4)] = { .str = "pixout4", .needs_olchk = true, },
+   [SR(PIXOUT_5)] = { .str = "pixout5", .needs_olchk = true, },
+   [SR(PIXOUT_6)] = { .str = "pixout6", .needs_olchk = true, },
+   [SR(PIXOUT_7)] = { .str = "pixout7", .needs_olchk = true, },
+};
+#undef SR
 
 const rogue_regalloc_info regalloc_info[ROGUE_REGALLOC_CLASS_COUNT] = {
    [ROGUE_REGALLOC_CLASS_TEMP_1] = { .class = ROGUE_REG_CLASS_TEMP, .stride = 1, },

@@ -351,7 +351,7 @@ static void rogue_lower_regs(rogue_shader *shader)
       rogue_reg_rewrite(shader,
                         reg,
                         ROGUE_REG_CLASS_SPECIAL,
-                        reg->index + ROGUE_INTERNAL0_OFFSET);
+                        reg->index + ROGUE_SPECIAL_REG_INTL_0);
    }
 
    rogue_foreach_reg_safe (reg, shader, ROGUE_REG_CLASS_CONST) {
@@ -359,13 +359,16 @@ static void rogue_lower_regs(rogue_shader *shader)
    }
 
    rogue_foreach_reg_safe (reg, shader, ROGUE_REG_CLASS_PIXOUT) {
-      rogue_reg_rewrite(shader,
-                        reg,
-                        ROGUE_REG_CLASS_SPECIAL,
-                        reg->index +
-                           (reg->index < ROGUE_PIXOUT_GROUP
-                               ? ROGUE_PIXOUT0_OFFSET
-                               : (ROGUE_PIXOUT4_OFFSET - ROGUE_PIXOUT_GROUP)));
+      if (reg->index >= 0 && reg->index <= 3)
+         rogue_reg_rewrite(shader,
+                           reg,
+                           ROGUE_REG_CLASS_SPECIAL,
+                           reg->index + ROGUE_SPECIAL_REG_PIXOUT_0);
+      else if (reg->index >= 4 && reg->index <= 7)
+         rogue_reg_rewrite(shader,
+                           reg,
+                           ROGUE_REG_CLASS_SPECIAL,
+                           reg->index + ROGUE_SPECIAL_REG_PIXOUT_4);
    }
 }
 

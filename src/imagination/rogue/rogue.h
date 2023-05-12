@@ -100,6 +100,111 @@ typedef struct rogue_reg_class_info {
 
 extern const rogue_reg_class_info rogue_reg_class_infos[ROGUE_REG_CLASS_COUNT];
 
+enum rogue_special_reg {
+   ROGUE_SPECIAL_REG_CONSTS_0_START = 0,
+   ROGUE_SPECIAL_REG_CONSTS_0_END = 31,
+
+   ROGUE_SPECIAL_REG_PIXOUT_0 = 32,
+   ROGUE_SPECIAL_REG_PIXOUT_1 = 33,
+   ROGUE_SPECIAL_REG_PIXOUT_2 = 34,
+   ROGUE_SPECIAL_REG_PIXOUT_3 = 35,
+
+   ROGUE_SPECIAL_REG_INTL_0 = 36,
+   ROGUE_SPECIAL_REG_INTL_1 = 37,
+   ROGUE_SPECIAL_REG_INTL_2 = 38,
+   ROGUE_SPECIAL_REG_INTL_3 = 39,
+   ROGUE_SPECIAL_REG_INTL_4 = 40,
+   ROGUE_SPECIAL_REG_INTL_5 = 41,
+   ROGUE_SPECIAL_REG_INTL_6 = 42,
+   ROGUE_SPECIAL_REG_INTL_7 = 43,
+
+   ROGUE_SPECIAL_REG_FACE_ORIENT = 44,
+   ROGUE_SPECIAL_REG_CLUSTER_NUM = 45,
+   ROGUE_SPECIAL_REG_OUTPUT_PART = 46,
+   ROGUE_SPECIAL_REG_TASK_ID = 47,
+   ROGUE_SPECIAL_REG_SLOT_NUM = 48,
+   ROGUE_SPECIAL_REG_TILE_X_PIX = 49,
+   ROGUE_SPECIAL_REG_TILE_Y_PIX = 50,
+   ROGUE_SPECIAL_REG_INST_NUM = 51,
+   ROGUE_SPECIAL_REG_DM_TASK_TYPE = 52,
+   ROGUE_SPECIAL_REG_SAMP_NUM = 53,
+
+   ROGUE_SPECIAL_REG_TILED_LD_COMP_0 = 54,
+   ROGUE_SPECIAL_REG_TILED_LD_COMP_1 = 55,
+   ROGUE_SPECIAL_REG_TILED_LD_COMP_2 = 56,
+   ROGUE_SPECIAL_REG_TILED_LD_COMP_3 = 57,
+
+   ROGUE_SPECIAL_REG_TILED_ST_COMP_0 = 58,
+   ROGUE_SPECIAL_REG_TILED_ST_COMP_1 = 59,
+   ROGUE_SPECIAL_REG_TILED_ST_COMP_2 = 60,
+   ROGUE_SPECIAL_REG_TILED_ST_COMP_3 = 61,
+
+   ROGUE_SPECIAL_REG_BATCH_NUM = 62,
+   ROGUE_SPECIAL_REG_INST_VALID = 63,
+
+   ROGUE_SPECIAL_REG_CONSTS_1_START = 64,
+   ROGUE_SPECIAL_REG_CONSTS_1_END = 95,
+
+   ROGUE_SPECIAL_REG_TILE_XY = 96,
+
+   ROGUE_SPECIAL_REG_X_P = 97,
+   ROGUE_SPECIAL_REG_X_S = 98,
+
+   ROGUE_SPECIAL_REG_Y_P = 100,
+   ROGUE_SPECIAL_REG_Y_S = 101,
+
+   ROGUE_SPECIAL_REG_SH_ALLOC_SIZE = 103,
+
+   ROGUE_SPECIAL_REG_G0 = 104,
+   ROGUE_SPECIAL_REG_G1 = 105,
+   ROGUE_SPECIAL_REG_G2 = 106,
+   ROGUE_SPECIAL_REG_G3 = 107,
+   ROGUE_SPECIAL_REG_G4 = 108,
+   ROGUE_SPECIAL_REG_G5 = 109,
+   ROGUE_SPECIAL_REG_G6 = 110,
+   ROGUE_SPECIAL_REG_G7 = 111,
+
+   ROGUE_SPECIAL_REG_LOCAL_ADDR_INST_NUM = 112,
+
+   ROGUE_SPECIAL_REG_TILE_X_P = 114,
+   ROGUE_SPECIAL_REG_TILE_X_S = 115,
+   ROGUE_SPECIAL_REG_TILE_Y_P = 116,
+   ROGUE_SPECIAL_REG_TILE_Y_S = 117,
+
+   ROGUE_SPECIAL_REG_RENDER_TGT_ID = 118,
+
+   ROGUE_SPECIAL_REG_TILED_LD_COMP_4 = 119,
+   ROGUE_SPECIAL_REG_TILED_LD_COMP_5 = 120,
+   ROGUE_SPECIAL_REG_TILED_LD_COMP_6 = 121,
+   ROGUE_SPECIAL_REG_TILED_LD_COMP_7 = 122,
+
+   ROGUE_SPECIAL_REG_TILED_ST_COMP_4 = 123,
+   ROGUE_SPECIAL_REG_TILED_ST_COMP_5 = 124,
+   ROGUE_SPECIAL_REG_TILED_ST_COMP_6 = 125,
+   ROGUE_SPECIAL_REG_TILED_ST_COMP_7 = 126,
+
+   ROGUE_SPECIAL_REG_CONSTS_2_START = 128,
+   ROGUE_SPECIAL_REG_CONSTS_2_END = 159,
+
+   ROGUE_SPECIAL_REG_TIMER_80NS = 160,
+
+   ROGUE_SPECIAL_REG_PIXOUT_4 = 164,
+   ROGUE_SPECIAL_REG_PIXOUT_5 = 165,
+   ROGUE_SPECIAL_REG_PIXOUT_6 = 166,
+   ROGUE_SPECIAL_REG_PIXOUT_7 = 167,
+
+   ROGUE_SPECIAL_REG_COUNT = 256,
+};
+
+typedef struct rogue_special_reg_info {
+   const char *str;
+   bool valid;
+   bool needs_olchk;
+} rogue_special_reg_info;
+
+extern const rogue_special_reg_info
+   rogue_special_reg_infos[ROGUE_SPECIAL_REG_COUNT];
+
 /* TODO: Do this dynamically by iterating
  * through regarrays and matching sizes.
  */
@@ -935,37 +1040,30 @@ static inline unsigned rogue_ref_get_regarray_size(const rogue_ref *ref)
    unreachable("Ref is not a regarray.");
 }
 
-#define ROGUE_INTERNAL0_OFFSET 36
-#define ROGUE_INTERNAL_GROUP 8
-
-#define ROGUE_PIXOUT0_OFFSET 32
-#define ROGUE_PIXOUT4_OFFSET 164
-#define ROGUE_PIXOUT_GROUP 4
-
-static inline bool rogue_ref_is_pixout(rogue_ref *ref)
+static inline bool rogue_ref_reg_regarray_info(const rogue_ref *ref,
+                                               enum rogue_reg_class *class,
+                                               unsigned *index)
 {
-   enum rogue_reg_class class;
-   unsigned index;
+   enum rogue_reg_class reg_class;
+   unsigned reg_index;
 
    if (rogue_ref_is_regarray(ref)) {
-      class = ref->regarray->regs[0]->class;
-      index = ref->regarray->regs[0]->index;
+      reg_class = ref->regarray->regs[0]->class;
+      reg_index = ref->regarray->regs[0]->index;
    } else if (rogue_ref_is_reg(ref)) {
-      class = ref->reg->class;
-      index = ref->reg->index;
+      reg_class = ref->reg->class;
+      reg_index = ref->reg->index;
    } else {
       return false;
    }
 
-   if (class == ROGUE_REG_CLASS_PIXOUT)
-      return true;
-   else if (class == ROGUE_REG_CLASS_SPECIAL)
-      return (index >= ROGUE_PIXOUT0_OFFSET &&
-              index < (ROGUE_PIXOUT0_OFFSET + ROGUE_PIXOUT_GROUP)) ||
-             (index >= ROGUE_PIXOUT4_OFFSET &&
-              index < (ROGUE_PIXOUT4_OFFSET + ROGUE_PIXOUT_GROUP));
+   if (class)
+      *class = reg_class;
 
-   return false;
+   if (index)
+      *index = reg_index;
+
+   return true;
 }
 
 static inline enum rogue_io rogue_ref_get_io(const rogue_ref *ref)

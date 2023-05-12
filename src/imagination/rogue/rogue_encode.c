@@ -116,6 +116,47 @@ static enum opcnt rogue_calc_opcnt(uint64_t bitwise_phases)
    return opcnt;
 }
 
+static inline bool rogue_ref_needs_olchk(const rogue_ref *ref)
+{
+   enum rogue_reg_class class;
+   unsigned index;
+
+   if (!rogue_ref_reg_regarray_info(ref, &class, &index))
+      return false;
+
+   /* Pixout class should be lowered at this point,
+    * but just in case...
+    */
+   if (class == ROGUE_REG_CLASS_PIXOUT)
+      return true;
+
+   if (class == ROGUE_REG_CLASS_SPECIAL)
+      return rogue_special_reg_infos[index].needs_olchk;
+
+   return false;
+}
+
+static bool rogue_should_set_olchk(rogue_instr_group *group)
+{
+   /* Only fragment shaders need overlap checks. */
+   if (group->block->shader->stage != MESA_SHADER_NONE &&
+       group->block->shader->stage != MESA_SHADER_FRAGMENT)
+      return false;
+
+   /* Check if sources/dests read from/write to special registers that require
+    * olchk to be set.
+    */
+   for (unsigned src = 0; src < ARRAY_SIZE(group->io_sel.srcs); ++src)
+      if (rogue_ref_needs_olchk(&group->io_sel.srcs[src]))
+         return true;
+
+   for (unsigned dst = 0; dst < ARRAY_SIZE(group->io_sel.dsts); ++dst)
+      if (rogue_ref_needs_olchk(&group->io_sel.dsts[dst]))
+         return true;
+
+   return false;
+}
+
 static void rogue_encode_instr_group_header(rogue_instr_group *group,
                                             struct util_dynarray *binary)
 {
@@ -125,12 +166,11 @@ static void rogue_encode_instr_group_header(rogue_instr_group *group,
    h.length = (group->size.total / 2) % 16;
    h.ext = (group->size.header == 3);
 
+   h.olchk = rogue_should_set_olchk(group);
+
    rogue_ref *w0ref = rogue_instr_group_io_sel_ref(&group->io_sel, ROGUE_IO_W0);
    rogue_ref *w1ref = rogue_instr_group_io_sel_ref(&group->io_sel, ROGUE_IO_W1);
 
-   /* TODO: Update this - needs to be set for MOVMSK, and if instruction group
-    * READS OR WRITES to/from pixout regs. */
-   h.olchk = rogue_ref_is_pixout(w0ref) || rogue_ref_is_pixout(w1ref);
    h.w1p = !rogue_ref_is_null(w1ref);
    h.w0p = !rogue_ref_is_null(w0ref);
 
