@@ -788,7 +788,8 @@ static void validate_reg_state(rogue_validation_state *state,
                               sizeof(*regs_used) * BITSET_WORDS(info->num)))
          validate_log(state, "Incorrect %s register usage list.", info->name);
 
-      ralloc_free(regs_used);
+      if (info->num)
+         ralloc_free(regs_used);
    }
 
    /* Check that SSA registers aren't being written to more than once. */
