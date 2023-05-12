@@ -1649,9 +1649,10 @@ unsigned rogue_count_used_regs(const rogue_shader *shader,
                                enum rogue_reg_class class)
 {
    unsigned reg_count;
-   if (rogue_reg_infos[class].num) {
-      reg_count = __bitset_count(shader->regs_used[class],
-                                 BITSET_WORDS(rogue_reg_infos[class].num));
+   if (rogue_reg_class_infos[class].num) {
+      reg_count =
+         __bitset_count(shader->regs_used[class],
+                        BITSET_WORDS(rogue_reg_class_infos[class].num));
    } else {
       reg_count = list_length(&shader->regs[class]);
    }

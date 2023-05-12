@@ -735,7 +735,7 @@ static void validate_reg_state(rogue_validation_state *state,
 
    for (enum rogue_reg_class class = 0; class < ROGUE_REG_CLASS_COUNT;
         ++class) {
-      const rogue_reg_info *info = &rogue_reg_infos[class];
+      const rogue_reg_class_info *info = &rogue_reg_class_infos[class];
       if (info->num)
          regs_used =
             rzalloc_size(state, sizeof(*regs_used) * BITSET_WORDS(info->num));
@@ -749,7 +749,7 @@ static void validate_reg_state(rogue_validation_state *state,
          if (reg->class != class)
             validate_log(state,
                          "%s register found in %s register list.",
-                         rogue_reg_infos[reg->class].name,
+                         rogue_reg_class_infos[reg->class].name,
                          info->name);
 
          /* Track the registers used in the class. */
@@ -777,7 +777,7 @@ static void validate_reg_state(rogue_validation_state *state,
                          reg->index);
 
          /* Validate register uses. */
-         const rogue_reg_info *reg_info = &rogue_reg_infos[class];
+         const rogue_reg_class_info *reg_info = &rogue_reg_class_infos[class];
          rogue_foreach_reg_use (use, reg)
             validate_reg_use(state, use, reg_info->supported_io_srcs);
       }

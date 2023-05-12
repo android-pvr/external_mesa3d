@@ -100,7 +100,7 @@ bool rogue_regalloc(rogue_shader *shader)
       return false;
 
    assert(list_is_empty(&shader->regs[ROGUE_REG_CLASS_TEMP]));
-   unsigned hw_temps = rogue_reg_infos[ROGUE_REG_CLASS_TEMP].num;
+   unsigned hw_temps = rogue_reg_class_infos[ROGUE_REG_CLASS_TEMP].num;
 
    /* Setup regset and register classes. */
    struct ra_regs *ra_regs = ra_alloc_reg_set(shader, hw_temps, true);

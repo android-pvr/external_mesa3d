@@ -60,7 +60,7 @@ bool rogue_reg_set(rogue_shader *shader,
    if (reg->class == class && reg->index == index)
       changed = false;
 
-   const rogue_reg_info *info = &rogue_reg_infos[class];
+   const rogue_reg_class_info *info = &rogue_reg_class_infos[class];
 
    if (info->num) {
       assert(index < info->num);
@@ -105,7 +105,7 @@ bool rogue_reg_rewrite(rogue_shader *shader,
                        enum rogue_reg_class class,
                        unsigned index)
 {
-   const rogue_reg_info *info = &rogue_reg_infos[reg->class];
+   const rogue_reg_class_info *info = &rogue_reg_class_infos[reg->class];
    if (info->num) {
       assert(rogue_reg_is_used(shader, reg->class, reg->index) &&
              "Register not in use!");
@@ -156,7 +156,7 @@ bool rogue_regarray_rewrite(rogue_shader *shader,
 
    enum rogue_reg_class orig_class = regarray->regs[0]->class;
    unsigned orig_base_index = regarray->regs[0]->index;
-   const rogue_reg_info *info = &rogue_reg_infos[orig_class];
+   const rogue_reg_class_info *info = &rogue_reg_class_infos[orig_class];
 
    assert(!regarray->parent);
 
@@ -214,7 +214,7 @@ rogue_shader *rogue_shader_create(void *mem_ctx, gl_shader_stage stage)
         ++class) {
       list_inithead(&shader->regs[class]);
 
-      const rogue_reg_info *info = &rogue_reg_infos[class];
+      const rogue_reg_class_info *info = &rogue_reg_class_infos[class];
       if (info->num) {
          unsigned bitset_size =
             sizeof(*shader->regs_used[class]) * BITSET_WORDS(info->num);
@@ -268,7 +268,7 @@ static rogue_reg *rogue_reg_create(rogue_shader *shader,
    list_inithead(&reg->writes);
    list_inithead(&reg->uses);
 
-   const rogue_reg_info *info = &rogue_reg_infos[class];
+   const rogue_reg_class_info *info = &rogue_reg_class_infos[class];
    if (info->num) {
       assert(index < info->num);
       assert(!rogue_reg_is_used(shader, class, index) &&
@@ -288,7 +288,7 @@ PUBLIC
 void rogue_reg_delete(rogue_reg *reg)
 {
    assert(rogue_reg_is_unused(reg));
-   const rogue_reg_info *info = &rogue_reg_infos[reg->class];
+   const rogue_reg_class_info *info = &rogue_reg_class_infos[reg->class];
    if (info->num) {
       assert(rogue_reg_is_used(reg->shader, reg->class, reg->index) &&
              "Register not in use!");

@@ -134,7 +134,7 @@ static inline void rogue_print_val(FILE *fp, unsigned val)
 PUBLIC void
 rogue_print_reg_raw(FILE *fp, enum rogue_reg_class class, unsigned index)
 {
-   const rogue_reg_info *info = &rogue_reg_infos[class];
+   const rogue_reg_class_info *info = &rogue_reg_class_infos[class];
    YELLOW(fp);
    fputs(info->str, fp);
    if (info->num != 1)
@@ -165,7 +165,7 @@ PUBLIC void rogue_print_regarray_raw(FILE *fp,
                                      unsigned base_index,
                                      unsigned size)
 {
-   const rogue_reg_info *info = &rogue_reg_infos[class];
+   const rogue_reg_class_info *info = &rogue_reg_class_infos[class];
    YELLOW(fp);
    fprintf(fp, "%s[%" PRIu32, info->str, base_index);
    if (size > 1) {

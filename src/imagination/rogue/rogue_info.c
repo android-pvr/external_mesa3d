@@ -33,7 +33,7 @@
 /* TODO: Remaining restrictions, e.g. some registers are only
  * usable by a particular instruction (vertex output) etc. */
 #define S(n) BITFIELD64_BIT(ROGUE_IO_S##n - 1)
-const rogue_reg_info rogue_reg_infos[ROGUE_REG_CLASS_COUNT] = {
+const rogue_reg_class_info rogue_reg_class_infos[ROGUE_REG_CLASS_COUNT] = {
    [ROGUE_REG_CLASS_INVALID] = { .name = "!INVALID!", .str = "!INVALID!", },
    [ROGUE_REG_CLASS_SSA] = { .name = "ssa", .str = "R", },
    [ROGUE_REG_CLASS_TEMP] = { .name = "temp", .str = "r", .num = 248, },

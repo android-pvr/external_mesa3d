@@ -91,14 +91,14 @@ enum rogue_reg_class {
    ROGUE_REG_CLASS_COUNT,
 } PACKED;
 
-typedef struct rogue_reg_info {
+typedef struct rogue_reg_class_info {
    const char *name; /** Human-readable name. */
    const char *str; /** Register prefix. */
    unsigned num; /** Number of hardware registers available. */
    uint64_t supported_io_srcs;
-} rogue_reg_info;
+} rogue_reg_class_info;
 
-extern const rogue_reg_info rogue_reg_infos[ROGUE_REG_CLASS_COUNT];
+extern const rogue_reg_class_info rogue_reg_class_infos[ROGUE_REG_CLASS_COUNT];
 
 /* TODO: Do this dynamically by iterating
  * through regarrays and matching sizes.
@@ -2259,7 +2259,7 @@ static void rogue_regarray_delete(rogue_regarray *regarray)
 static inline void rogue_reset_reg_usage(rogue_shader *shader,
                                          enum rogue_reg_class class)
 {
-   const rogue_reg_info *info = &rogue_reg_infos[class];
+   const rogue_reg_class_info *info = &rogue_reg_class_infos[class];
 
    if (info->num) {
       memset(shader->regs_used[class],
@@ -2968,12 +2968,12 @@ static inline bool rogue_can_replace_reg_use(rogue_reg_use *use,
                                              const rogue_reg *new_reg)
 {
    bool can_replace = false;
-   const rogue_reg_info *reg_info = &rogue_reg_infos[new_reg->class];
+   const rogue_reg_class_info *info = &rogue_reg_class_infos[new_reg->class];
    const rogue_instr *instr = use->instr;
 
    rogue_foreach_phase_in_set (p, rogue_instr_supported_phases(instr)) {
       enum rogue_io io_src = rogue_instr_src_io_src(instr, p, use->src_index);
-      can_replace &= rogue_io_supported(io_src, reg_info->supported_io_srcs);
+      can_replace &= rogue_io_supported(io_src, info->supported_io_srcs);
    }
 
    return can_replace;
