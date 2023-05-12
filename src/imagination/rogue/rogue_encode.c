@@ -575,8 +575,14 @@ static void rogue_encode_alu_instr(const rogue_alu_instr *alu,
    }
 
    case ROGUE_ALU_OP_PCK_U8888:
-   case ROGUE_ALU_OP_PCK_S32:
+   case ROGUE_ALU_OP_PCK_S8888:
+   case ROGUE_ALU_OP_PCK_U1616:
+   case ROGUE_ALU_OP_PCK_S1616:
+   case ROGUE_ALU_OP_PCK_F16F16:
    case ROGUE_ALU_OP_PCK_U32:
+   case ROGUE_ALU_OP_PCK_S32:
+   case ROGUE_ALU_OP_PCK_F32:
+   case ROGUE_ALU_OP_PCK_2F10F10F10:
       instr_encoding->alu.op = ALUOP_SNGL;
       instr_encoding->alu.sngl.snglop = SNGLOP_PCK;
       instr_encoding->alu.sngl.ext0 = 1;
@@ -592,12 +598,36 @@ static void rogue_encode_alu_instr(const rogue_alu_instr *alu,
          instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_U8888;
          break;
 
-      case ROGUE_ALU_OP_PCK_S32:
-         instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_S32;
+      case ROGUE_ALU_OP_PCK_S8888:
+         instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_S8888;
+         break;
+
+      case ROGUE_ALU_OP_PCK_U1616:
+         instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_U1616;
+         break;
+
+      case ROGUE_ALU_OP_PCK_S1616:
+         instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_S1616;
+         break;
+
+      case ROGUE_ALU_OP_PCK_F16F16:
+         instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_F16F16;
          break;
 
       case ROGUE_ALU_OP_PCK_U32:
          instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_U32;
+         break;
+
+      case ROGUE_ALU_OP_PCK_S32:
+         instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_S32;
+         break;
+
+      case ROGUE_ALU_OP_PCK_F32:
+         instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_F32;
+         break;
+
+      case ROGUE_ALU_OP_PCK_2F10F10F10:
+         instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_2F10F10F10;
          break;
 
       default:
