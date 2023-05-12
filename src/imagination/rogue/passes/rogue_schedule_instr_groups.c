@@ -712,6 +712,10 @@ static void rogue_calc_backend_instrs_size(rogue_instr_group *group,
       }
       break;
 
+   case ROGUE_BACKEND_OP_ATST:
+      group->size.instrs[phase] = 1;
+      break;
+
    case ROGUE_BACKEND_OP_SMP1D:
    case ROGUE_BACKEND_OP_SMP2D:
    case ROGUE_BACKEND_OP_SMP3D:

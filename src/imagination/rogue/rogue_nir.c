@@ -337,10 +337,12 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
 
    NIR_PASS_V(nir, nir_lower_bool_to_int32);
 
+   /*
    if (nir->info.stage == MESA_SHADER_FRAGMENT &&
        (nir->info.fs.uses_discard || nir->info.fs.uses_demote)) {
       NIR_PASS_V(nir, nir_opt_move_discards_to_top);
    }
+   */
 
    /* NIR_PASS_V(nir, nir_opt_move, nir_move_load_ubo); */
    //

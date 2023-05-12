@@ -477,6 +477,18 @@ const rogue_backend_op_info rogue_backend_op_infos[ROGUE_BACKEND_OP_COUNT] = {
       .valnum_src = 3,
       .src_valnum_mask = B(0),
    },
+   /* TODO: Can't co-issue with TST. */
+   [ROGUE_BACKEND_OP_ATST] = { .str = "atst", .num_dsts = 1, .num_srcs = 4,
+      .phase_io = { .src[1] = IO(S0), .src[2] = IO(S1), .src[3] = IO(S2), },
+      .supported_op_mods = OM(IFB),
+      .supported_dst_types = { [0] = T(IO), },
+      .supported_src_types = {
+         [0] = T(DRC), /* TODO: *must* be DRC0 */
+         [1] = T(REG) | T(REGARRAY) | T(IMM),
+         [2] = T(REG) | T(REGARRAY) | T(IMM),
+         [3] = T(REG) | T(IMM), /* TODO: Must be special constant or non-indexed shared. */
+      },
+   },
 	[ROGUE_BACKEND_OP_FITR_PIXEL] = { .str = "fitr.pixel", .num_dsts = 1, .num_srcs = 3,
       .phase_io = { .dst[0] = IO(S3), .src[1] = IO(S0), },
       .supported_op_mods = OM(SAT),
@@ -592,6 +604,7 @@ const rogue_backend_op_info rogue_backend_op_infos[ROGUE_BACKEND_OP_COUNT] = {
       .valnum_src = 5,
       .dst_valnum_mask = B(0),
    },
+   [ROGUE_BACKEND_OP_ATST_NEVER] = { .str = "atst.never", },
 };
 #undef B
 #undef T
@@ -631,6 +644,7 @@ const rogue_backend_op_mod_info rogue_backend_op_mod_infos[ROGUE_BACKEND_OP_MOD_
    [ROGUE_BACKEND_OP_MOD_SAT]  = { .str = "sat", },
    [ROGUE_BACKEND_OP_MOD_FREEP] = { .str = "freep", },
    [ROGUE_BACKEND_OP_MOD_NOWDF] = { .str = "nowdf", },
+   [ROGUE_BACKEND_OP_MOD_IFB] = { .str = "ifb", },
 };
 #undef OM
 

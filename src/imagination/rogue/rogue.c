@@ -965,6 +965,11 @@ void rogue_link_instr_use(rogue_instr *instr)
             rogue_link_drc_trxn(instr->block->shader,
                                 instr,
                                 rogue_ref_get_drc(&backend->src[i].ref));
+         } else if (rogue_ref_is_imm(&backend->src[i].ref)) {
+            rogue_link_imm_use(instr->block->shader,
+                               instr,
+                               i,
+                               rogue_ref_get_imm(&backend->src[i].ref));
          } else if (rogue_ref_is_io(&backend->src[i].ref)) { /* TODO: check
                                                                 WHICH IO IT IS
                                                               */
@@ -1214,6 +1219,9 @@ void rogue_unlink_instr_use(rogue_instr *instr)
             rogue_unlink_drc_trxn(instr->block->shader,
                                   instr,
                                   rogue_ref_get_drc(&backend->src[i].ref));
+         } else if (rogue_ref_is_imm(&backend->src[i].ref)) {
+            rogue_unlink_imm_use(instr,
+                                 &rogue_ref_get_imm(&backend->src[i].ref)->use);
          } else if (rogue_ref_is_io(&backend->src[i].ref)) { /* TODO: check
                                                                 WHICH IO IT IS
                                                               */

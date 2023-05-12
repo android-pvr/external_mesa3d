@@ -524,6 +524,40 @@ static inline bool rogue_lower_alu_instr(rogue_builder *b, rogue_alu_instr *alu)
    return false;
 }
 
+static inline bool rogue_lower_ATST_NEVER(rogue_builder *b,
+                                          rogue_backend_instr *backend)
+{
+   rogue_backend_instr *atst = rogue_ATST(b,
+                                          rogue_none(),
+                                          rogue_ref_drc(0),
+                                          rogue_ref_imm(0),
+                                          rogue_ref_imm(0),
+                                          rogue_ref_imm(ACMPMODE_NEVER));
+
+   rogue_merge_instr_comment(&atst->instr, &backend->instr, "atst.never");
+   rogue_instr_delete(&backend->instr);
+
+   return true;
+}
+
+static inline bool rogue_lower_backend_instr(rogue_builder *b,
+                                             rogue_backend_instr *backend)
+{
+   /* Skip real ops. */
+   if (backend->op < ROGUE_BACKEND_OP_PSEUDO)
+      return false;
+
+   switch (backend->op) {
+   case ROGUE_BACKEND_OP_ATST_NEVER:
+      return rogue_lower_ATST_NEVER(b, backend);
+
+   default:
+      break;
+   }
+
+   return false;
+}
+
 static inline bool rogue_lower_ISHL(rogue_builder *b, rogue_bitwise_instr *ishl)
 {
    rogue_bitwise_instr *byp0b = rogue_BYP0B(b,
@@ -687,6 +721,11 @@ bool rogue_lower_pseudo_ops(rogue_shader *shader)
       switch (instr->type) {
       case ROGUE_INSTR_TYPE_ALU:
          progress |= rogue_lower_alu_instr(&b, rogue_instr_as_alu(instr));
+         break;
+
+      case ROGUE_INSTR_TYPE_BACKEND:
+         progress |=
+            rogue_lower_backend_instr(&b, rogue_instr_as_backend(instr));
          break;
 
       case ROGUE_INSTR_TYPE_BITWISE:

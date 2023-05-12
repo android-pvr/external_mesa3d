@@ -1114,6 +1114,29 @@ enum dmaop {
    DMAOP_ATOMIC = 0b101,
 };
 
+typedef struct rogue_backend_vistest_encoding {
+   /* Byte 0 */
+   struct {
+      unsigned ifb : 1;
+      unsigned atst : 1;
+      unsigned pwen : 1;
+      unsigned : 5;
+   } PACKED;
+} PACKED rogue_backend_vistest_encoding;
+static_assert(sizeof(rogue_backend_vistest_encoding) == 1,
+              "sizeof(rogue_backend_vistest_encoding) != 1");
+
+enum ACMPMODE {
+   ACMPMODE_NEVER = 0b000,
+   ACMPMODE_LESS = 0b001,
+   ACMPMODE_EQUAL = 0b010,
+   ACMPMODE_LESSEQUAL = 0b011,
+   ACMPMODE_GREATER = 0b100,
+   ACMPMODE_NOTEQUAL = 0b101,
+   ACMPMODE_GREATEREQUAL = 0b110,
+   ACMPMODE_ALWAYS = 0b111,
+};
+
 typedef struct rogue_backend_instr_encoding {
    union {
       /* Byte 0 */
@@ -1126,6 +1149,7 @@ typedef struct rogue_backend_instr_encoding {
       rogue_backend_fitr_encoding fitr;
       rogue_backend_emitpix_encoding emitpix;
       rogue_backend_dma_encoding dma;
+      rogue_backend_vistest_encoding vistest;
    } PACKED;
 } PACKED rogue_backend_instr_encoding;
 static_assert(sizeof(rogue_backend_instr_encoding) == 5,

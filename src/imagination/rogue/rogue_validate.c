@@ -52,6 +52,8 @@ typedef struct rogue_validation_state {
       const rogue_ref *ref; /** Current reference being validated. */
       bool src; /** Current reference type (src/dst). */
       unsigned param; /** Current reference src/dst index. */
+
+      unsigned atst_noifbs;
    } ctx;
    struct util_dynarray *error_msgs; /** Error message list. */
 } rogue_validation_state;
@@ -402,6 +404,11 @@ static void validate_backend_instr(rogue_validation_state *state,
                       info->src_valnum_mask);
       }
    }
+
+   /* Count ATST.IFBs. */
+   if (backend->op == ROGUE_BACKEND_OP_ATST &&
+       !rogue_backend_op_mod_is_set(backend, ROGUE_BACKEND_OP_MOD_IFB))
+      ++state->ctx.atst_noifbs;
 }
 
 static bool validate_ctrl_op_mod_combo(uint64_t mods)
@@ -843,6 +850,9 @@ bool rogue_validate_shader(rogue_shader *shader, const char *when)
     * instruction!) */
    rogue_foreach_block (block, shader)
       validate_block(state, block);
+
+   if (state->ctx.atst_noifbs > 1)
+      validate_log(state, "Multiple ATST.IFBs are not permitted.");
 
    errors_present = validate_print_errors(state);
 

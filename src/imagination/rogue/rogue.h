@@ -1713,6 +1713,8 @@ enum rogue_backend_op {
    ROGUE_BACKEND_OP_LD,
    ROGUE_BACKEND_OP_ST,
 
+   ROGUE_BACKEND_OP_ATST,
+
    ROGUE_BACKEND_OP_FITR_PIXEL,
    /* ROGUE_BACKEND_OP_SAMPLE, */
    /* ROGUE_BACKEND_OP_CENTROID, */
@@ -1725,7 +1727,9 @@ enum rogue_backend_op {
    ROGUE_BACKEND_OP_SMP3D,
 
    ROGUE_BACKEND_OP_PSEUDO,
-   ROGUE_BACKEND_OP_COUNT = ROGUE_BACKEND_OP_PSEUDO,
+   ROGUE_BACKEND_OP_ATST_NEVER = ROGUE_BACKEND_OP_PSEUDO,
+
+   ROGUE_BACKEND_OP_COUNT,
 };
 
 typedef struct rogue_backend_io_info {
@@ -1822,6 +1826,8 @@ enum rogue_backend_op_mod {
    ROGUE_BACKEND_OP_MOD_FREEP, /* Free partition. */
 
    ROGUE_BACKEND_OP_MOD_NOWDF, /* Don't schedule WDF. */
+
+   ROGUE_BACKEND_OP_MOD_IFB, /* Inhibit FeedBack. */
 
    ROGUE_BACKEND_OP_MOD_COUNT,
 };

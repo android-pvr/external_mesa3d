@@ -678,6 +678,13 @@ static void trans_nir_intrinsic_load_workgroup_id_img(rogue_builder *b,
                             'x' + component);
 }
 
+static void trans_nir_intrinsic_discard(rogue_builder *b,
+                                        nir_intrinsic_instr *intr)
+{
+   rogue_backend_instr *atst_never = rogue_ATST_NEVER(b);
+   rogue_add_instr_comment(&atst_never->instr, "discard");
+}
+
 static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
 {
    switch (intr->intrinsic) {
@@ -717,6 +724,14 @@ static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
 
    case nir_intrinsic_load_workgroup_id_z_img:
       return trans_nir_intrinsic_load_workgroup_id_img(b, intr, 2);
+
+   case nir_intrinsic_discard:
+      return trans_nir_intrinsic_discard(b, intr);
+
+      /*
+   case nir_intrinsic_discard_if:
+      return trans_nir_intrinsic_discard_if(b, intr);
+      */
 
    default:
       break;
