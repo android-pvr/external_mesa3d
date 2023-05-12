@@ -890,7 +890,7 @@ static inline bool rogue_ref_is_idx_reg(const rogue_ref *ref)
 {
    return ref->type == ROGUE_REF_TYPE_REG &&
           (ref->reg->class == ROGUE_REG_CLASS_IDX0 ||
-           ref->reg->class == ROGUE_REG_CLASS_IDX0);
+           ref->reg->class == ROGUE_REG_CLASS_IDX1);
 }
 
 static inline bool rogue_ref_is_special_reg(const rogue_ref *ref)
