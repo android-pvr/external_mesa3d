@@ -827,7 +827,7 @@ static VkResult pvr_load_op_pds_data_create_and_upload(
                  value) {
       value.dest = PVRX(PDSINST_DOUTD_DEST_COMMON_STORE);
       value.a0 = load_op->shareds_dest_offset;
-      value.bsize = load_op->shareds_count;
+      value.bsize = load_op->const_shareds_count;
    }
 
    pvr_pds_set_sizes_pixel_shader_sa_texture_data(&program, dev_info);

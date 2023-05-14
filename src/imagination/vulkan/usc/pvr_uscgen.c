@@ -112,6 +112,7 @@ void pvr_uscgen_passthrough_vtx(struct util_dynarray *binary, bool rta)
 }
 
 void pvr_uscgen_load_op(struct util_dynarray *binary,
+                        struct pvr_uscgen_properties *load_op_properties,
                         const struct pvr_load_op *load_op)
 {
    const struct usc_mrt_setup *mrt_setup;
@@ -122,6 +123,8 @@ void pvr_uscgen_load_op(struct util_dynarray *binary,
    rogue_set_shader_name(shader, "load_op");
    rogue_builder_init(&b, shader);
    rogue_push_block(&b);
+
+   load_op_properties->shareds_dest_offset = next_sh_reg;
 
    /* TODO: Handle depth and stencil ops.  */
    if (load_op->is_hw_object)
@@ -188,6 +191,10 @@ void pvr_uscgen_load_op(struct util_dynarray *binary,
 
    rogue_shader_passes(shader);
    rogue_encode_shader(NULL, shader, binary);
+
+   load_op_properties->const_shareds_count = next_sh_reg;
+   load_op_properties->temps_count =
+      rogue_count_used_regs(shader, ROGUE_REG_CLASS_TEMP);
 
    ralloc_free(shader);
 }

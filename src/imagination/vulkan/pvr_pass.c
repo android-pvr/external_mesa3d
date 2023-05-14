@@ -322,7 +322,8 @@ pvr_generate_load_op_shader(struct pvr_device *device,
    const uint32_t cache_line_size = rogue_get_slc_cache_line_size(dev_info);
 
    struct util_dynarray load_op_bin;
-   pvr_uscgen_load_op(&load_op_bin, load_op);
+   struct pvr_uscgen_properties load_op_properties;
+   pvr_uscgen_load_op(&load_op_bin, &load_op_properties, load_op);
 
    VkResult result = pvr_gpu_upload_usc(device,
                                         util_dynarray_begin(&load_op_bin),
@@ -357,13 +358,9 @@ pvr_generate_load_op_shader(struct pvr_device *device,
    if (result != VK_SUCCESS)
       goto err_free_pds_frag_prog;
 
-   /* FIXME: These should be based on the USC and PDS programs, but are hard
-    * coded for now.
-    */
-   load_op->const_shareds_count = 1;
-   load_op->shareds_dest_offset = 0;
-   load_op->shareds_count = 1;
-   load_op->temps_count = 1;
+   load_op->const_shareds_count = load_op_properties.const_shareds_count;
+   load_op->shareds_dest_offset = load_op_properties.shareds_dest_offset;
+   load_op->temps_count = load_op_properties.temps_count;
 
    return VK_SUCCESS;
 
