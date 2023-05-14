@@ -264,6 +264,7 @@ pvr_create_subpass_load_op(struct pvr_device *device,
 
    load_op->is_hw_object = false;
    load_op->subpass = subpass;
+   load_op->clears_loads_state.mrt_setup = &hw_subpass->setup;
 
    *load_op_out = load_op;
 
@@ -306,6 +307,7 @@ pvr_create_render_load_op(struct pvr_device *device,
 
    load_op->is_hw_object = true;
    load_op->hw_render = hw_render;
+   load_op->clears_loads_state.mrt_setup = &hw_render->init_setup;
 
    *load_op_out = load_op;
 

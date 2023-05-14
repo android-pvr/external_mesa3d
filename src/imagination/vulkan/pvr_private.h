@@ -1187,6 +1187,7 @@ struct pvr_load_op {
     * be for the compiler to ingest which we can then discard.
     */
    struct {
+      const struct usc_mrt_setup *mrt_setup;
       uint16_t rt_clear_mask;
       uint16_t rt_load_mask;
 

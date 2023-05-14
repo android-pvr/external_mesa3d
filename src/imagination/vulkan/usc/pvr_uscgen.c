@@ -115,7 +115,8 @@ void pvr_uscgen_load_op(struct util_dynarray *binary,
                         struct pvr_uscgen_properties *load_op_properties,
                         const struct pvr_load_op *load_op)
 {
-   const struct usc_mrt_setup *mrt_setup;
+   const struct usc_mrt_setup *mrt_setup =
+      load_op->clears_loads_state.mrt_setup;
    uint32_t next_sh_reg = 0;
 
    rogue_builder b;
@@ -125,12 +126,6 @@ void pvr_uscgen_load_op(struct util_dynarray *binary,
    rogue_push_block(&b);
 
    load_op_properties->shareds_dest_offset = next_sh_reg;
-
-   /* TODO: Handle depth and stencil ops.  */
-   if (load_op->is_hw_object)
-      mrt_setup = &load_op->hw_render->init_setup;
-   else
-      assert(!"Handle load op at the subpass level.");
 
    u_foreach_bit (attachment_idx, load_op->clears_loads_state.rt_clear_mask) {
       VkFormat fmt = load_op->clears_loads_state.dest_vk_format[attachment_idx];
