@@ -29,6 +29,7 @@
 
 #include "pvr_common.h"
 #include "pvr_formats.h"
+#include "rogue/rogue.h"
 #include "util/u_dynarray.h"
 
 enum pvr_int_coord_set_floats {
@@ -139,6 +140,7 @@ struct pvr_uscgen_properties {
    uint32_t const_shareds_count;
    uint32_t shareds_dest_offset;
    uint32_t temps_count;
+   enum rogue_msaa_mode msaa_mode;
 };
 
 struct pvr_load_op;

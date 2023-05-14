@@ -187,6 +187,7 @@ void pvr_uscgen_load_op(struct util_dynarray *binary,
    rogue_shader_passes(shader);
    rogue_encode_shader(NULL, shader, binary);
 
+   load_op_properties->msaa_mode = ROGUE_MSAA_MODE_PIXEL;
    load_op_properties->const_shareds_count = next_sh_reg;
    load_op_properties->temps_count =
       rogue_count_used_regs(shader, ROGUE_REG_CLASS_TEMP);
