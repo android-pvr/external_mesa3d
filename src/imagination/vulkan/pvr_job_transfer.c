@@ -2240,6 +2240,10 @@ static VkResult pvr_pack_clear_color(VkFormat format,
    uint32_t pbe_pack_mode = pvr_get_pbe_packmode(format);
    const bool pbe_norm = vk_format_is_normalized(format);
 
+   /* TODO: Use PBE Accum format NOT PBE pack format! */
+   if (vk_format_is_srgb(format))
+      pbe_pack_mode = PVRX(PBESTATE_PACKMODE_F16F16F16F16);
+
    if (pbe_pack_mode == PVRX(PBESTATE_PACKMODE_INVALID))
       return vk_error(NULL, VK_ERROR_FORMAT_NOT_SUPPORTED);
 
