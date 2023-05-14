@@ -129,4 +129,9 @@ static inline bool vk_format_is_alpha(VkFormat format)
    return util_format_is_alpha(vk_format_to_pipe_format(format));
 }
 
+static inline bool vk_format_is_depth(VkFormat format)
+{
+   return util_format_has_depth(vk_format_description(format));
+}
+
 #endif /* VK_FORMAT_H */
