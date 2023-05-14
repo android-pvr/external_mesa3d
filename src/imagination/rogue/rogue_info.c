@@ -588,7 +588,7 @@ const rogue_backend_op_info rogue_backend_op_infos[ROGUE_BACKEND_OP_COUNT] = {
          [1] = 3,
          [2] = 1,
          [3] = 3,
-         [4] = 1,
+         [4] = ~0,
       },
       .valnum_src = 5,
       .dst_valnum_mask = B(0),

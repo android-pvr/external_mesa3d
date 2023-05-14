@@ -111,24 +111,144 @@ void pvr_uscgen_passthrough_vtx(struct util_dynarray *binary, bool rta)
    ralloc_free(shader);
 }
 
-void pvr_uscgen_load_op(struct util_dynarray *binary,
-                        struct pvr_uscgen_properties *load_op_properties,
-                        const struct pvr_load_op *load_op)
+struct pvr_uscgen_load_op_context {
+   const struct pvr_load_op *load_op;
+   struct pvr_uscgen_properties *load_op_properties;
+   uint32_t next_sh_reg;
+   uint32_t next_temp_reg;
+};
+
+static rogue_ref pvr_uscgen_rogue_pack(rogue_builder *b,
+                                       struct pvr_uscgen_load_op_context *ctx,
+                                       rogue_ref src,
+                                       VkFormat fmt)
+{
+   enum pvr_pbe_accum_format pbe_accum_format;
+   uint32_t nr_components;
+   rogue_alu_instr *pck;
+   rogue_ref dst;
+
+   pbe_accum_format = pvr_get_pbe_accum_format(fmt);
+   nr_components = vk_format_get_nr_components(fmt);
+
+   switch (pbe_accum_format) {
+   case PVR_PBE_ACCUM_FORMAT_U8:
+   case PVR_PBE_ACCUM_FORMAT_UINT8:
+      dst = rogue_ref_reg(rogue_temp_reg(b->shader, ctx->next_temp_reg++));
+      pck = rogue_PCK_U8888(b, dst, src);
+      if (pbe_accum_format == PVR_PBE_ACCUM_FORMAT_U8)
+         rogue_set_alu_op_mod(pck, ROGUE_ALU_OP_MOD_SCALE);
+      rogue_set_instr_repeat(&pck->instr, nr_components);
+      return dst;
+
+   case PVR_PBE_ACCUM_FORMAT_S8:
+   case PVR_PBE_ACCUM_FORMAT_SINT8:
+      dst = rogue_ref_reg(rogue_temp_reg(b->shader, ctx->next_temp_reg++));
+      pck = rogue_PCK_S8888(b, dst, src);
+      if (pbe_accum_format == PVR_PBE_ACCUM_FORMAT_S8)
+         rogue_set_alu_op_mod(pck, ROGUE_ALU_OP_MOD_SCALE);
+      rogue_set_instr_repeat(&pck->instr, nr_components);
+      return dst;
+
+   case PVR_PBE_ACCUM_FORMAT_U16:
+   case PVR_PBE_ACCUM_FORMAT_UINT16:
+   case PVR_PBE_ACCUM_FORMAT_S16:
+   case PVR_PBE_ACCUM_FORMAT_SINT16:
+   case PVR_PBE_ACCUM_FORMAT_F16:
+      for (unsigned i = 0; i < nr_components; i += 2) {
+         unsigned size = MIN2(2, nr_components - i);
+         ASSERTED enum rogue_reg_class reg_class;
+         unsigned src_index = ~0;
+         rogue_ref src_i;
+         rogue_ref dst_i;
+
+         rogue_ref_reg_regarray_info(&src, &reg_class, &src_index, NULL);
+         assert(src_index != ~0);
+         assert(reg_class == ROGUE_REG_CLASS_TEMP);
+
+         src_i = rogue_ref_regarray(
+            rogue_temp_regarray(b->shader, size, src_index + i));
+         dst_i = rogue_ref_reg(
+            rogue_temp_reg(b->shader, ctx->next_temp_reg + i / 2));
+
+         switch (pbe_accum_format) {
+         default:
+            unreachable("logically impossible");
+         case PVR_PBE_ACCUM_FORMAT_U16:
+         case PVR_PBE_ACCUM_FORMAT_UINT16:
+            pck = rogue_PCK_U1616(b, dst_i, src_i);
+            break;
+         case PVR_PBE_ACCUM_FORMAT_S16:
+         case PVR_PBE_ACCUM_FORMAT_SINT16:
+            pck = rogue_PCK_S1616(b, dst_i, src_i);
+            break;
+         case PVR_PBE_ACCUM_FORMAT_F16:
+            pck = rogue_PCK_F16F16(b, dst_i, src_i);
+            break;
+         }
+
+         if (pbe_accum_format == PVR_PBE_ACCUM_FORMAT_U16 ||
+             pbe_accum_format == PVR_PBE_ACCUM_FORMAT_S16)
+            rogue_set_alu_op_mod(pck, ROGUE_ALU_OP_MOD_SCALE);
+
+         rogue_set_instr_repeat(&pck->instr, size);
+      }
+      dst =
+         rogue_ref_regarray(rogue_temp_regarray(b->shader,
+                                                DIV_ROUND_UP(nr_components, 2),
+                                                ctx->next_temp_reg));
+      ctx->next_temp_reg += DIV_ROUND_UP(nr_components, 2);
+      return dst;
+
+   case PVR_PBE_ACCUM_FORMAT_F32:
+   case PVR_PBE_ACCUM_FORMAT_UINT32:
+   case PVR_PBE_ACCUM_FORMAT_SINT32:
+      /* Packing is a no-op here */
+      return src;
+
+   case PVR_PBE_ACCUM_FORMAT_U1010102:
+      if (fmt == VK_FORMAT_A2B10G10R10_UINT_PACK32) {
+         /* Need to swap R and B components */
+         ASSERTED enum rogue_reg_class reg_class;
+         unsigned src_index = ~0;
+         rogue_reg *swap_dst = rogue_temp_reg(b->shader, ctx->next_temp_reg);
+
+         rogue_ref_reg_regarray_info(&src, &reg_class, &src_index, NULL);
+         assert(src_index != ~0);
+         assert(reg_class == ROGUE_REG_CLASS_TEMP);
+
+         rogue_MOV(b,
+                   rogue_ref_reg(swap_dst),
+                   rogue_ref_reg(rogue_temp_reg(b->shader, src_index + 2)));
+         rogue_MOV(b,
+                   rogue_ref_reg(rogue_temp_reg(b->shader, src_index + 2)),
+                   rogue_ref_reg(rogue_temp_reg(b->shader, src_index)));
+         rogue_MOV(b,
+                   rogue_ref_reg(rogue_temp_reg(b->shader, src_index)),
+                   rogue_ref_reg(swap_dst));
+      }
+      dst = rogue_ref_reg(rogue_temp_reg(b->shader, ctx->next_temp_reg++));
+      pck = rogue_PCK_2F10F10F10(b, dst, src);
+      rogue_set_instr_repeat(&pck->instr, 4);
+      return dst;
+
+   default:
+      unreachable("Unknown pbe accum format. Implementation error");
+   }
+
+   unreachable("Cannot reach this");
+}
+
+static void pvr_uscgen_load_op_clears(rogue_builder *b,
+                                      struct pvr_uscgen_load_op_context *ctx)
 {
    const struct usc_mrt_setup *mrt_setup =
-      load_op->clears_loads_state.mrt_setup;
-   uint32_t next_sh_reg = 0;
+      ctx->load_op->clears_loads_state.mrt_setup;
 
-   rogue_builder b;
-   rogue_shader *shader = rogue_shader_create(NULL, MESA_SHADER_NONE);
-   rogue_set_shader_name(shader, "load_op");
-   rogue_builder_init(&b, shader);
-   rogue_push_block(&b);
-
-   load_op_properties->shareds_dest_offset = next_sh_reg;
-
-   u_foreach_bit (attachment_idx, load_op->clears_loads_state.rt_clear_mask) {
-      VkFormat fmt = load_op->clears_loads_state.dest_vk_format[attachment_idx];
+   u_foreach_bit (attachment_idx,
+                  ctx->load_op->clears_loads_state.rt_clear_mask) {
+      VkFormat fmt =
+         ctx->load_op->clears_loads_state.dest_vk_format[attachment_idx];
       uint32_t accum_size_dwords =
          DIV_ROUND_UP(pvr_get_pbe_accum_format_size_in_bytes(fmt),
                       sizeof(uint32_t));
@@ -150,36 +270,174 @@ void pvr_uscgen_load_op(struct util_dynarray *binary,
 
       for (int i = 0; i < accum_size_dwords; i++) {
          rogue_reg *dst =
-            rogue_pixout_reg(shader, mrt_resource->reg.output_reg + i);
-         rogue_reg *src = rogue_shared_reg(shader, next_sh_reg++);
+            rogue_pixout_reg(b->shader, mrt_resource->reg.output_reg + i);
+         rogue_reg *src = rogue_shared_reg(b->shader, ctx->next_sh_reg++);
          rogue_instr *instr =
-            &rogue_MOV(&b, rogue_ref_reg(dst), rogue_ref_reg(src))->instr;
+            &rogue_MOV(b, rogue_ref_reg(dst), rogue_ref_reg(src))->instr;
          rogue_add_instr_comment(instr, comment);
       }
    }
+}
 
-   u_foreach_bit (attachment_idx, load_op->clears_loads_state.rt_load_mask) {
+static void pvr_uscgen_load_op_loads(rogue_builder *b,
+                                     struct pvr_uscgen_load_op_context *ctx)
+{
+   const struct usc_mrt_setup *mrt_setup =
+      ctx->load_op->clears_loads_state.mrt_setup;
+
+   bool need_sample_id =
+      !!(ctx->load_op->clears_loads_state.unresolved_msaa_mask &
+         ctx->load_op->clears_loads_state.rt_load_mask);
+
+   rogue_regarray *smp_coords = NULL;
+   rogue_regarray *lod_value = NULL;
+
+   if (need_sample_id)
+      ctx->load_op_properties->msaa_mode = ROGUE_MSAA_MODE_FULL;
+
+   lod_value = rogue_temp_regarray(b->shader, 1, ctx->next_temp_reg++);
+   rogue_MOV(b, rogue_ref_regarray(lod_value), rogue_ref_imm(0));
+
+   {
+      /* TODO: Handle 2D Array and 3D volume surfaces */
+      uint32_t smp_coord_size = need_sample_id ? 3 : 2;
+      rogue_reg *pos_x = rogue_special_reg(b->shader, ROGUE_SPECIAL_REG_X_P);
+      rogue_reg *pos_y = rogue_special_reg(b->shader, ROGUE_SPECIAL_REG_Y_P);
+      uint32_t next_coord_comp = 0;
+
+      rogue_MOV(b,
+                rogue_ref_reg(rogue_temp_reg(b->shader, ctx->next_temp_reg)),
+                rogue_ref_reg(pos_x));
+      rogue_MOV(
+         b,
+         rogue_ref_reg(rogue_temp_reg(b->shader, ctx->next_temp_reg + 1)),
+         rogue_ref_reg(pos_y));
+      next_coord_comp += 2;
+
+      if (need_sample_id) {
+         rogue_reg *sample_id =
+            rogue_special_reg(b->shader, ROGUE_SPECIAL_REG_SAMP_NUM);
+         rogue_MOV(
+            b,
+            rogue_ref_reg(
+               rogue_temp_reg(b->shader, ctx->next_temp_reg + next_coord_comp)),
+            rogue_ref_reg(sample_id));
+         next_coord_comp++;
+      }
+
+      smp_coords =
+         rogue_temp_regarray(b->shader, smp_coord_size, ctx->next_temp_reg);
+
+      assert(next_coord_comp == smp_coord_size);
+      ctx->next_temp_reg += smp_coord_size;
+   }
+
+   u_foreach_bit (attachment_idx,
+                  ctx->load_op->clears_loads_state.rt_load_mask) {
+      VkFormat fmt =
+         ctx->load_op->clears_loads_state.dest_vk_format[attachment_idx];
       struct usc_mrt_resource *mrt_resource =
          &mrt_setup->mrt_resources[attachment_idx];
+      uint32_t accum_size_dwords =
+         DIV_ROUND_UP(pvr_get_pbe_accum_format_size_in_bytes(fmt),
+                      sizeof(uint32_t));
+
+      rogue_backend_instr *smp_instr;
+
+      rogue_regarray *image_state =
+         rogue_shared_regarray(b->shader,
+                               PVR_IMAGE_DESCRIPTOR_SIZE,
+                               ctx->next_sh_reg);
+      rogue_regarray *sampler_state =
+         rogue_shared_regarray(b->shader,
+                               PVR_SAMPLER_DESCRIPTOR_SIZE,
+                               ctx->next_sh_reg + PVR_IMAGE_DESCRIPTOR_SIZE);
+
+      uint32_t nr_components = vk_format_get_nr_components(fmt);
+      rogue_ref accum;
+      rogue_regarray *smp_dst =
+         rogue_temp_regarray(b->shader, nr_components, ctx->next_temp_reg);
+      ctx->next_temp_reg += nr_components;
+
+      smp_instr = rogue_SMP2D(b,
+                              rogue_ref_regarray(smp_dst),
+                              rogue_ref_drc(0),
+                              rogue_ref_regarray(image_state),
+                              rogue_ref_regarray(smp_coords),
+                              rogue_ref_regarray(sampler_state),
+                              rogue_ref_regarray(lod_value),
+                              rogue_ref_val(nr_components));
+
+      rogue_set_backend_op_mod(smp_instr, ROGUE_BACKEND_OP_MOD_REPLACE);
+      if (vk_format_is_unorm(fmt) || vk_format_is_snorm(fmt))
+         rogue_set_backend_op_mod(smp_instr, ROGUE_BACKEND_OP_MOD_FCNORM);
+
+      /* Pack the sample results into accumulation format */
+      accum = pvr_uscgen_rogue_pack(b, ctx, rogue_ref_regarray(smp_dst), fmt);
+      if (accum.type != ROGUE_REF_TYPE_REGARRAY || accum.regarray != smp_dst)
+         ctx->next_temp_reg -= nr_components;
 
       /* TODO: Handle spilling to tile buffers. */
       assert(mrt_resource->type == USC_MRT_RESOURCE_TYPE_OUTPUT_REG);
 
-      /* TODO: Need to do a masked write to the output regs to handle this? */
-      /* Is this ever non 0? Ignoring tile buffers. */
+      /* pvr_hw_pass always allocates the output regs with 4-byte alignment
+       */
       assert(mrt_resource->reg.offset == 0);
 
-      /* TODO: Emit instruction for the LOAD_OP_LOAD. */
-      /* Final output should go to mrt_resource->reg.output_reg + byte offset.
-       */
-      /* The descriptor can be found at `next_sh_reg`. */
-      assert(!"Unimplemented");
+      assert(accum_size_dwords ==
+             DIV_ROUND_UP(mrt_resource->intermediate_size, sizeof(uint32_t)));
+      assert(accum_size_dwords == 1 ||
+             rogue_ref_get_regarray_size(&accum) == accum_size_dwords);
 
-      next_sh_reg += sizeof(struct pvr_combined_image_sampler_descriptor) / 4;
+      for (int i = 0; i < accum_size_dwords; i++) {
+         rogue_reg *src;
+         rogue_reg *dst =
+            rogue_pixout_reg(b->shader, mrt_resource->reg.output_reg + i);
+
+         ASSERTED enum rogue_reg_class reg_class;
+         unsigned src_index = ~0;
+
+         rogue_ref_reg_regarray_info(&accum, &reg_class, &src_index, NULL);
+         assert(src_index != ~0);
+         assert(reg_class == ROGUE_REG_CLASS_TEMP);
+
+         src = rogue_temp_reg(b->shader, src_index + i);
+
+         rogue_MOV(b, rogue_ref_reg(dst), rogue_ref_reg(src));
+      }
+
+      ctx->next_temp_reg -= accum_size_dwords;
+
+      ctx->next_sh_reg +=
+         PVR_IMAGE_DESCRIPTOR_SIZE + PVR_SAMPLER_DESCRIPTOR_SIZE;
    }
+}
+
+void pvr_uscgen_load_op(struct util_dynarray *binary,
+                        struct pvr_uscgen_properties *load_op_properties,
+                        const struct pvr_load_op *load_op)
+{
+   struct pvr_uscgen_load_op_context ctx;
+
+   rogue_builder b;
+   rogue_shader *shader = rogue_shader_create(NULL, MESA_SHADER_FRAGMENT);
+   rogue_set_shader_name(shader, "load_op");
+   rogue_builder_init(&b, shader);
+   rogue_push_block(&b);
+
+   ctx.load_op = load_op;
+   ctx.next_sh_reg = 0;
+   ctx.next_temp_reg = 0;
+
+   ctx.load_op_properties = load_op_properties;
+   load_op_properties->shareds_dest_offset = ctx.next_sh_reg;
+   load_op_properties->msaa_mode = ROGUE_MSAA_MODE_PIXEL;
+
+   pvr_uscgen_load_op_clears(&b, &ctx);
+
+   pvr_uscgen_load_op_loads(&b, &ctx);
 
    /* TODO: Unsupported options. */
-   assert(load_op->clears_loads_state.unresolved_msaa_mask == 0);
    assert(load_op->clears_loads_state.depth_clear_to_reg == -1);
 
    rogue_END(&b);
@@ -187,8 +445,7 @@ void pvr_uscgen_load_op(struct util_dynarray *binary,
    rogue_shader_passes(shader);
    rogue_encode_shader(NULL, shader, binary);
 
-   load_op_properties->msaa_mode = ROGUE_MSAA_MODE_PIXEL;
-   load_op_properties->const_shareds_count = next_sh_reg;
+   load_op_properties->const_shareds_count = ctx.next_sh_reg;
    load_op_properties->temps_count =
       rogue_count_used_regs(shader, ROGUE_REG_CLASS_TEMP);
 
