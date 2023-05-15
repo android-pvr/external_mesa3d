@@ -162,12 +162,10 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
       NIR_PASS_V(nir, nir_lower_clamp_color_outputs);
 #endif
 
-#if 0
    const struct nir_lower_sysvals_to_varyings_options sysvals_to_varyings = {
-      .point_coord = true,
+      .frag_coord = true,
    };
    NIR_PASS_V(nir, nir_lower_sysvals_to_varyings, &sysvals_to_varyings);
-#endif
 
    /* Inlining. */
    NIR_PASS_V(nir, nir_lower_returns);
@@ -195,7 +193,6 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
                  nir_lower_input_attachments,
                  &(nir_input_attachment_options){
                     .use_fragcoord_sysval = true,
-                    .use_layer_id_sysval = false,
                  });
 
    NIR_PASS_V(nir,

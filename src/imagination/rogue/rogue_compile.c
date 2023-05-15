@@ -313,6 +313,27 @@ static void trans_nir_intrinsic_load_input_fs(rogue_builder *b,
 
    struct nir_io_semantics io_semantics = nir_intrinsic_io_semantics(intr);
    unsigned component = nir_intrinsic_component(intr);
+
+   if (io_semantics.location == VARYING_SLOT_POS && component < 2) {
+      rogue_reg *src;
+
+      switch (component) {
+      case 0:
+         src = rogue_special_reg(b->shader, ROGUE_SPECIAL_REG_X_P);
+         break;
+
+      case 1:
+         src = rogue_special_reg(b->shader, ROGUE_SPECIAL_REG_Y_P);
+         break;
+      }
+
+      rogue_instr *instr = &rogue_MOV(b, dst, rogue_ref_reg(src))->instr;
+      rogue_add_instr_commentf(instr,
+                               "load_input_fs_coord_%c",
+                               'x' + component);
+      return;
+   }
+
    unsigned coeff_index = rogue_coeff_index_fs(&fs_data->iterator_args,
                                                io_semantics.location,
                                                component) *

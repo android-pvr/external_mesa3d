@@ -2167,12 +2167,12 @@ static void pvr_collect_io_data_fs(struct rogue_common_build_data *common_data,
          const bool f16 = glsl_type_is_16bit(type);
 
          if (var->data.location == VARYING_SLOT_POS) {
-            unsigned base = 4 * idx + var->data.location_frac;
+            unsigned base = var->data.location_frac;
             /* Includes .z */
             if (base <= 2 && (base + components) >= 2) {
                pvr_reserve_iterator(&fs_data->iterator_args,
                                     2,
-                                    INTERP_MODE_SMOOTH,
+                                    INTERP_MODE_NOPERSPECTIVE,
                                     false,
                                     1);
                fs_data->iterator_args.iterates_depth = true;
