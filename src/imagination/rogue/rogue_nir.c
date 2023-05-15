@@ -359,6 +359,9 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
 	NIR_PASS_V(nir, nir_schedule, &schedule_options);
 #endif
 
+   /* TODO: Clean up duplicates and eventually remove this. */
+   NIR_PASS_V(nir, rogue_nir_expand_swizzles_to_vec);
+
    /* Assign I/O locations. */
    nir_assign_io_var_locations(nir,
                                nir_var_shader_in,

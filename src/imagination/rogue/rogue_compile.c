@@ -47,18 +47,20 @@ static rogue_ref nir_ssa_reg_alu_src32(rogue_shader *shader,
 
    unsigned index = alu->src[src_num].src.ssa->index;
    unsigned num_components = nir_src_num_components(alu->src[src_num].src);
-   unsigned num_components_used =
+   unsigned components_required =
       nir_ssa_alu_instr_src_components(alu, src_num);
 
+   assert(components_required == 1 || num_components == components_required);
+
    if (src_components)
-      *src_components = num_components_used;
+      *src_components = components_required;
 
    if (num_components > 1) {
       /* Select the component. */
       unsigned read_mask = nir_alu_instr_src_read_mask(alu, src_num);
       unsigned component = ffs(read_mask) - 1;
       return rogue_ref_regarray(
-         rogue_ssa_vec_regarray(shader, num_components_used, index, component));
+         rogue_ssa_vec_regarray(shader, components_required, index, component));
    }
 
    return rogue_ref_reg(rogue_ssa_reg(shader, index));
