@@ -27,6 +27,7 @@
 #include "rogue/rogue.h"
 #include "rogue/rogue_builder.h"
 #include "util/bitscan.h"
+#include "util/log.h"
 #include "util/u_dynarray.h"
 #include "vulkan/util/vk_format.h"
 #include "vk_format.h"
@@ -139,28 +140,47 @@ static rogue_ref pvr_uscgen_rogue_pack(rogue_builder *b,
    nr_components = vk_format_get_nr_components(fmt);
 
    switch (pbe_accum_format) {
-   case PVR_PBE_ACCUM_FORMAT_U8:
    case PVR_PBE_ACCUM_FORMAT_UINT8:
+   case PVR_PBE_ACCUM_FORMAT_SINT8:
+   case PVR_PBE_ACCUM_FORMAT_U1010102:
+      pvr_finishme("Need proper integer packing support");
+      dst = rogue_ref_reg(rogue_temp_reg(b->shader, ctx->next_temp_reg++));
+      pck = rogue_MOV(b, dst, rogue_ref_imm(0));
+      return dst;
+
+   case PVR_PBE_ACCUM_FORMAT_UINT16:
+   case PVR_PBE_ACCUM_FORMAT_SINT16:
+      pvr_finishme("Need proper integer packing support");
+      for (unsigned i = 0; i < nr_components; i += 2) {
+         rogue_ref dst_i = rogue_ref_reg(
+            rogue_temp_reg(b->shader, ctx->next_temp_reg + i / 2));
+         pck = rogue_MOV(b, dst_i, rogue_ref_imm(0));
+      }
+      dst =
+         rogue_ref_regarray(rogue_temp_regarray(b->shader,
+                                                DIV_ROUND_UP(nr_components, 2),
+                                                ctx->next_temp_reg));
+      ctx->next_temp_reg += DIV_ROUND_UP(nr_components, 2);
+      return dst;
+
+   case PVR_PBE_ACCUM_FORMAT_U8:
       dst = rogue_ref_reg(rogue_temp_reg(b->shader, ctx->next_temp_reg++));
       pck = rogue_PCK_U8888(b, dst, src);
-      if (pbe_accum_format == PVR_PBE_ACCUM_FORMAT_U8)
+      if (vk_format_is_normalized(fmt))
          rogue_set_alu_op_mod(pck, ROGUE_ALU_OP_MOD_SCALE);
       rogue_set_instr_repeat(&pck->instr, nr_components);
       return dst;
 
    case PVR_PBE_ACCUM_FORMAT_S8:
-   case PVR_PBE_ACCUM_FORMAT_SINT8:
       dst = rogue_ref_reg(rogue_temp_reg(b->shader, ctx->next_temp_reg++));
       pck = rogue_PCK_S8888(b, dst, src);
-      if (pbe_accum_format == PVR_PBE_ACCUM_FORMAT_S8)
+      if (vk_format_is_normalized(fmt))
          rogue_set_alu_op_mod(pck, ROGUE_ALU_OP_MOD_SCALE);
       rogue_set_instr_repeat(&pck->instr, nr_components);
       return dst;
 
    case PVR_PBE_ACCUM_FORMAT_U16:
-   case PVR_PBE_ACCUM_FORMAT_UINT16:
    case PVR_PBE_ACCUM_FORMAT_S16:
-   case PVR_PBE_ACCUM_FORMAT_SINT16:
    case PVR_PBE_ACCUM_FORMAT_F16:
       for (unsigned i = 0; i < nr_components; i += 2) {
          unsigned size = MIN2(2, nr_components - i);
@@ -182,11 +202,9 @@ static rogue_ref pvr_uscgen_rogue_pack(rogue_builder *b,
          default:
             unreachable("logically impossible");
          case PVR_PBE_ACCUM_FORMAT_U16:
-         case PVR_PBE_ACCUM_FORMAT_UINT16:
             pck = rogue_PCK_U1616(b, dst_i, src_i);
             break;
          case PVR_PBE_ACCUM_FORMAT_S16:
-         case PVR_PBE_ACCUM_FORMAT_SINT16:
             pck = rogue_PCK_S1616(b, dst_i, src_i);
             break;
          case PVR_PBE_ACCUM_FORMAT_F16:
@@ -194,8 +212,8 @@ static rogue_ref pvr_uscgen_rogue_pack(rogue_builder *b,
             break;
          }
 
-         if (pbe_accum_format == PVR_PBE_ACCUM_FORMAT_U16 ||
-             pbe_accum_format == PVR_PBE_ACCUM_FORMAT_S16)
+         if (pbe_accum_format != PVR_PBE_ACCUM_FORMAT_F16 &&
+             vk_format_is_normalized(fmt))
             rogue_set_alu_op_mod(pck, ROGUE_ALU_OP_MOD_SCALE);
 
          rogue_set_instr_repeat(&pck->instr, size);
@@ -212,32 +230,6 @@ static rogue_ref pvr_uscgen_rogue_pack(rogue_builder *b,
    case PVR_PBE_ACCUM_FORMAT_SINT32:
       /* Packing is a no-op here */
       return src;
-
-   case PVR_PBE_ACCUM_FORMAT_U1010102:
-      if (fmt == VK_FORMAT_A2B10G10R10_UINT_PACK32) {
-         /* Need to swap R and B components */
-         ASSERTED enum rogue_reg_class reg_class;
-         unsigned src_index = ~0;
-         rogue_reg *swap_dst = rogue_temp_reg(b->shader, ctx->next_temp_reg);
-
-         rogue_ref_reg_regarray_info(&src, &reg_class, &src_index, NULL);
-         assert(src_index != ~0);
-         assert(reg_class == ROGUE_REG_CLASS_TEMP);
-
-         rogue_MOV(b,
-                   rogue_ref_reg(swap_dst),
-                   rogue_ref_reg(rogue_temp_reg(b->shader, src_index + 2)));
-         rogue_MOV(b,
-                   rogue_ref_reg(rogue_temp_reg(b->shader, src_index + 2)),
-                   rogue_ref_reg(rogue_temp_reg(b->shader, src_index)));
-         rogue_MOV(b,
-                   rogue_ref_reg(rogue_temp_reg(b->shader, src_index)),
-                   rogue_ref_reg(swap_dst));
-      }
-      dst = rogue_ref_reg(rogue_temp_reg(b->shader, ctx->next_temp_reg++));
-      pck = rogue_PCK_2F10F10F10(b, dst, src);
-      rogue_set_instr_repeat(&pck->instr, 4);
-      return dst;
 
    default:
       unreachable("Unknown pbe accum format. Implementation error");
