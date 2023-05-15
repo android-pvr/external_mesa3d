@@ -277,6 +277,26 @@ static void pvr_uscgen_load_op_clears(rogue_builder *b,
          rogue_add_instr_comment(instr, comment);
       }
    }
+
+   if (ctx->load_op->clears_loads_state.depth_clear_to_reg !=
+       PVR_NO_DEPTH_CLEAR_TO_REG) {
+      rogue_reg *dst;
+      rogue_reg *src;
+      rogue_instr *instr;
+      int32_t depth_idx = ctx->load_op->clears_loads_state.depth_clear_to_reg;
+      struct usc_mrt_resource *mrt_resource =
+         &mrt_setup->mrt_resources[depth_idx];
+
+      /* Replicated depth is a single F32 value */
+      assert(mrt_resource->type == USC_MRT_RESOURCE_TYPE_OUTPUT_REG);
+      assert(mrt_resource->intermediate_size == sizeof(uint32_t));
+      assert(mrt_resource->reg.offset == 0);
+
+      dst = rogue_pixout_reg(b->shader, mrt_resource->reg.output_reg);
+      src = rogue_shared_reg(b->shader, ctx->next_sh_reg++);
+      instr = &rogue_MOV(b, rogue_ref_reg(dst), rogue_ref_reg(src))->instr;
+      rogue_add_instr_comment(instr, "clear_zreplicate");
+   }
 }
 
 static void pvr_uscgen_load_op_loads(rogue_builder *b,
@@ -433,12 +453,11 @@ void pvr_uscgen_load_op(struct util_dynarray *binary,
    load_op_properties->shareds_dest_offset = ctx.next_sh_reg;
    load_op_properties->msaa_mode = ROGUE_MSAA_MODE_PIXEL;
 
-   pvr_uscgen_load_op_clears(&b, &ctx);
+   if (load_op->clears_loads_state.rt_clear_mask)
+      pvr_uscgen_load_op_clears(&b, &ctx);
 
-   pvr_uscgen_load_op_loads(&b, &ctx);
-
-   /* TODO: Unsupported options. */
-   assert(load_op->clears_loads_state.depth_clear_to_reg == -1);
+   if (load_op->clears_loads_state.rt_load_mask)
+      pvr_uscgen_load_op_loads(&b, &ctx);
 
    rogue_END(&b);
 
