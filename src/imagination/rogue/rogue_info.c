@@ -604,7 +604,14 @@ const rogue_backend_op_info rogue_backend_op_infos[ROGUE_BACKEND_OP_COUNT] = {
       .valnum_src = 5,
       .dst_valnum_mask = B(0),
    },
-   [ROGUE_BACKEND_OP_ATST_NEVER] = { .str = "atst.never", },
+   [ROGUE_BACKEND_OP_ATST_IF] = { .str = "atst.if", .num_srcs = 2,
+      .supported_op_mods = OM(NEVER) | OM(LESS) | OM(EQUAL) | OM(LESSEQUAL) |
+         OM(GREATER) | OM(NOTEQUAL) | OM(GREATEREQUAL) | OM(ALWAYS),
+      .supported_src_types = {
+         [0] = T(REG) | T(REGARRAY) | T(IMM),
+         [1] = T(REG) | T(REGARRAY) | T(IMM),
+      },
+   },
 };
 #undef B
 #undef T
@@ -645,6 +652,14 @@ const rogue_backend_op_mod_info rogue_backend_op_mod_infos[ROGUE_BACKEND_OP_MOD_
    [ROGUE_BACKEND_OP_MOD_FREEP] = { .str = "freep", },
    [ROGUE_BACKEND_OP_MOD_NOWDF] = { .str = "nowdf", },
    [ROGUE_BACKEND_OP_MOD_IFB] = { .str = "ifb", },
+   [ROGUE_BACKEND_OP_MOD_NEVER] = { .str = "never", .exclude = OM(LESS) | OM(EQUAL) | OM(LESSEQUAL) | OM(GREATER) | OM(NOTEQUAL) | OM(GREATEREQUAL) | OM(ALWAYS) },
+   [ROGUE_BACKEND_OP_MOD_LESS] = { .str = "less", .exclude = OM(NEVER) | OM(EQUAL) | OM(LESSEQUAL) | OM(GREATER) | OM(NOTEQUAL) | OM(GREATEREQUAL) | OM(ALWAYS) },
+   [ROGUE_BACKEND_OP_MOD_EQUAL] = { .str = "equal", .exclude = OM(NEVER) | OM(LESS) | OM(LESSEQUAL) | OM(GREATER) | OM(NOTEQUAL) | OM(GREATEREQUAL) | OM(ALWAYS) },
+   [ROGUE_BACKEND_OP_MOD_LESSEQUAL] = { .str = "lessequal", .exclude = OM(NEVER) | OM(LESS) | OM(EQUAL) | OM(GREATER) | OM(NOTEQUAL) | OM(GREATEREQUAL) | OM(ALWAYS) },
+   [ROGUE_BACKEND_OP_MOD_GREATER] = { .str = "greater", .exclude = OM(NEVER) | OM(LESS) | OM(EQUAL) | OM(LESSEQUAL) | OM(NOTEQUAL) | OM(GREATEREQUAL) | OM(ALWAYS) },
+   [ROGUE_BACKEND_OP_MOD_NOTEQUAL] = { .str = "notequal", .exclude = OM(NEVER) | OM(LESS) | OM(EQUAL) | OM(LESSEQUAL) | OM(GREATER) | OM(GREATEREQUAL) | OM(ALWAYS) },
+   [ROGUE_BACKEND_OP_MOD_GREATEREQUAL] = { .str = "greaterequal", .exclude = OM(NEVER) | OM(LESS) | OM(EQUAL) | OM(LESSEQUAL) | OM(GREATER) | OM(NOTEQUAL) | OM(ALWAYS) },
+   [ROGUE_BACKEND_OP_MOD_ALWAYS] = { .str = "always", .exclude = OM(NEVER) | OM(LESS) | OM(EQUAL) | OM(LESSEQUAL) | OM(GREATER) | OM(NOTEQUAL) | OM(GREATEREQUAL) },
 };
 #undef OM
 

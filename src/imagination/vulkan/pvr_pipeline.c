@@ -1743,12 +1743,17 @@ pvr_fragment_state_init(struct pvr_graphics_pipeline *gfx_pipeline,
    fragment_state->stage_state.uses_atomic_ops = false;
    fragment_state->stage_state.uses_texture_rw = false;
    fragment_state->stage_state.uses_barrier = false;
-   fragment_state->stage_state.has_side_effects = false;
+   fragment_state->stage_state.has_side_effects = fs_data->side_effects;
    fragment_state->stage_state.empty_program = false;
 
    fragment_state->needs_iterated_depth = fs_data->iterator_args.iterates_depth;
 
-   fragment_state->pass_type = PVRX(TA_PASSTYPE_OPAQUE);
+   /* TODO: handle other cases. */
+   if (fs_data->discard)
+      fragment_state->pass_type = PVRX(TA_PASSTYPE_PUNCH_THROUGH);
+   else
+      fragment_state->pass_type = PVRX(TA_PASSTYPE_OPAQUE);
+
    fragment_state->entry_offset = 0;
 
    /* We can't initialize it yet since we still need to generate the PDS

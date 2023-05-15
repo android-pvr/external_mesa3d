@@ -175,6 +175,9 @@ static inline rogue_block *rogue_push_block(rogue_builder *b)
 #define ROGUE_BUILDER_DEFINE_BACKEND00(op) \
    rogue_backend_instr *rogue_##op(rogue_builder *b);
 
+#define ROGUE_BUILDER_DEFINE_BACKEND01(op) \
+   rogue_backend_instr *rogue_##op(rogue_builder *b, rogue_ref src0);
+
 #define ROGUE_BUILDER_DEFINE_BACKEND02(op)           \
    rogue_backend_instr *rogue_##op(rogue_builder *b, \
                                    rogue_ref src0,   \

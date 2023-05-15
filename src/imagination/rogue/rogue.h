@@ -1733,7 +1733,7 @@ enum rogue_backend_op {
    ROGUE_BACKEND_OP_SMP3D,
 
    ROGUE_BACKEND_OP_PSEUDO,
-   ROGUE_BACKEND_OP_ATST_NEVER = ROGUE_BACKEND_OP_PSEUDO,
+   ROGUE_BACKEND_OP_ATST_IF = ROGUE_BACKEND_OP_PSEUDO,
 
    ROGUE_BACKEND_OP_COUNT,
 };
@@ -1834,6 +1834,15 @@ enum rogue_backend_op_mod {
    ROGUE_BACKEND_OP_MOD_NOWDF, /* Don't schedule WDF. */
 
    ROGUE_BACKEND_OP_MOD_IFB, /* Inhibit FeedBack. */
+
+   ROGUE_BACKEND_OP_MOD_NEVER,
+   ROGUE_BACKEND_OP_MOD_LESS,
+   ROGUE_BACKEND_OP_MOD_EQUAL,
+   ROGUE_BACKEND_OP_MOD_LESSEQUAL,
+   ROGUE_BACKEND_OP_MOD_GREATER,
+   ROGUE_BACKEND_OP_MOD_NOTEQUAL,
+   ROGUE_BACKEND_OP_MOD_GREATEREQUAL,
+   ROGUE_BACKEND_OP_MOD_ALWAYS,
 
    ROGUE_BACKEND_OP_MOD_COUNT,
 };
@@ -3166,6 +3175,82 @@ rogue_ssa_ref64_from_alu_src(rogue_shader *shader,
 
 unsigned rogue_constreg_lookup(rogue_imm_t imm);
 
+/* Instruction iteration utils. */
+typedef struct rogue_instr_filter {
+   BITSET_DECLARE(alu_mask, ROGUE_ALU_OP_COUNT);
+   BITSET_DECLARE(backend_mask, ROGUE_BACKEND_OP_COUNT);
+   BITSET_DECLARE(ctrl_mask, ROGUE_CTRL_OP_COUNT);
+   BITSET_DECLARE(bitwise_mask, ROGUE_BITWISE_OP_COUNT);
+} rogue_instr_filter;
+
+typedef bool (*rogue_instr_find_cb)(const rogue_instr *instr,
+                                    const void *instr_as,
+                                    unsigned op,
+                                    void *user_data);
+
+static inline bool rogue_find_instrs_impl(const rogue_instr *instr,
+                                          const rogue_instr_filter *filter,
+                                          rogue_instr_find_cb cb,
+                                          void *user_data)
+{
+   switch (instr->type) {
+   case ROGUE_INSTR_TYPE_ALU: {
+      const rogue_alu_instr *alu = rogue_instr_as_alu(instr);
+      if (BITSET_TEST(filter->alu_mask, alu->op))
+         return cb(instr, alu, alu->op, user_data);
+      return true;
+   }
+
+   case ROGUE_INSTR_TYPE_BACKEND: {
+      const rogue_backend_instr *backend = rogue_instr_as_backend(instr);
+      if (BITSET_TEST(filter->backend_mask, backend->op))
+         return cb(instr, backend, backend->op, user_data);
+      return true;
+   }
+
+   case ROGUE_INSTR_TYPE_CTRL: {
+      const rogue_ctrl_instr *ctrl = rogue_instr_as_ctrl(instr);
+      if (BITSET_TEST(filter->ctrl_mask, ctrl->op))
+         return cb(instr, ctrl, ctrl->op, user_data);
+      return true;
+   }
+
+   case ROGUE_INSTR_TYPE_BITWISE: {
+      const rogue_bitwise_instr *bitwise = rogue_instr_as_bitwise(instr);
+      if (BITSET_TEST(filter->bitwise_mask, bitwise->op))
+         return cb(instr, bitwise, bitwise->op, user_data);
+      return true;
+   }
+
+   default:
+      break;
+   }
+
+   unreachable("Unsupported instruction type.");
+   return false;
+}
+
+static inline void rogue_find_instrs(const rogue_shader *shader,
+                                     const rogue_instr_filter *filter,
+                                     rogue_instr_find_cb cb,
+                                     void *user_data)
+{
+   if (!shader->is_grouped) {
+      rogue_foreach_instr_in_shader (instr, shader) {
+         if (!rogue_find_instrs_impl(instr, filter, cb, user_data))
+            return;
+      }
+   } else {
+      rogue_foreach_instr_group_in_shader (group, shader) {
+         rogue_foreach_phase_in_set (p, group->header.phases) {
+            const rogue_instr *instr = group->instrs[p];
+            if (!rogue_find_instrs_impl(instr, filter, cb, user_data))
+               return;
+         }
+      }
+   }
+}
+
 /* Printing */
 
 void rogue_print_color(bool print_color);
@@ -3448,6 +3533,8 @@ typedef struct rogue_build_data {
       rogue_iterator_args iterator_args;
       enum rogue_msaa_mode msaa_mode;
       bool phas; /* Indicates the presence of PHAS instruction. */
+      bool discard;
+      bool side_effects;
    } fs;
    struct rogue_vs_build_data {
       /* TODO: Should these be removed since the driver allocates the vertex

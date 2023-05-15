@@ -335,6 +335,25 @@ static bool lower_load_push_constant(nir_builder *b, nir_intrinsic_instr *intr)
    return true;
 }
 
+/* Simply check for duplicate discards and remove one. */
+static bool lower_discard(nir_builder *b, nir_intrinsic_instr *intr)
+{
+   nir_instr *instr_next = nir_instr_next(&intr->instr);
+   if (!instr_next)
+      return false;
+
+   if (instr_next->type != nir_instr_type_intrinsic)
+      return false;
+
+   nir_intrinsic_instr *intr_next = nir_instr_as_intrinsic(instr_next);
+   if (intr_next->intrinsic != nir_intrinsic_discard)
+      return false;
+
+   nir_instr_remove(&intr->instr);
+
+   return true;
+}
+
 static bool lower_intrinsic(nir_builder *b,
                             nir_intrinsic_instr *instr,
                             rogue_build_ctx *ctx,
@@ -370,6 +389,9 @@ static bool lower_intrinsic(nir_builder *b,
 
       case nir_intrinsic_load_push_constant:
          return lower_load_push_constant(b, instr);
+
+      case nir_intrinsic_discard:
+         return lower_discard(b, instr);
 
       default:
          break;

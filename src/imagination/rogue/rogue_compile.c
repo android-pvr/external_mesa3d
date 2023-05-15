@@ -681,8 +681,20 @@ static void trans_nir_intrinsic_load_workgroup_id_img(rogue_builder *b,
 static void trans_nir_intrinsic_discard(rogue_builder *b,
                                         nir_intrinsic_instr *intr)
 {
-   rogue_backend_instr *atst_never = rogue_ATST_NEVER(b);
+   rogue_backend_instr *atst_never =
+      rogue_ATST_IF(b, rogue_ref_imm(0), rogue_ref_imm(0));
+   rogue_set_backend_op_mod(atst_never, ROGUE_BACKEND_OP_MOD_NEVER);
    rogue_add_instr_comment(&atst_never->instr, "discard");
+}
+
+static void trans_nir_intrinsic_discard_if(rogue_builder *b,
+                                           nir_intrinsic_instr *intr)
+{
+   rogue_ref src = nir_ssa_reg_intr_src32(b->shader, intr, 0, NULL);
+   rogue_backend_instr *atst_if = rogue_ATST_IF(b, src, rogue_ref_imm(0));
+   /* For ATST false = discard; pass if == 0, discard if != 0. */
+   rogue_set_backend_op_mod(atst_if, ROGUE_BACKEND_OP_MOD_EQUAL);
+   rogue_add_instr_comment(&atst_if->instr, "discard_if");
 }
 
 static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
@@ -728,10 +740,8 @@ static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
    case nir_intrinsic_discard:
       return trans_nir_intrinsic_discard(b, intr);
 
-      /*
    case nir_intrinsic_discard_if:
       return trans_nir_intrinsic_discard_if(b, intr);
-      */
 
    default:
       break;
@@ -1843,6 +1853,55 @@ static rogue_block *trans_nir_cf_nodes(rogue_builder *b,
    return start_block;
 }
 
+/* TODO: handle other instructions/build data. */
+static bool fs_data_cb(UNUSED const rogue_instr *instr,
+                       const void *instr_as,
+                       unsigned op,
+                       void *user_data)
+{
+   struct rogue_fs_build_data *data = user_data;
+   bool discard = false;
+   bool side_effects = false;
+
+   if (op == ROGUE_BACKEND_OP_ATST) {
+      const rogue_backend_instr *atst = instr_as;
+      bool ifb = rogue_backend_op_mod_is_set(atst, ROGUE_BACKEND_OP_MOD_IFB);
+
+      discard |= !ifb;
+      side_effects |= !ifb;
+   }
+
+   data->discard = discard;
+   data->side_effects = side_effects;
+
+   return true;
+}
+
+static void rogue_collect_late_fs_build_data(rogue_shader *shader)
+{
+   struct rogue_fs_build_data *data = &shader->ctx->stage_data.fs;
+   rogue_instr_filter filter = { 0 };
+   BITSET_SET(filter.backend_mask, ROGUE_BACKEND_OP_ATST);
+   rogue_find_instrs(shader, &filter, fs_data_cb, data);
+}
+
+static void rogue_collect_late_build_data(rogue_shader *shader)
+{
+   switch (shader->stage) {
+   case MESA_SHADER_FRAGMENT:
+      return rogue_collect_late_fs_build_data(shader);
+
+   case MESA_SHADER_VERTEX:
+      break;
+
+   case MESA_SHADER_COMPUTE:
+      break;
+
+   default:
+      unreachable("Unsupported shader stage.");
+   }
+}
+
 /**
  * \brief Translates a NIR shader to Rogue.
  *
@@ -1890,6 +1949,9 @@ rogue_shader *rogue_nir_to_rogue(rogue_build_ctx *ctx, const nir_shader *nir)
 
    /* Apply passes. */
    rogue_shader_passes(shader);
+
+   /* Collect late build data. */
+   rogue_collect_late_build_data(shader);
 
    rogue_feedback_used_regs(ctx, shader);
 
