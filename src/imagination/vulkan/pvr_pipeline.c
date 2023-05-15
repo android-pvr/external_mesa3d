@@ -2213,7 +2213,7 @@ static void pvr_collect_io_data_fs(struct rogue_common_build_data *common_data,
          if (var->data.location == VARYING_SLOT_POS) {
             unsigned base = var->data.location_frac;
             /* Includes .z */
-            if (base <= 2 && (base + components) >= 2) {
+            if (base <= 2 && (base + components) > 2) {
                pvr_reserve_iterator(&fs_data->iterator_args,
                                     2,
                                     INTERP_MODE_NOPERSPECTIVE,
