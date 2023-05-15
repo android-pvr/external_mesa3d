@@ -29,6 +29,7 @@
 #include "util/bitscan.h"
 #include "util/u_dynarray.h"
 #include "vulkan/util/vk_format.h"
+#include "vk_format.h"
 
 #include <stdbool.h>
 
@@ -117,6 +118,12 @@ struct pvr_uscgen_load_op_context {
    uint32_t next_sh_reg;
    uint32_t next_temp_reg;
 };
+
+static inline VkFormat pvr_uscgen_format_for_accum(VkFormat fmt)
+{
+   /* Replicated depth is kept as f32 */
+   return vk_format_has_depth(fmt) ? VK_FORMAT_R32_SFLOAT : fmt;
+}
 
 static rogue_ref pvr_uscgen_rogue_pack(rogue_builder *b,
                                        struct pvr_uscgen_load_op_context *ctx,
@@ -247,8 +254,8 @@ static void pvr_uscgen_load_op_clears(rogue_builder *b,
 
    u_foreach_bit (attachment_idx,
                   ctx->load_op->clears_loads_state.rt_clear_mask) {
-      VkFormat fmt =
-         ctx->load_op->clears_loads_state.dest_vk_format[attachment_idx];
+      VkFormat fmt = pvr_uscgen_format_for_accum(
+         ctx->load_op->clears_loads_state.dest_vk_format[attachment_idx]);
       uint32_t accum_size_dwords =
          DIV_ROUND_UP(pvr_get_pbe_accum_format_size_in_bytes(fmt),
                       sizeof(uint32_t));
@@ -354,8 +361,8 @@ static void pvr_uscgen_load_op_loads(rogue_builder *b,
 
    u_foreach_bit (attachment_idx,
                   ctx->load_op->clears_loads_state.rt_load_mask) {
-      VkFormat fmt =
-         ctx->load_op->clears_loads_state.dest_vk_format[attachment_idx];
+      VkFormat fmt = pvr_uscgen_format_for_accum(
+         ctx->load_op->clears_loads_state.dest_vk_format[attachment_idx]);
       struct usc_mrt_resource *mrt_resource =
          &mrt_setup->mrt_resources[attachment_idx];
       uint32_t accum_size_dwords =
@@ -389,7 +396,7 @@ static void pvr_uscgen_load_op_loads(rogue_builder *b,
                               rogue_ref_val(nr_components));
 
       rogue_set_backend_op_mod(smp_instr, ROGUE_BACKEND_OP_MOD_REPLACE);
-      if (vk_format_is_unorm(fmt) || vk_format_is_snorm(fmt))
+      if (vk_format_is_normalized(fmt))
          rogue_set_backend_op_mod(smp_instr, ROGUE_BACKEND_OP_MOD_FCNORM);
 
       /* Pack the sample results into accumulation format */
