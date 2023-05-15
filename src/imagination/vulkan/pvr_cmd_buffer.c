@@ -1597,8 +1597,6 @@ static VkResult pvr_sub_cmd_gfx_job_init(const struct pvr_device_info *dev_info,
                d_load = true;
             } else if (hw_render->depth_init == VK_ATTACHMENT_LOAD_OP_LOAD) {
                enum pvr_depth_stencil_usage depth_usage = sub_cmd->depth_usage;
-
-               assert(depth_usage != PVR_DEPTH_STENCIL_USAGE_UNDEFINED);
                d_load = (depth_usage != PVR_DEPTH_STENCIL_USAGE_NEVER);
             } else {
                d_load = sub_cmd->barrier_load;
@@ -1624,8 +1622,6 @@ static VkResult pvr_sub_cmd_gfx_job_init(const struct pvr_device_info *dev_info,
             } else if (hw_render->stencil_init == VK_ATTACHMENT_LOAD_OP_LOAD) {
                enum pvr_depth_stencil_usage stencil_usage =
                   sub_cmd->stencil_usage;
-
-               assert(stencil_usage != PVR_DEPTH_STENCIL_USAGE_UNDEFINED);
                s_load = (stencil_usage != PVR_DEPTH_STENCIL_USAGE_NEVER);
             } else {
                s_load = sub_cmd->barrier_load;
@@ -2927,9 +2923,6 @@ pvr_perform_start_of_render_clears(struct pvr_cmd_buffer *cmd_buffer)
                                                    true,
                                                    &ds_index_list);
    }
-
-   if (index_list_clear_mask)
-      pvr_finishme("Add support for generating loadops shaders!");
 }
 
 static void pvr_stash_depth_format(struct pvr_cmd_buffer_state *state,
