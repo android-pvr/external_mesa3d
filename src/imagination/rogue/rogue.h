@@ -461,6 +461,7 @@ typedef struct rogue_block {
 
    struct list_head uses; /** List of all block uses. */
 
+   unsigned nir_index;
    unsigned index; /** Block index. */
    const char *label; /** Block label. */
 } rogue_block;
@@ -2241,6 +2242,8 @@ typedef struct rogue_shader {
    unsigned next_block; /** Next block index. */
 
    struct list_head blocks; /** List of basic blocks. */
+   struct util_sparse_array block_cache;
+
    struct list_head regs[ROGUE_REG_CLASS_COUNT]; /** List of registers used by
                                                     the shader. */
    BITSET_WORD *regs_used[ROGUE_REG_CLASS_COUNT]; /** Bitset of register numbers
@@ -2264,6 +2267,36 @@ static inline void rogue_set_shader_name(rogue_shader *shader, const char *name)
 {
    shader->name = ralloc_strdup(shader, name);
 }
+
+#define BLOCK_CACHE_KEY_INDEX_BITS 63
+#define BLOCK_CACHE_KEY_IS_NIR_BLOCK_BITS 1
+struct rogue_block_cache_key {
+   union {
+      struct {
+         uint64_t index : BLOCK_CACHE_KEY_INDEX_BITS;
+         bool is_nir_block : BLOCK_CACHE_KEY_IS_NIR_BLOCK_BITS;
+      } PACKED;
+
+      uint64_t val;
+   } PACKED;
+} PACKED;
+static_assert(sizeof(struct rogue_block_cache_key) == sizeof(uint64_t),
+              "sizeof(struct rogue_block_cache_key) != sizeof(uint64_t)");
+
+static inline uint64_t rogue_block_cache_key(bool is_nir_block, unsigned index)
+{
+   assert(util_last_bit(index) <= BLOCK_CACHE_KEY_INDEX_BITS);
+   assert(util_last_bit(is_nir_block) <= BLOCK_CACHE_KEY_IS_NIR_BLOCK_BITS);
+
+   return (struct rogue_block_cache_key){
+      .index = index,
+      .is_nir_block = is_nir_block,
+   }
+      .val;
+}
+
+rogue_block *
+rogue_block_cached(rogue_shader *shader, bool is_nir_block, unsigned index);
 
 static inline bool rogue_reg_is_used(const rogue_shader *shader,
                                      enum rogue_reg_class class,
@@ -2498,9 +2531,11 @@ static inline rogue_cursor rogue_cursor_after_instr(rogue_instr *instr)
  *
  * \param[in] shader The shader which will contain the block.
  * \param[in] label The (optional) block label.
+ * \param[in] nir_index The block's NIR index, or ~0U if not from NIR.
  * \return The new block.
  */
-rogue_block *rogue_block_create(rogue_shader *shader, const char *label);
+rogue_block *
+rogue_block_create(rogue_shader *shader, const char *label, unsigned nir_index);
 
 /**
  * \brief Returns the block currently being pointed to by the cursor.

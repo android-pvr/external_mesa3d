@@ -73,7 +73,7 @@ static inline void rogue_builder_insert_block(rogue_builder *b,
 static inline rogue_block *rogue_push_block_labelled(rogue_builder *b,
                                                      const char *label)
 {
-   rogue_block *block = rogue_block_create(b->shader, label);
+   rogue_block *block = rogue_block_create(b->shader, label, ~0U);
    rogue_builder_insert_block(b, block);
 
    return block;
@@ -88,6 +88,23 @@ static inline rogue_block *rogue_push_block_labelled(rogue_builder *b,
 static inline rogue_block *rogue_push_block(rogue_builder *b)
 {
    return rogue_push_block_labelled(b, NULL);
+}
+
+static inline rogue_block *rogue_push_nir_block_labelled(rogue_builder *b,
+                                                         const char *label,
+                                                         unsigned nir_index)
+{
+   assert(nir_index != ~0U);
+   rogue_block *block = rogue_block_create(b->shader, label, nir_index);
+   rogue_builder_insert_block(b, block);
+
+   return block;
+}
+
+static inline rogue_block *rogue_push_nir_block(rogue_builder *b,
+                                                unsigned nir_index)
+{
+   return rogue_push_nir_block_labelled(b, NULL, nir_index);
 }
 
 /* ALU instructions. */

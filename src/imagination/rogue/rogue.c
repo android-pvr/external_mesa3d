@@ -39,6 +39,7 @@
 /* TODO: Tweak these? */
 #define ROGUE_REG_CACHE_NODE_SIZE 512
 #define ROGUE_REGARRAY_CACHE_NODE_SIZE 512
+#define ROGUE_BLOCK_CACHE_NODE_SIZE 128
 
 /**
  * \brief Sets an existing register to a (new) class and/or index.
@@ -190,6 +191,7 @@ static void rogue_shader_destructor(void *ptr)
       util_sparse_array_finish(&shader->reg_cache[u]);
 
    util_sparse_array_finish(&shader->regarray_cache);
+   util_sparse_array_finish(&shader->block_cache);
 }
 
 /**
@@ -209,6 +211,9 @@ rogue_shader *rogue_shader_create(void *mem_ctx, gl_shader_stage stage)
    shader->stage = stage;
 
    list_inithead(&shader->blocks);
+   util_sparse_array_init(&shader->block_cache,
+                          sizeof(rogue_block *),
+                          ROGUE_BLOCK_CACHE_NODE_SIZE);
 
    for (enum rogue_reg_class class = 0; class < ROGUE_REG_CLASS_COUNT;
         ++class) {
@@ -689,23 +694,47 @@ rogue_regarray *rogue_ssa_vec_regarray(rogue_shader *shader,
                                     component);
 }
 
+rogue_block *
+rogue_block_cached(rogue_shader *shader, bool is_nir_block, unsigned index)
+{
+   rogue_block **block_cached =
+      util_sparse_array_get(&shader->block_cache,
+                            rogue_block_cache_key(is_nir_block, index));
+
+   rogue_block *block = *block_cached;
+   assert(block || (block->nir_index != ~0U) == is_nir_block);
+
+   return block;
+}
+
 /**
  * \brief Allocates and initializes a new rogue_block object.
  *
  * \param[in] shader The shader that the new block belongs to.
  * \param[in] label The (optional) block label.
+ * \param[in] nir_index The block's NIR index, or ~0U if not from NIR.
  * \return The new block.
  */
 PUBLIC
-rogue_block *rogue_block_create(rogue_shader *shader, const char *label)
+rogue_block *
+rogue_block_create(rogue_shader *shader, const char *label, unsigned nir_index)
 {
    rogue_block *block = rzalloc_size(shader, sizeof(*block));
 
    block->shader = shader;
    list_inithead(&block->instrs);
    list_inithead(&block->uses);
+   block->nir_index = nir_index;
    block->index = shader->next_block++;
    block->label = ralloc_strdup(block, label);
+
+   bool is_nir_index = (block->nir_index != ~0U);
+   unsigned cache_index = is_nir_index ? nir_index : block->index;
+   rogue_block **block_cached =
+      util_sparse_array_get(&shader->block_cache,
+                            rogue_block_cache_key(is_nir_index, cache_index));
+   assert(!*block_cached);
+   *block_cached = block;
 
    return block;
 }

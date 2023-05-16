@@ -314,11 +314,13 @@ static inline void rogue_print_alu_instr(FILE *fp, const rogue_alu_instr *alu)
 
 static inline void rogue_print_block_label(FILE *fp, const rogue_block *block)
 {
-   /* For debug purposes. */
+   fprintf(fp, "block%u", block->index);
+
+   if (block->nir_index != ~0U)
+      fprintf(fp, " nir%u", block->nir_index);
+
    if (block->label)
-      fprintf(fp, "%s", block->label);
-   else
-      fprintf(fp, "block%u", block->index);
+      fprintf(fp, " %s", block->label);
 }
 
 static inline void rogue_print_backend_dst(FILE *fp, const rogue_instr_dst *dst)

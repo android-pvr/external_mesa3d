@@ -1766,7 +1766,7 @@ static bool ssa_def_cb(nir_ssa_def *ssa, void *state)
 
 static rogue_block *trans_nir_block(rogue_builder *b, nir_block *block)
 {
-   rogue_block *_rogue_block = rogue_push_block(b);
+   rogue_block *_rogue_block = rogue_push_nir_block(b, block->index);
 
    nir_foreach_instr (instr, block) {
       switch (instr->type) {
