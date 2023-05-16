@@ -255,6 +255,7 @@ static void rogue_encode_instr_group_header(rogue_instr_group *group,
       case ROGUE_CTRL_OP_CNDST:
       case ROGUE_CTRL_OP_CNDEF:
       case ROGUE_CTRL_OP_CNDEND:
+      case ROGUE_CTRL_OP_CNDLT:
          h.ctrlop = CTRLOP_CND;
          break;
 
@@ -1105,6 +1106,7 @@ static void rogue_encode_ctrl_instr(const rogue_ctrl_instr *ctrl,
    case ROGUE_CTRL_OP_CNDST:
    case ROGUE_CTRL_OP_CNDEF:
    case ROGUE_CTRL_OP_CNDEND:
+   case ROGUE_CTRL_OP_CNDLT:
       switch (ctrl->op) {
       case ROGUE_CTRL_OP_CNDST:
          instr_encoding->ctrl.cnd.cndinst = CNDINST_ST;
@@ -1118,6 +1120,10 @@ static void rogue_encode_ctrl_instr(const rogue_ctrl_instr *ctrl,
          instr_encoding->ctrl.cnd.cndinst = CNDINST_END;
          break;
 
+      case ROGUE_CTRL_OP_CNDLT:
+         instr_encoding->ctrl.cnd.cndinst = CNDINST_LT;
+         break;
+
       default:
          unreachable("Unsupported ctrl op.");
       }
@@ -1125,6 +1131,7 @@ static void rogue_encode_ctrl_instr(const rogue_ctrl_instr *ctrl,
       switch (ctrl->op) {
       case ROGUE_CTRL_OP_CNDST:
       case ROGUE_CTRL_OP_CNDEF:
+      case ROGUE_CTRL_OP_CNDLT:
          if (rogue_ctrl_op_mod_is_set(ctrl, OM(ALWAYS)))
             instr_encoding->ctrl.cnd.pcnd = PCND_ALWAYS;
          else if (rogue_ctrl_op_mod_is_set(ctrl, OM(P0_TRUE)))

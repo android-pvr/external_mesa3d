@@ -1497,9 +1497,10 @@ enum rogue_ctrl_op {
    ROGUE_CTRL_OP_BR, /* Branch: relative (to block). */
    ROGUE_CTRL_OP_BA, /* Branch: absolute (to address). */
 
-   ROGUE_CTRL_OP_CNDST, /** Conditional start. */
-   ROGUE_CTRL_OP_CNDEF, /** Conditional elif. */
-   ROGUE_CTRL_OP_CNDEND, /** Conditional end. */
+   ROGUE_CTRL_OP_CNDST, /** Condition start. */
+   ROGUE_CTRL_OP_CNDEF, /** Condition elif. */
+   ROGUE_CTRL_OP_CNDEND, /** Condition end. */
+   ROGUE_CTRL_OP_CNDLT, /** Condition loop-terminate. */
 
    ROGUE_CTRL_OP_WDF,
 
@@ -1539,7 +1540,7 @@ extern const rogue_ctrl_op_mod_info
    rogue_ctrl_op_mod_infos[ROGUE_CTRL_OP_MOD_COUNT];
 
 #define ROGUE_CTRL_OP_MAX_SRCS 7
-#define ROGUE_CTRL_OP_MAX_DSTS 2
+#define ROGUE_CTRL_OP_MAX_DSTS 3
 
 typedef struct rogue_ctrl_io_info {
    enum rogue_io dst[ROGUE_CTRL_OP_MAX_SRCS];
