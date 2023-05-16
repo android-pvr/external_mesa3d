@@ -346,6 +346,12 @@ rogue_reg *rogue_ssa_reg(rogue_shader *shader, unsigned index)
 }
 
 PUBLIC
+rogue_reg *rogue_emc_reg(rogue_shader *shader, unsigned index)
+{
+   return rogue_reg_cached(shader, ROGUE_REG_CLASS_EMC, index);
+}
+
+PUBLIC
 rogue_reg *rogue_temp_reg(rogue_shader *shader, unsigned index)
 {
    return rogue_reg_cached(shader, ROGUE_REG_CLASS_TEMP, index);

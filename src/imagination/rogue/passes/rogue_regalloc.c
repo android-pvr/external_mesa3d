@@ -348,8 +348,30 @@ bool rogue_regalloc(rogue_shader *shader)
    }
 
    /* In debug builds this will check the temp regs are contiguous from zero. */
-   UNUSED unsigned num_temp_regs =
-      rogue_count_used_regs(shader, ROGUE_REG_CLASS_TEMP);
+   unsigned num_temp_regs = rogue_count_used_regs(shader, ROGUE_REG_CLASS_TEMP);
+
+   /* If we're doing control flow, allocate extra temp(s) for the execution mask
+    * counter(s). */
+   unsigned num_emc_regs = rogue_count_used_regs(shader, ROGUE_REG_CLASS_EMC);
+   assert(num_emc_regs <= 1); /* Should only be one for now. */
+
+   /* TODO: commonise with above. */
+   unsigned next_temp = num_temp_regs;
+   rogue_foreach_reg_safe (reg, shader, ROGUE_REG_CLASS_EMC) {
+      assert(!reg->regarray);
+      unsigned hw_index = next_temp++;
+      enum rogue_reg_class new_class = ROGUE_REG_CLASS_TEMP;
+
+      /* First time using new register, modify in place. */
+      if (!rogue_reg_is_used(shader, new_class, hw_index)) {
+         progress |= rogue_reg_rewrite(shader, reg, new_class, hw_index);
+      } else {
+         /* Register has already been used, replace references and delete. */
+         assert(list_is_singular(&reg->writes)); /* SSA reg. */
+         rogue_reg *new_reg = rogue_temp_reg(shader, hw_index);
+         progress |= rogue_reg_replace(reg, new_reg);
+      }
+   }
 
    ralloc_free(ra_regs);
    return progress;

@@ -73,6 +73,7 @@ enum rogue_reg_class {
    ROGUE_REG_CLASS_INVALID = 0,
 
    ROGUE_REG_CLASS_SSA, /** SSA register. */
+   ROGUE_REG_CLASS_EMC, /** Execution mask counter register. */
 
    ROGUE_REG_CLASS_TEMP, /** Temp register. */
    ROGUE_REG_CLASS_COEFF, /** Coefficient register. */
@@ -2330,6 +2331,8 @@ rogue_shader *rogue_shader_create(void *mem_ctx, gl_shader_stage stage);
 
 rogue_reg *rogue_ssa_reg(rogue_shader *shader, unsigned index);
 
+rogue_reg *rogue_emc_reg(rogue_shader *shader, unsigned index);
+
 rogue_reg *rogue_temp_reg(rogue_shader *shader, unsigned index);
 
 rogue_reg *rogue_coeff_reg(rogue_shader *shader, unsigned index);
@@ -2352,6 +2355,20 @@ rogue_reg *
 rogue_ssa_vec_reg(rogue_shader *shader, unsigned index, unsigned component);
 
 void rogue_reg_delete(rogue_reg *reg);
+
+/**
+ * \brief Returns a reference to a virtual execution mask counter register.
+ *
+ * \param[in] reg The register.
+ * \return The reference.
+ */
+static inline rogue_ref rogue_ref_emc(rogue_shader *shader)
+{
+   return (rogue_ref){
+      .type = ROGUE_REF_TYPE_REG,
+      .reg = rogue_emc_reg(shader, 0),
+   };
+}
 
 rogue_regarray *
 rogue_ssa_regarray(rogue_shader *shader, unsigned size, unsigned start_index);

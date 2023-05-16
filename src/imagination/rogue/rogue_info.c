@@ -40,6 +40,7 @@
 const rogue_reg_class_info rogue_reg_class_infos[ROGUE_REG_CLASS_COUNT] = {
    [ROGUE_REG_CLASS_INVALID] = { .name = "!INVALID!", .str = "!INVALID!", },
    [ROGUE_REG_CLASS_SSA] = { .name = "ssa", .str = "R", },
+   [ROGUE_REG_CLASS_EMC] = { .name = "emc", .str = "E", .num = 1, }, /* Virtual. */
    [ROGUE_REG_CLASS_TEMP] = { .name = "temp", .str = "r", .num = 248, },
    [ROGUE_REG_CLASS_COEFF] = { .name = "coeff", .str = "cf", .num = 4096, .supported_io_srcs = S(0) | S(2) | S(3), },
    [ROGUE_REG_CLASS_SHARED] = { .name = "shared", .str = "sh", .num = 4096, .supported_io_srcs = S(0) | S(2) | S(3), },
