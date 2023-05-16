@@ -347,13 +347,9 @@ bool rogue_regalloc(rogue_shader *shader)
       }
    }
 
-#ifndef NDEBUG
-   /* Ensure that temp regs are continuous from zero, and have no gaps. */
-   unsigned num_temp_regs = list_length(&shader->regs[ROGUE_REG_CLASS_TEMP]);
-   rogue_foreach_reg (reg, shader, ROGUE_REG_CLASS_TEMP) {
-      assert(reg->index < num_temp_regs);
-   }
-#endif /* NDEBUG */
+   /* In debug builds this will check the temp regs are contiguous from zero. */
+   UNUSED unsigned num_temp_regs =
+      rogue_count_used_regs(shader, ROGUE_REG_CLASS_TEMP);
 
    ralloc_free(ra_regs);
    return progress;
