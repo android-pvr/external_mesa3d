@@ -223,6 +223,8 @@ ForEachMacros: [
   'nir_foreach_function',
   'nir_foreach_instr',
   'nir_foreach_instr_safe',
+  'nir_foreach_phi_src',
+  'nir_foreach_phi_src_safe',
   'nir_foreach_shader_in_variable',
   'nir_foreach_shader_out_variable',
   'nir_foreach_use',

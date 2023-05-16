@@ -665,11 +665,20 @@ rogue_build_ctrl01(rogue_builder *b, enum rogue_ctrl_op op, rogue_ref src0)
    return rogue_build_ctrl(b, op, NULL, 0, NULL, 1, srcs);
 }
 
-static inline rogue_ctrl_instr *
-rogue_build_ctrl10(rogue_builder *b, enum rogue_ctrl_op op, rogue_ref dst0)
+static inline rogue_ctrl_instr *rogue_build_ctrl17(rogue_builder *b,
+                                                   enum rogue_ctrl_op op,
+                                                   rogue_ref dst0,
+                                                   rogue_ref src0,
+                                                   rogue_ref src1,
+                                                   rogue_ref src2,
+                                                   rogue_ref src3,
+                                                   rogue_ref src4,
+                                                   rogue_ref src5,
+                                                   rogue_ref src6)
 {
    rogue_ref dsts[] = { dst0 };
-   return rogue_build_ctrl(b, op, NULL, 1, dsts, 0, NULL);
+   rogue_ref srcs[] = { src0, src1, src2, src3, src4, src5, src6 };
+   return rogue_build_ctrl(b, op, NULL, 1, dsts, 7, srcs);
 }
 
 static inline rogue_ctrl_instr *rogue_build_ctrl22(rogue_builder *b,
@@ -727,14 +736,31 @@ static inline rogue_ctrl_instr *rogue_build_ctrl32(rogue_builder *b,
       return rogue_build_ctrl01(b, ROGUE_CTRL_OP_##op, src0);        \
    }
 
-#define ROGUE_BUILDER_DEFINE_CTRL10(op)                              \
+#define ROGUE_BUILDER_DEFINE_CTRL17(op)                              \
    PUBLIC                                                            \
-   rogue_ctrl_instr *rogue_##op(rogue_builder *b, rogue_ref dst0)    \
+   rogue_ctrl_instr *rogue_##op(rogue_builder *b,                    \
+                                rogue_ref dst0,                      \
+                                rogue_ref src0,                      \
+                                rogue_ref src1,                      \
+                                rogue_ref src2,                      \
+                                rogue_ref src3,                      \
+                                rogue_ref src4,                      \
+                                rogue_ref src5,                      \
+                                rogue_ref src6)                      \
    {                                                                 \
       assert(!rogue_ctrl_op_infos[ROGUE_CTRL_OP_##op].has_target);   \
       assert(rogue_ctrl_op_infos[ROGUE_CTRL_OP_##op].num_dsts == 1); \
-      assert(rogue_ctrl_op_infos[ROGUE_CTRL_OP_##op].num_srcs == 0); \
-      return rogue_build_ctrl10(b, ROGUE_CTRL_OP_##op, dst0);        \
+      assert(rogue_ctrl_op_infos[ROGUE_CTRL_OP_##op].num_srcs == 7); \
+      return rogue_build_ctrl17(b,                                   \
+                                ROGUE_CTRL_OP_##op,                  \
+                                dst0,                                \
+                                src0,                                \
+                                src1,                                \
+                                src2,                                \
+                                src3,                                \
+                                src4,                                \
+                                src5,                                \
+                                src6);                               \
    }
 
 #define ROGUE_BUILDER_DEFINE_CTRL22(op)                                         \

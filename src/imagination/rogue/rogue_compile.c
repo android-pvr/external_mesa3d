@@ -1764,6 +1764,41 @@ static bool ssa_def_cb(nir_ssa_def *ssa, void *state)
    return true;
 }
 
+static void trans_nir_phi(rogue_builder *b, nir_phi_instr *phi)
+{
+   assert(phi->dest.is_ssa);
+   assert(nir_dest_bit_size(phi->dest) == 32);
+   assert(nir_dest_num_components(phi->dest) == 1);
+   rogue_reg *dst = rogue_ssa_reg(b->shader, phi->dest.ssa.index);
+
+   /* TODO: hardcode to ROGUE_CTRL_OP_MAX_SRCS and use [ ... ] notation. */
+
+   rogue_ref srcs[7];
+   assert(exec_list_length(&phi->srcs) <= ARRAY_SIZE(srcs));
+
+   unsigned s = 0;
+   nir_foreach_phi_src (phi_src, phi) {
+      assert(phi_src->src.is_ssa);
+      srcs[s++] =
+         rogue_ref_reg(rogue_ssa_reg(b->shader, phi_src->src.ssa->index));
+   }
+
+   for (unsigned u = s; u < ARRAY_SIZE(srcs); ++u)
+      srcs[u] = rogue_none();
+
+   rogue_ctrl_instr *ctrl = rogue_PHI(b,
+                                      rogue_ref_reg(dst),
+                                      srcs[0],
+                                      srcs[1],
+                                      srcs[2],
+                                      srcs[3],
+                                      srcs[4],
+                                      srcs[5],
+                                      srcs[6]);
+
+   ctrl->phi = phi;
+}
+
 static rogue_block *trans_nir_block(rogue_builder *b, nir_block *block)
 {
    rogue_block *_rogue_block = rogue_push_nir_block(b, block->index);
@@ -1788,6 +1823,10 @@ static rogue_block *trans_nir_block(rogue_builder *b, nir_block *block)
 
       case nir_instr_type_tex:
          trans_nir_tex(b, nir_instr_as_tex(instr));
+         break;
+
+      case nir_instr_type_phi:
+         trans_nir_phi(b, nir_instr_as_phi(instr));
          break;
 
       default:

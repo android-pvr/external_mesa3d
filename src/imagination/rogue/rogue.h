@@ -1508,6 +1508,8 @@ enum rogue_ctrl_op {
    ROGUE_CTRL_OP_PSEUDO,
    ROGUE_CTRL_OP_END = ROGUE_CTRL_OP_PSEUDO,
 
+   ROGUE_CTRL_OP_PHI,
+
    ROGUE_CTRL_OP_COUNT,
 };
 
@@ -1906,6 +1908,8 @@ typedef struct rogue_ctrl_instr {
 
    rogue_instr_src src[ROGUE_CTRL_OP_MAX_SRCS];
    rogue_src_use src_use[ROGUE_CTRL_OP_MAX_SRCS];
+
+   nir_phi_instr *phi;
 
    rogue_block *target_block;
    rogue_block_use block_use;
