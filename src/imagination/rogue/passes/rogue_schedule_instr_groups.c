@@ -151,26 +151,27 @@ static inline void rogue_set_io_sel(rogue_instr_group_io_sel *map,
 static void rogue_lower_alu_io(rogue_alu_instr *alu, rogue_instr_group *group)
 {
    const rogue_alu_op_info *info = &rogue_alu_op_infos[alu->op];
-   enum rogue_instr_phase phase = alu->instr.index;
 
    for (unsigned u = 0; u < info->num_dsts; ++u) {
-      if (info->phase_io[phase].dst[u] == ROGUE_IO_INVALID)
+      enum rogue_io io = rogue_phase_io(info->phase_io.dst[u]);
+      if (io == ROGUE_IO_INVALID)
          continue;
 
       rogue_set_io_sel(&group->io_sel,
                        group->header.alu,
-                       info->phase_io[phase].dst[u],
+                       io,
                        &alu->dst[u].ref,
                        true);
    }
 
    for (unsigned u = 0; u < info->num_srcs; ++u) {
-      if (info->phase_io[phase].src[u] == ROGUE_IO_INVALID)
+      enum rogue_io io = rogue_phase_io(info->phase_io.src[u]);
+      if (io == ROGUE_IO_INVALID)
          continue;
 
       rogue_set_io_sel(&group->io_sel,
                        group->header.alu,
-                       info->phase_io[phase].src[u],
+                       io,
                        &alu->src[u].ref,
                        false);
    }
@@ -182,23 +183,25 @@ static void rogue_lower_backend_io(rogue_backend_instr *backend,
    const rogue_backend_op_info *info = &rogue_backend_op_infos[backend->op];
 
    for (unsigned u = 0; u < info->num_dsts; ++u) {
-      if (info->phase_io.dst[u] == ROGUE_IO_INVALID)
+      enum rogue_io io = rogue_phase_io(info->phase_io.dst[u]);
+      if (io == ROGUE_IO_INVALID)
          continue;
 
       rogue_set_io_sel(&group->io_sel,
                        group->header.alu,
-                       info->phase_io.dst[u],
+                       io,
                        &backend->dst[u].ref,
                        true);
    }
 
    for (unsigned u = 0; u < info->num_srcs; ++u) {
-      if (info->phase_io.src[u] == ROGUE_IO_INVALID)
+      enum rogue_io io = rogue_phase_io(info->phase_io.src[u]);
+      if (io == ROGUE_IO_INVALID)
          continue;
 
       rogue_set_io_sel(&group->io_sel,
                        group->header.alu,
-                       info->phase_io.src[u],
+                       io,
                        &backend->src[u].ref,
                        false);
    }
@@ -210,23 +213,25 @@ static void rogue_lower_ctrl_io(rogue_ctrl_instr *ctrl,
    const rogue_ctrl_op_info *info = &rogue_ctrl_op_infos[ctrl->op];
 
    for (unsigned u = 0; u < info->num_dsts; ++u) {
-      if (info->phase_io.dst[u] == ROGUE_IO_INVALID)
+      enum rogue_io io = rogue_phase_io(info->phase_io.dst[u]);
+      if (io == ROGUE_IO_INVALID)
          continue;
 
       rogue_set_io_sel(&group->io_sel,
                        group->header.alu,
-                       info->phase_io.dst[u],
+                       io,
                        &ctrl->dst[u].ref,
                        true);
    }
 
    for (unsigned u = 0; u < info->num_srcs; ++u) {
-      if (info->phase_io.src[u] == ROGUE_IO_INVALID)
+      enum rogue_io io = rogue_phase_io(info->phase_io.src[u]);
+      if (io == ROGUE_IO_INVALID)
          continue;
 
       rogue_set_io_sel(&group->io_sel,
                        group->header.alu,
-                       info->phase_io.src[u],
+                       io,
                        &ctrl->src[u].ref,
                        false);
    }
@@ -236,26 +241,27 @@ static void rogue_lower_bitwise_io(rogue_bitwise_instr *bitwise,
                                    rogue_instr_group *group)
 {
    const rogue_bitwise_op_info *info = &rogue_bitwise_op_infos[bitwise->op];
-   enum rogue_instr_phase phase = bitwise->instr.index;
 
    for (unsigned u = 0; u < info->num_dsts; ++u) {
-      if (info->phase_io[phase].dst[u] == ROGUE_IO_INVALID)
+      enum rogue_io io = rogue_phase_io(info->phase_io.dst[u]);
+      if (io == ROGUE_IO_INVALID)
          continue;
 
       rogue_set_io_sel(&group->io_sel,
                        group->header.alu,
-                       info->phase_io[phase].dst[u],
+                       io,
                        &bitwise->dst[u].ref,
                        true);
    }
 
    for (unsigned u = 0; u < info->num_srcs; ++u) {
-      if (info->phase_io[phase].src[u] == ROGUE_IO_INVALID)
+      enum rogue_io io = rogue_phase_io(info->phase_io.src[u]);
+      if (io == ROGUE_IO_INVALID)
          continue;
 
       rogue_set_io_sel(&group->io_sel,
                        group->header.alu,
-                       info->phase_io[phase].src[u],
+                       io,
                        &bitwise->src[u].ref,
                        false);
    }
@@ -293,16 +299,12 @@ static void rogue_lower_instr_group_io(rogue_instr *instr,
 static inline void rogue_instr_group_put(rogue_instr *instr,
                                          rogue_instr_group *group)
 {
-   uint64_t supported_phases = rogue_instr_supported_phases(instr);
-   if (!supported_phases)
-      unreachable("Can't schedule pseudo-instructions.");
-   else if (!util_is_power_of_two_or_zero64(supported_phases))
-      unreachable("Multi-phase instructions unsupported.");
-
-   enum rogue_instr_phase phase =
-      rogue_get_supported_phase(supported_phases, group->header.phases);
+   enum rogue_instr_phase phase = rogue_instr_phase(instr);
    if (phase == ROGUE_INSTR_PHASE_INVALID)
-      unreachable("Failed to schedule group instruction.");
+      unreachable("Can't schedule pseudo-instructions.");
+
+   if (BITFIELD64_BIT(phase) & group->header.phases)
+      unreachable("Group already contains instruction in phase.");
 
    /* Update phases. */
    instr->group = group;

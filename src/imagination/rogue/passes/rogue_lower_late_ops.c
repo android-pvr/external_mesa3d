@@ -180,7 +180,7 @@ bool rogue_lower_late_ops(rogue_shader *shader)
 
    rogue_foreach_instr_in_shader_safe (instr, shader) {
       /* Skip real ops. */
-      if (rogue_instr_supported_phases(instr))
+      if (rogue_instr_phase(instr) != ROGUE_INSTR_PHASE_INVALID)
          continue;
 
       b.cursor = rogue_cursor_before_instr(instr);

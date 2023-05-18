@@ -688,8 +688,6 @@ typedef union rogue_imm_t {
 } rogue_imm_t;
 
 enum rogue_io {
-   ROGUE_IO_INVALID = 0,
-
    /* Lower sources. */
    ROGUE_IO_S0,
    ROGUE_IO_S1,
@@ -734,7 +732,11 @@ enum rogue_io {
    ROGUE_IO_NONE,
 
    ROGUE_IO_COUNT,
+
+   ROGUE_IO_INVALID = ~0,
 };
+static_assert(ROGUE_IO_COUNT <= 64,
+              "enum rogue_io does not fit in an uint64_t bitmask!");
 
 static inline bool rogue_io_is_src(enum rogue_io io)
 {
@@ -769,7 +771,7 @@ extern const rogue_io_info rogue_io_infos[ROGUE_IO_COUNT];
 
 static inline bool rogue_io_supported(enum rogue_io io, uint64_t supported_ios)
 {
-   return !!(BITFIELD64_BIT(io - 1) & supported_ios);
+   return !!(BITFIELD64_BIT(io) & supported_ios);
 }
 
 #define ROGUE_DRCS 2
@@ -1545,8 +1547,8 @@ extern const rogue_ctrl_op_mod_info
 #define ROGUE_CTRL_OP_MAX_DSTS 3
 
 typedef struct rogue_ctrl_io_info {
-   enum rogue_io dst[ROGUE_CTRL_OP_MAX_SRCS];
-   enum rogue_io src[ROGUE_CTRL_OP_MAX_DSTS];
+   uint64_t dst[ROGUE_CTRL_OP_MAX_SRCS];
+   uint64_t src[ROGUE_CTRL_OP_MAX_DSTS];
 } rogue_ctrl_io_info;
 
 typedef struct rogue_ctrl_op_info {
@@ -1601,8 +1603,8 @@ static inline bool rogue_ctrl_op_has_dsts(enum rogue_ctrl_op op)
 #define ROGUE_ALU_OP_MAX_DSTS 3
 
 typedef struct rogue_alu_io_info {
-   enum rogue_io dst[ROGUE_ALU_OP_MAX_DSTS];
-   enum rogue_io src[ROGUE_ALU_OP_MAX_SRCS];
+   uint64_t dst[ROGUE_ALU_OP_MAX_DSTS];
+   uint64_t src[ROGUE_ALU_OP_MAX_SRCS];
 } rogue_alu_io_info;
 
 /** Rogue ALU instruction operation info. */
@@ -1614,8 +1616,8 @@ typedef struct rogue_alu_op_info {
 
    bool whole_pipeline;
 
-   uint64_t supported_phases;
-   rogue_alu_io_info phase_io[ROGUE_INSTR_PHASE_COUNT];
+   enum rogue_instr_phase phase;
+   rogue_alu_io_info phase_io;
 
    uint64_t supported_op_mods;
    uint64_t supported_dst_mods[ROGUE_ALU_OP_MAX_DSTS];
@@ -1745,8 +1747,8 @@ enum rogue_backend_op {
 };
 
 typedef struct rogue_backend_io_info {
-   enum rogue_io dst[ROGUE_BACKEND_OP_MAX_DSTS];
-   enum rogue_io src[ROGUE_BACKEND_OP_MAX_SRCS];
+   uint64_t dst[ROGUE_BACKEND_OP_MAX_DSTS];
+   uint64_t src[ROGUE_BACKEND_OP_MAX_SRCS];
 } rogue_backend_io_info;
 
 typedef struct rogue_backend_op_info {
@@ -1755,8 +1757,6 @@ typedef struct rogue_backend_op_info {
    unsigned num_dsts;
    unsigned num_srcs;
 
-   /* supported_phases not needed as it's always going to be in the backend
-    * phase. */
    rogue_backend_io_info phase_io;
 
    uint64_t supported_op_mods;
@@ -1994,8 +1994,8 @@ typedef struct rogue_bitwise_op_info {
    unsigned num_dsts;
    unsigned num_srcs;
 
-   uint64_t supported_phases;
-   rogue_alu_io_info phase_io[ROGUE_INSTR_PHASE_COUNT];
+   enum rogue_instr_phase phase;
+   rogue_alu_io_info phase_io;
 
    uint64_t supported_op_mods;
    uint64_t supported_dst_mods[ROGUE_BITWISE_OP_MAX_DSTS];
@@ -2113,15 +2113,25 @@ ROGUE_DEFINE_CAST(rogue_instr_as_bitwise,
                   type,
                   ROGUE_INSTR_TYPE_BITWISE)
 
-static inline enum rogue_io rogue_instr_src_io_src(const rogue_instr *instr,
-                                                   enum rogue_instr_phase phase,
-                                                   unsigned src_index)
+static inline enum rogue_io rogue_phase_io(uint64_t phase_io)
+{
+   /* TODO NEXT: handle multiple options. */
+   assert(util_is_power_of_two_or_zero64(phase_io));
+
+   if (!phase_io)
+      return ROGUE_IO_INVALID;
+
+   return ffsll(phase_io) - 1;
+}
+
+static inline uint64_t rogue_instr_src_io_src(const rogue_instr *instr,
+                                              unsigned src_index)
 {
    switch (instr->type) {
    case ROGUE_INSTR_TYPE_ALU: {
       const rogue_alu_instr *alu = rogue_instr_as_alu(instr);
       const rogue_alu_op_info *info = &rogue_alu_op_infos[alu->op];
-      return info->phase_io[phase].src[src_index];
+      return info->phase_io.src[src_index];
    }
 
    case ROGUE_INSTR_TYPE_BACKEND: {
@@ -2139,7 +2149,7 @@ static inline enum rogue_io rogue_instr_src_io_src(const rogue_instr *instr,
    case ROGUE_INSTR_TYPE_BITWISE: {
       const rogue_bitwise_instr *bitwise = rogue_instr_as_bitwise(instr);
       const rogue_bitwise_op_info *info = &rogue_bitwise_op_infos[bitwise->op];
-      return info->phase_io[phase].src[src_index];
+      return info->phase_io.src[src_index];
    }
 
    default:
@@ -3070,66 +3080,46 @@ static inline bool rogue_instr_is_nop_end(const rogue_instr *instr)
    return rogue_ctrl_op_mod_is_set(ctrl, ROGUE_CTRL_OP_MOD_END);
 }
 
-static inline unsigned rogue_instr_supported_phases(const rogue_instr *instr)
+static inline enum rogue_instr_phase rogue_instr_phase(const rogue_instr *instr)
 {
-   uint64_t supported_phases = 0;
-
    switch (instr->type) {
    case ROGUE_INSTR_TYPE_ALU: {
-      rogue_alu_instr *alu = rogue_instr_as_alu(instr);
-      if (alu->op >= ROGUE_ALU_OP_PSEUDO)
-         return 0;
+      enum rogue_alu_op op = rogue_instr_as_alu(instr)->op;
+      if (op >= ROGUE_ALU_OP_PSEUDO)
+         break;
 
-      const rogue_alu_op_info *info = &rogue_alu_op_infos[alu->op];
-      supported_phases = info->supported_phases;
-      break;
+      return rogue_alu_op_infos[op].phase;
    }
 
    case ROGUE_INSTR_TYPE_BACKEND: {
-      rogue_backend_instr *backend = rogue_instr_as_backend(instr);
-      if (backend->op >= ROGUE_BACKEND_OP_PSEUDO)
-         return 0;
+      /* Backend instructions are always in the backend phase. */
+      enum rogue_backend_op op = rogue_instr_as_backend(instr)->op;
+      if (op >= ROGUE_BACKEND_OP_PSEUDO)
+         break;
 
-      supported_phases = BITFIELD_BIT(ROGUE_INSTR_PHASE_BACKEND);
-      break;
+      return ROGUE_INSTR_PHASE_BACKEND;
    }
 
    case ROGUE_INSTR_TYPE_CTRL: {
       /* Control instructions can't be co-issued; just make sure this isn't a
        * pseudo-instruction. */
-      rogue_ctrl_instr *ctrl = rogue_instr_as_ctrl(instr);
-      if (ctrl->op >= ROGUE_CTRL_OP_PSEUDO)
-         return 0;
+      enum rogue_ctrl_op op = rogue_instr_as_ctrl(instr)->op;
+      if (op >= ROGUE_CTRL_OP_PSEUDO)
+         break;
 
-      supported_phases = BITFIELD_BIT(ROGUE_INSTR_PHASE_CTRL);
-      break;
+      return ROGUE_INSTR_PHASE_CTRL;
    }
 
    case ROGUE_INSTR_TYPE_BITWISE: {
-      rogue_bitwise_instr *bitwise = rogue_instr_as_bitwise(instr);
-      if (bitwise->op >= ROGUE_BITWISE_OP_PSEUDO)
-         return 0;
+      enum rogue_bitwise_op op = rogue_instr_as_bitwise(instr)->op;
+      if (op >= ROGUE_BITWISE_OP_PSEUDO)
+         break;
 
-      const rogue_bitwise_op_info *info = &rogue_bitwise_op_infos[bitwise->op];
-      supported_phases = info->supported_phases;
-      break;
+      return rogue_bitwise_op_infos[op].phase;
    }
 
    default:
       unreachable("Unsupported instruction type.");
-   }
-
-   return supported_phases;
-}
-
-/* Loop through and find first unused phase that's supported, then return its
- * enum. */
-static inline enum rogue_instr_phase
-rogue_get_supported_phase(uint64_t supported_phases, uint64_t occupied_phases)
-{
-   rogue_foreach_phase_in_set (p, supported_phases) {
-      if (!(BITFIELD_BIT(p) & occupied_phases))
-         return p;
    }
 
    return ROGUE_INSTR_PHASE_INVALID;
@@ -3144,16 +3134,15 @@ static inline bool rogue_phase_occupied(enum rogue_instr_phase phase,
 static inline bool rogue_can_replace_reg_use(rogue_reg_use *use,
                                              const rogue_reg *new_reg)
 {
-   bool can_replace = false;
+#if 0
    const rogue_reg_class_info *info = &rogue_reg_class_infos[new_reg->class];
    const rogue_instr *instr = use->instr;
+   enum rogue_io io_src = rogue_phase_io(rogue_instr_src_io_src(instr, use->src_index)); /* TODO */
+   return rogue_io_supported(io_src, info->supported_io_srcs);
+#endif
 
-   rogue_foreach_phase_in_set (p, rogue_instr_supported_phases(instr)) {
-      enum rogue_io io_src = rogue_instr_src_io_src(instr, p, use->src_index);
-      can_replace &= rogue_io_supported(io_src, info->supported_io_srcs);
-   }
-
-   return can_replace;
+   /* TODO: this was incorrectly implemented before; patching out for now. */
+   return false;
 }
 
 typedef struct rogue_ref64 {

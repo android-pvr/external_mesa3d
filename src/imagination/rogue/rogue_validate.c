@@ -720,18 +720,19 @@ static void validate_reg_use(rogue_validation_state *state,
 
    const rogue_instr *instr = use->instr;
 
-   rogue_foreach_phase_in_set (p, rogue_instr_supported_phases(instr)) {
-      enum rogue_io io_src = rogue_instr_src_io_src(instr, p, use->src_index);
+   if (rogue_instr_phase(instr) != ROGUE_INSTR_PHASE_INVALID) {
+      enum rogue_io io_src =
+         rogue_phase_io(rogue_instr_src_io_src(instr, use->src_index)); /* TODO
+                                                                         */
       if (io_src == ROGUE_IO_INVALID)
          validate_log(state, "Register used where no source is present.");
 
+      /* TODO: Either add info here to get register class and print as string,
+       * or add info to rogue_validation_state. */
       if (!rogue_io_supported(io_src, supported_io_srcs))
          validate_log(state,
                       "Register class unsupported in S%u.",
-                      io_src - ROGUE_IO_S0); /* TODO: Either add info here to
-                                                get register class and print as
-                                                string, or add info to
-                                                rogue_validation_state. */
+                      io_src - ROGUE_IO_S0);
    }
 }
 
