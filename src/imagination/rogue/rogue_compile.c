@@ -1212,7 +1212,8 @@ static void trans_nir_alu_imul(rogue_builder *b, nir_alu_instr *alu)
    unreachable("Unsupported imul bit size.");
 }
 
-static void trans_nir_alu_umul_high(rogue_builder *b, nir_alu_instr *alu)
+static void
+trans_nir_alu_mul_high(rogue_builder *b, nir_alu_instr *alu, bool is_signed)
 {
    ASSERTED unsigned dst_components;
    rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
@@ -1221,11 +1222,13 @@ static void trans_nir_alu_umul_high(rogue_builder *b, nir_alu_instr *alu)
    rogue_ref src0 = nir_alu_src32(b->shader, alu, 0, NULL);
    rogue_ref src1 = nir_alu_src32(b->shader, alu, 1, NULL);
 
-   rogue_alu_instr *umul_high = rogue_UMUL_HIGH(b, dst, src0, src1);
-   rogue_apply_alu_src_mods(umul_high, alu, false);
+   rogue_alu_instr *mul_high = is_signed ? rogue_IMUL_HIGH(b, dst, src0, src1)
+                                         : rogue_UMUL_HIGH(b, dst, src0, src1);
+   rogue_apply_alu_src_mods(mul_high, alu, false);
 }
 
-static void trans_nir_alu_umul_low(rogue_builder *b, nir_alu_instr *alu)
+static void
+trans_nir_alu_mul_low(rogue_builder *b, nir_alu_instr *alu, bool is_signed)
 {
    ASSERTED unsigned dst_components;
    rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
@@ -1234,8 +1237,9 @@ static void trans_nir_alu_umul_low(rogue_builder *b, nir_alu_instr *alu)
    rogue_ref src0 = nir_alu_src32(b->shader, alu, 0, NULL);
    rogue_ref src1 = nir_alu_src32(b->shader, alu, 1, NULL);
 
-   rogue_alu_instr *umul_low = rogue_UMUL_LOW(b, dst, src0, src1);
-   rogue_apply_alu_src_mods(umul_low, alu, false);
+   rogue_alu_instr *mul_low = is_signed ? rogue_IMUL_LOW(b, dst, src0, src1)
+                                        : rogue_UMUL_LOW(b, dst, src0, src1);
+   rogue_apply_alu_src_mods(mul_low, alu, false);
 }
 
 static void trans_nir_alu_ineg32(rogue_builder *b, nir_alu_instr *alu)
@@ -1624,10 +1628,13 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
       return trans_nir_alu_imul(b, alu);
 
    case nir_op_umul_high:
-      return trans_nir_alu_umul_high(b, alu);
+      return trans_nir_alu_mul_high(b, alu, false);
 
    case nir_op_umul_low:
-      return trans_nir_alu_umul_low(b, alu);
+      return trans_nir_alu_mul_low(b, alu, false);
+
+   case nir_op_imul_high:
+      return trans_nir_alu_mul_high(b, alu, true);
 
    case nir_op_ineg:
       return trans_nir_alu_ineg(b, alu);
