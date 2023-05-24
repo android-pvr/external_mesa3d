@@ -467,19 +467,6 @@ static inline void pvr_pds_vertex_attrib_program_destroy(
 typedef struct pvr_pds_attrib_program (*const pvr_pds_attrib_programs_array_ptr)
    [PVR_PDS_VERTEX_ATTRIB_PROGRAM_COUNT];
 
-/* Indicates that the special variable is unused and has not been allocated a
- * register.
- */
-#define PVR_VERTEX_SPECIAL_VAR_UNUSED (-1)
-
-/* Each special variable gets allocated its own vtxin reg if used. */
-struct pvr_vertex_special_vars {
-   /* VertexIndex built-in. */
-   int16_t vertex_id_offset;
-   /* InstanceIndex built-in. */
-   int16_t instance_id_offset;
-};
-
 /* Generate and uploads a PDS program for DMAing vertex attribs into USC vertex
  * inputs. This will bake the code segment and create a template of the data
  * segment for the command buffer to fill in.
@@ -500,12 +487,11 @@ static VkResult pvr_pds_vertex_attrib_programs_create_and_upload(
    const struct pvr_pds_vertex_dma
       dma_descriptions[static const PVR_MAX_VERTEX_ATTRIB_DMAS],
    uint32_t dma_count,
-   const struct pvr_vertex_special_vars *special_vars_layout,
-
    pvr_pds_attrib_programs_array_ptr programs_out_ptr)
 {
    struct pvr_pds_vertex_dma dma_descriptions_old[PVR_MAX_VERTEX_ATTRIB_DMAS];
-
+   const rogue_vertex_special_vars *special_vars_layout =
+      &vs_data->special_vars;
    struct pvr_pds_attrib_program *const programs_out = *programs_out_ptr;
    struct pvr_pds_vertex_primary_program_input input = { 0 };
    VkResult result;
@@ -523,15 +509,13 @@ static VkResult pvr_pds_vertex_attrib_programs_create_and_upload(
       input.dma_list = dma_descriptions;
       input.dma_count = dma_count;
 
-      if (special_vars_layout->vertex_id_offset !=
-          PVR_VERTEX_SPECIAL_VAR_UNUSED) {
+      if (special_vars_layout->vertex_id_offset != ROGUE_REG_UNUSED) {
          /* Gets filled by the HW and copied into the appropriate reg. */
          input.flags |= PVR_PDS_VERTEX_FLAGS_VERTEX_ID_REQUIRED;
          input.vertex_id_register = special_vars_layout->vertex_id_offset;
       }
 
-      if (special_vars_layout->instance_id_offset !=
-          PVR_VERTEX_SPECIAL_VAR_UNUSED) {
+      if (special_vars_layout->instance_id_offset != ROGUE_REG_UNUSED) {
          /* Gets filled by the HW and copied into the appropriate reg. */
          input.flags |= PVR_PDS_VERTEX_FLAGS_INSTANCE_ID_REQUIRED;
          input.instance_id_register = special_vars_layout->instance_id_offset;
@@ -2136,10 +2120,10 @@ static void pvr_graphics_pipeline_alloc_vertex_inputs(
 
 static void pvr_graphics_pipeline_alloc_vertex_special_vars(
    unsigned *num_vertex_input_regs,
-   struct pvr_vertex_special_vars *special_vars_layout_out)
+   struct rogue_vertex_special_vars *special_vars_layout_out)
 {
    unsigned next_free_reg = *num_vertex_input_regs;
-   struct pvr_vertex_special_vars layout;
+   struct rogue_vertex_special_vars layout;
 
    /* We don't support VK_KHR_shader_draw_parameters or Vulkan 1.1 so no
     * BaseInstance, BaseVertex, DrawIndex.
@@ -2758,12 +2742,8 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
    struct pvr_pds_vertex_dma vtx_dma_descriptions[PVR_MAX_VERTEX_ATTRIB_DMAS];
    uint32_t vtx_dma_count = 0;
    rogue_vertex_inputs *vertex_input_layout;
+   rogue_vertex_special_vars *vertex_special_vars;
    unsigned *vertex_input_reg_count;
-
-   /* TODO: The compiler should be making use of this to determine where
-    * specific special variables are located in the vtxin reg set.
-    */
-   struct pvr_vertex_special_vars special_vars_layout = { 0 };
 
    uint32_t sh_count[PVR_STAGE_ALLOCATION_COUNT] = { 0 };
 
@@ -2785,6 +2765,7 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
       VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN;
 
    vertex_input_layout = &ctx->stage_data.vs.inputs;
+   vertex_special_vars = &ctx->stage_data.vs.special_vars;
    vertex_input_reg_count = &ctx->stage_data.vs.num_vertex_input_regs;
 
    if (!old_path) {
@@ -2795,7 +2776,7 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
                                                 &vtx_dma_count);
 
       pvr_graphics_pipeline_alloc_vertex_special_vars(vertex_input_reg_count,
-                                                      &special_vars_layout);
+                                                      vertex_special_vars);
 
       for (enum pvr_stage_allocation pvr_stage =
               PVR_STAGE_ALLOCATION_VERTEX_GEOMETRY;
@@ -3030,7 +3011,6 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
       &ctx->stage_data.vs,
       vtx_dma_descriptions,
       vtx_dma_count,
-      &special_vars_layout,
       &gfx_pipeline->shader_state.vertex.pds_attrib_programs);
    if (result != VK_SUCCESS)
       goto err_free_frag_descriptor_program;

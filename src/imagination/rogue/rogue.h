@@ -3733,6 +3733,17 @@ typedef struct rogue_iterator_args {
 } rogue_iterator_args;
 
 /**
+ * \brief Special vertex input variables.
+ * Each special variable gets allocated its own vtxin reg if used.
+ */
+typedef struct rogue_vertex_special_vars {
+   /* VertexIndex built-in. */
+   unsigned vertex_id_offset;
+   /* InstanceIndex built-in. */
+   unsigned instance_id_offset;
+} rogue_vertex_special_vars;
+
+/**
  * \brief Vertex input register allocations.
  */
 typedef struct rogue_vertex_inputs {
@@ -3786,6 +3797,7 @@ typedef struct rogue_build_data {
       /* TODO: Should these be removed since the driver allocates the vertex
        * inputs?
        */
+      rogue_vertex_special_vars special_vars;
       rogue_vertex_inputs inputs;
       unsigned num_vertex_input_regs; /* Final number of inputs. */
 
