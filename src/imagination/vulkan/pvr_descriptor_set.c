@@ -428,6 +428,84 @@ pvr_dump_in_memory_layout_sizes(const struct pvr_descriptor_set_layout *layout)
    }
 }
 
+static void
+pvr_setup_required_in_memory_layout(struct pvr_device *device,
+                                    struct pvr_descriptor_set_layout *layout)
+{
+   struct pvr_register_usage reg_usage[PVR_STAGE_ALLOCATION_COUNT] = { 0 };
+   uint32_t total_size_in_dwords = 0;
+
+   /* TODO: We could upload immutable sampler here and have the pipeline layout
+    * use the upload to load those into the shared regs.
+    */
+
+   for (uint32_t bind_num = 0; bind_num < layout->binding_count; bind_num++) {
+      struct pvr_descriptor_set_layout_binding *const binding =
+         &layout->bindings[bind_num];
+      struct pvr_descriptor_size_info size_info;
+
+      if (binding->descriptor_count == 0)
+         continue;
+
+      if (binding->shader_stage_mask == 0)
+         continue;
+
+      switch (binding->type) {
+      case VK_DESCRIPTOR_TYPE_SAMPLER:
+      case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+      case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+      case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+      case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+         break;
+
+      default:
+         continue;
+      }
+
+      pvr_descriptor_size_info_init(device, binding->type, &size_info);
+
+      u_foreach_bit (stage, binding->shader_stage_mask) {
+         STATIC_ASSERT(
+            ARRAY_SIZE(reg_usage) ==
+            ARRAY_SIZE(
+               layout->bindings[0].required_per_stage_offset_in_dwords));
+
+         reg_usage[stage].primary =
+            ALIGN_POT(reg_usage[stage].primary, size_info.alignment);
+
+         binding->required_per_stage_offset_in_dwords[stage].primary =
+            reg_usage[stage].primary;
+         reg_usage[stage].primary +=
+            size_info.primary * binding->descriptor_count;
+
+         binding->required_per_stage_offset_in_dwords[stage].secondary =
+            reg_usage[stage].secondary;
+         reg_usage[stage].secondary +=
+            size_info.secondary * binding->descriptor_count;
+      }
+   }
+
+   u_foreach_bit (stage, layout->shader_stage_mask) {
+      struct pvr_descriptor_set_layout_mem_layout *mem_layout =
+         &layout->required_in_memory_layout_in_dwords_per_stage[stage];
+
+      total_size_in_dwords = ALIGN_POT(total_size_in_dwords, 4);
+
+      mem_layout->primary_offset = total_size_in_dwords;
+      mem_layout->primary_size = reg_usage[stage].primary;
+
+      total_size_in_dwords += reg_usage[stage].primary;
+      total_size_in_dwords = ALIGN_POT(total_size_in_dwords, 4);
+
+      mem_layout->secondary_offset = total_size_in_dwords;
+      mem_layout->secondary_size = reg_usage[stage].secondary;
+
+      total_size_in_dwords += reg_usage[stage].secondary;
+   }
+
+   layout->required_in_memory_total_size_in_dwords = total_size_in_dwords;
+}
+
 VkResult pvr_CreateDescriptorSetLayout(
    VkDevice _device,
    const VkDescriptorSetLayoutCreateInfo *pCreateInfo,
@@ -653,6 +731,13 @@ VkResult pvr_CreateDescriptorSetLayout(
             size_info.secondary * internal_binding->descriptor_count;
       }
    }
+
+   /* TODO: Some descriptor types are required by the hardware to be in the
+    * shared registers. For now we'll setup a separate layout for them.
+    * The code should be refactored and the descriptor set logic should be
+    * redone.
+    */
+   pvr_setup_required_in_memory_layout(device, layout);
 
    pvr_setup_in_memory_layout_sizes(layout, reg_usage);
 

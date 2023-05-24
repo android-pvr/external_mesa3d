@@ -274,6 +274,13 @@ struct pvr_descriptor_set_layout_binding {
       uint32_t secondary;
    } per_stage_offset_in_dwords[PVR_STAGE_ALLOCATION_COUNT];
 
+   /* Offsets to locate the binding within the required descriptor set buffer.
+    */
+   struct {
+      uint32_t primary;
+      uint32_t secondary;
+   } required_per_stage_offset_in_dwords[PVR_STAGE_ALLOCATION_COUNT];
+
    bool has_immutable_samplers;
    /* Index at which the samplers can be found in the descriptor_set_layout.
     * 0 when the samplers are at index 0 or no samplers are present.
@@ -325,6 +332,16 @@ struct pvr_descriptor_set_layout {
    uint32_t total_size_in_dwords;
    struct pvr_descriptor_set_layout_mem_layout
       memory_layout_in_dwords_per_stage[PVR_STAGE_ALLOCATION_COUNT];
+
+   /* All descriptors are included in the memory_layout_in_dwords_per_stage
+    * above however we don't currently end up uploading that since the shader
+    * reads descriptors from memory. Some descriptor types cannot be read from
+    * memory thus requiring to be uploaded into the shareds. For now, those are
+    * collected separately into this layout.
+    */
+   uint32_t required_in_memory_total_size_in_dwords;
+   struct pvr_descriptor_set_layout_mem_layout
+      required_in_memory_layout_in_dwords_per_stage[PVR_STAGE_ALLOCATION_COUNT];
 };
 
 struct pvr_descriptor_pool {
