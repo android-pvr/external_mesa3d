@@ -495,6 +495,14 @@ struct pvr_pipeline_layout {
       register_layout_in_dwords_per_stage[PVR_STAGE_ALLOCATION_COUNT]
                                          [PVR_MAX_DESCRIPTOR_SETS];
 
+   uint32_t per_stage_required_register_usage[PVR_STAGE_ALLOCATION_COUNT];
+   /* Offsets used to locate the descriptor set's required shareds within the
+    * uploaded pipeline layout.
+    */
+   struct pvr_descriptor_set_layout_mem_layout
+      required_register_layout_in_dwords_per_stage[PVR_STAGE_ALLOCATION_COUNT]
+                                                  [PVR_MAX_DESCRIPTOR_SETS];
+
    /* TODO: Consider whether this needs to be here. */
    struct pvr_sh_reg_layout sh_reg_layout_per_stage[PVR_STAGE_ALLOCATION_COUNT];
 

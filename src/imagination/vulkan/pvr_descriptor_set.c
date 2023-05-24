@@ -931,6 +931,52 @@ pvr_dump_in_register_layout_sizes(const struct pvr_device *device,
    }
 }
 
+static void
+pvr_setup_required_in_register_layout(struct pvr_pipeline_layout *layout)
+{
+   for (uint32_t stage = 0; stage < PVR_STAGE_ALLOCATION_COUNT; stage++) {
+      uint32_t next_free_reg = 0;
+
+      u_foreach_bit (set_num, layout->per_stage_descriptor_masks[stage]) {
+         const struct pvr_descriptor_set_layout *set_layout =
+            layout->set_layout[set_num];
+         const struct pvr_descriptor_set_layout_mem_layout *const mem_layout =
+            &set_layout->required_in_memory_layout_in_dwords_per_stage[stage];
+         struct pvr_descriptor_set_layout_mem_layout *const reg_layout =
+            &layout
+                ->required_register_layout_in_dwords_per_stage[stage][set_num];
+
+         next_free_reg = ALIGN_POT(next_free_reg, 4);
+
+         reg_layout->primary_offset = next_free_reg;
+         reg_layout->primary_size = mem_layout->primary_size;
+
+         next_free_reg += reg_layout->primary_size;
+      }
+
+      u_foreach_bit (set_num, layout->per_stage_descriptor_masks[stage]) {
+         const struct pvr_descriptor_set_layout *set_layout =
+            layout->set_layout[set_num];
+         const struct pvr_descriptor_set_layout_mem_layout *const mem_layout =
+            &set_layout->required_in_memory_layout_in_dwords_per_stage[stage];
+         struct pvr_descriptor_set_layout_mem_layout *const reg_layout =
+            &layout
+                ->required_register_layout_in_dwords_per_stage[stage][set_num];
+
+         /* TODO: Should we be aligning next_free_reg like it's done with the
+          * primary descriptors?
+          */
+
+         reg_layout->secondary_offset = next_free_reg;
+         reg_layout->secondary_size = mem_layout->secondary_size;
+
+         next_free_reg += reg_layout->secondary_size;
+      }
+
+      layout->per_stage_required_register_usage[stage] = next_free_reg;
+   }
+}
+
 /* Pipeline layouts. These have nothing to do with the pipeline. They are
  * just multiple descriptor set layouts pasted together.
  */
@@ -1005,10 +1051,13 @@ VkResult pvr_CreatePipelineLayout(VkDevice _device,
 
             switch (type) {
             case VK_DESCRIPTOR_TYPE_SAMPLER:
+            case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
             case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+            case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
             case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
             case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
             case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+            case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
                layout->per_stage_descriptor_masks[stage] |= 1U << set_num;
                descriptor_counts[type] += descriptor_count;
                break;
@@ -1067,6 +1116,14 @@ VkResult pvr_CreatePipelineLayout(VkDevice _device,
          next_free_reg[stage] += reg_layout->secondary_size;
       }
    }
+
+   /* TODO: At the moment the above code sets up an in register layout that we
+    * never end up using since the shader currently accesses things through a
+    * descriptor set addresses table, from memory.
+    * For now we setup a separate layout for descriptors that are required to be
+    * uploaded. Eventually we should refactor things and redo the logic.
+    */
+   pvr_setup_required_in_register_layout(layout);
 
    layout->push_constants_shader_stages = 0;
    for (uint32_t i = 0; i < pCreateInfo->pushConstantRangeCount; i++) {
