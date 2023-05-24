@@ -724,6 +724,8 @@ enum rogue_io {
    /* Test output feedthrough. */
    ROGUE_IO_FTT,
 
+   ROGUE_IO_FT0H,
+
    /* Predicate registers. */
    ROGUE_IO_P0,
    ROGUE_IO_PE,
@@ -755,7 +757,7 @@ static inline bool rogue_io_is_iss(enum rogue_io io)
 
 static inline bool rogue_io_is_ft(enum rogue_io io)
 {
-   return (io >= ROGUE_IO_FT0 && io <= ROGUE_IO_FTE);
+   return (io >= ROGUE_IO_FT0 && io <= ROGUE_IO_FT0H);
 }
 
 static inline bool rogue_io_is_none(enum rogue_io io)
@@ -769,9 +771,10 @@ typedef struct rogue_io_info {
 
 extern const rogue_io_info rogue_io_infos[ROGUE_IO_COUNT];
 
-static inline bool rogue_io_supported(enum rogue_io io, uint64_t supported_ios)
+static inline bool rogue_io_supported(enum rogue_io io,
+                                      uint64_t supported_io_set)
 {
-   return !!(BITFIELD64_BIT(io) & supported_ios);
+   return !!(BITFIELD64_BIT(io) & supported_io_set);
 }
 
 #define ROGUE_DRCS 2
@@ -1154,6 +1157,37 @@ static inline bool rogue_refs_equal(rogue_ref *a, rogue_ref *b)
    }
 
    return false;
+}
+
+static inline uint64_t rogue_reg_supported_io_srcs(rogue_ref *ref)
+{
+   enum rogue_reg_class reg_class;
+
+   if (rogue_ref_is_regarray(ref))
+      reg_class = ref->regarray->regs[0]->class;
+   else if (rogue_ref_is_reg(ref))
+      reg_class = ref->reg->class;
+   else
+      unreachable("Reference is not a reg or regarray.");
+
+   /* Special case - special constants range. */
+   if (rogue_ref_is_special_reg(ref)) {
+      unsigned idx = ref->reg->index;
+
+      if ((idx >= ROGUE_SPECIAL_REG_CONSTS_0_START &&
+           idx <= ROGUE_SPECIAL_REG_CONSTS_0_END) ||
+          (idx >= ROGUE_SPECIAL_REG_CONSTS_1_START &&
+           idx <= ROGUE_SPECIAL_REG_CONSTS_1_END) ||
+          (idx >= ROGUE_SPECIAL_REG_CONSTS_2_START &&
+           idx <= ROGUE_SPECIAL_REG_CONSTS_2_END))
+         reg_class = ROGUE_REG_CLASS_CONST;
+   }
+
+   /* Special case - indexed registers. */
+   if (rogue_ref_is_reg_indexed(ref))
+      reg_class = ROGUE_REG_CLASS_IDX0 + ref->idx;
+
+   return rogue_reg_class_infos[reg_class].supported_io_srcs;
 }
 
 static inline enum reg_bank rogue_reg_bank_encoding(const rogue_ref *ref)
@@ -1547,8 +1581,8 @@ extern const rogue_ctrl_op_mod_info
 #define ROGUE_CTRL_OP_MAX_DSTS 3
 
 typedef struct rogue_ctrl_io_info {
-   uint64_t dst[ROGUE_CTRL_OP_MAX_SRCS];
-   uint64_t src[ROGUE_CTRL_OP_MAX_DSTS];
+   uint64_t dst_set[ROGUE_CTRL_OP_MAX_SRCS];
+   uint64_t src_set[ROGUE_CTRL_OP_MAX_DSTS];
 } rogue_ctrl_io_info;
 
 typedef struct rogue_ctrl_op_info {
@@ -1562,7 +1596,7 @@ typedef struct rogue_ctrl_op_info {
    unsigned num_dsts;
    unsigned num_srcs;
 
-   rogue_ctrl_io_info phase_io;
+   rogue_ctrl_io_info io;
 
    uint64_t supported_op_mods;
    uint64_t supported_dst_mods[ROGUE_CTRL_OP_MAX_DSTS];
@@ -1603,8 +1637,8 @@ static inline bool rogue_ctrl_op_has_dsts(enum rogue_ctrl_op op)
 #define ROGUE_ALU_OP_MAX_DSTS 3
 
 typedef struct rogue_alu_io_info {
-   uint64_t dst[ROGUE_ALU_OP_MAX_DSTS];
-   uint64_t src[ROGUE_ALU_OP_MAX_SRCS];
+   uint64_t dst_set[ROGUE_ALU_OP_MAX_DSTS];
+   uint64_t src_set[ROGUE_ALU_OP_MAX_SRCS];
 } rogue_alu_io_info;
 
 /** Rogue ALU instruction operation info. */
@@ -1617,7 +1651,7 @@ typedef struct rogue_alu_op_info {
    bool whole_pipeline;
 
    enum rogue_instr_phase phase;
-   rogue_alu_io_info phase_io;
+   rogue_alu_io_info io;
 
    uint64_t supported_op_mods;
    uint64_t supported_dst_mods[ROGUE_ALU_OP_MAX_DSTS];
@@ -1747,8 +1781,8 @@ enum rogue_backend_op {
 };
 
 typedef struct rogue_backend_io_info {
-   uint64_t dst[ROGUE_BACKEND_OP_MAX_DSTS];
-   uint64_t src[ROGUE_BACKEND_OP_MAX_SRCS];
+   uint64_t dst_set[ROGUE_BACKEND_OP_MAX_DSTS];
+   uint64_t src_set[ROGUE_BACKEND_OP_MAX_SRCS];
 } rogue_backend_io_info;
 
 typedef struct rogue_backend_op_info {
@@ -1757,7 +1791,7 @@ typedef struct rogue_backend_op_info {
    unsigned num_dsts;
    unsigned num_srcs;
 
-   rogue_backend_io_info phase_io;
+   rogue_backend_io_info io;
 
    uint64_t supported_op_mods;
    uint64_t supported_dst_mods[ROGUE_BACKEND_OP_MAX_DSTS];
@@ -1995,7 +2029,7 @@ typedef struct rogue_bitwise_op_info {
    unsigned num_srcs;
 
    enum rogue_instr_phase phase;
-   rogue_alu_io_info phase_io;
+   rogue_alu_io_info io;
 
    uint64_t supported_op_mods;
    uint64_t supported_dst_mods[ROGUE_BITWISE_OP_MAX_DSTS];
@@ -2113,15 +2147,14 @@ ROGUE_DEFINE_CAST(rogue_instr_as_bitwise,
                   type,
                   ROGUE_INSTR_TYPE_BITWISE)
 
-static inline enum rogue_io rogue_phase_io(uint64_t phase_io)
+static inline enum rogue_io rogue_phase_io(uint64_t phase_io_set)
 {
-   /* TODO NEXT: handle multiple options. */
-   assert(util_is_power_of_two_or_zero64(phase_io));
+   assert(util_is_power_of_two_or_zero64(phase_io_set));
 
-   if (!phase_io)
+   if (!phase_io_set)
       return ROGUE_IO_INVALID;
 
-   return ffsll(phase_io) - 1;
+   return ffsll(phase_io_set) - 1;
 }
 
 static inline uint64_t rogue_instr_src_io_src(const rogue_instr *instr,
@@ -2131,25 +2164,25 @@ static inline uint64_t rogue_instr_src_io_src(const rogue_instr *instr,
    case ROGUE_INSTR_TYPE_ALU: {
       const rogue_alu_instr *alu = rogue_instr_as_alu(instr);
       const rogue_alu_op_info *info = &rogue_alu_op_infos[alu->op];
-      return info->phase_io.src[src_index];
+      return info->io.src_set[src_index];
    }
 
    case ROGUE_INSTR_TYPE_BACKEND: {
       const rogue_backend_instr *backend = rogue_instr_as_backend(instr);
       const rogue_backend_op_info *info = &rogue_backend_op_infos[backend->op];
-      return info->phase_io.src[src_index];
+      return info->io.src_set[src_index];
    }
 
    case ROGUE_INSTR_TYPE_CTRL: {
       const rogue_ctrl_instr *ctrl = rogue_instr_as_ctrl(instr);
       const rogue_ctrl_op_info *info = &rogue_ctrl_op_infos[ctrl->op];
-      return info->phase_io.src[src_index];
+      return info->io.src_set[src_index];
    }
 
    case ROGUE_INSTR_TYPE_BITWISE: {
       const rogue_bitwise_instr *bitwise = rogue_instr_as_bitwise(instr);
       const rogue_bitwise_op_info *info = &rogue_bitwise_op_infos[bitwise->op];
-      return info->phase_io.src[src_index];
+      return info->io.src_set[src_index];
    }
 
    default:
@@ -2166,6 +2199,11 @@ typedef struct rogue_instr_group_io_sel {
    rogue_ref dsts[ROGUE_ISA_DSTS]; /** Destinations. */
    rogue_ref iss[ROGUE_ISA_ISSS]; /** Internal source selector (includes
                                      IS0/MUX). */
+   /* Virtual, actually set up by the hardware automatically, but tracking it
+    * ensures we don't try to use it in an unintended state. */
+   rogue_ref fte;
+   rogue_ref ft4;
+   rogue_ref ft5;
 } rogue_instr_group_io_sel;
 
 static inline rogue_ref *
@@ -2177,6 +2215,12 @@ rogue_instr_group_io_sel_ref(rogue_instr_group_io_sel *map, enum rogue_io io)
       return &map->dsts[io - ROGUE_IO_W0];
    else if (rogue_io_is_iss(io))
       return &map->iss[io - ROGUE_IO_IS0];
+   else if (io == ROGUE_IO_FTE)
+      return &map->fte;
+   else if (io == ROGUE_IO_FT4)
+      return &map->ft4;
+   else if (io == ROGUE_IO_FT5)
+      return &map->ft5;
    unreachable("Unsupported io.");
 }
 
@@ -2785,6 +2829,7 @@ static inline void rogue_unlink_instr_use_block(rogue_instr *instr,
                                                 rogue_block_use *block_use)
 {
    assert(block_use->instr == instr);
+   block_use->instr = NULL;
    list_del(&block_use->link);
 }
 
@@ -3296,6 +3341,36 @@ static inline void rogue_find_instrs(const rogue_shader *shader,
          }
       }
    }
+}
+
+static inline const rogue_reg *rogue_reg_from_use(const rogue_reg_use *use)
+{
+   assert(use->instr);
+
+   rogue_ref *ref;
+   switch (use->instr->type) {
+   case ROGUE_INSTR_TYPE_ALU:
+      ref = &rogue_instr_as_alu(use->instr)->src[use->src_index].ref;
+      break;
+
+   case ROGUE_INSTR_TYPE_BACKEND:
+      ref = &rogue_instr_as_backend(use->instr)->src[use->src_index].ref;
+      break;
+
+   case ROGUE_INSTR_TYPE_CTRL:
+      ref = &rogue_instr_as_ctrl(use->instr)->src[use->src_index].ref;
+      break;
+
+   case ROGUE_INSTR_TYPE_BITWISE:
+      ref = &rogue_instr_as_bitwise(use->instr)->src[use->src_index].ref;
+      break;
+
+   default:
+      unreachable("Unsupported instruction type.");
+   }
+
+   assert(rogue_ref_is_reg(ref));
+   return ref->reg;
 }
 
 /* Printing */

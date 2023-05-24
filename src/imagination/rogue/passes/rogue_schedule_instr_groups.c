@@ -33,263 +33,474 @@
  * \brief Contains the rogue_schedule_instr_groups pass.
  */
 
-static inline void rogue_set_io_sel(rogue_instr_group_io_sel *map,
-                                    enum rogue_alu alu,
-                                    enum rogue_io io,
-                                    rogue_ref *ref,
-                                    bool is_dst)
+static inline void rogue_set_io_mapping(rogue_instr_group_io_sel *map,
+                                        enum rogue_io io,
+                                        rogue_ref ref)
 {
-   enum rogue_io target_io = io;
+   rogue_ref *mapping = rogue_instr_group_io_sel_ref(map, io);
 
-   /* Skip replacing values with I/O *and* don't replace the operand.
-    * Some ops allow their operands to be either a value or register (via I/O).
-    */
-   if (rogue_ref_is_val(ref))
-      return;
+   /* We shouldn't be overwriting mappings. */
+   assert(rogue_ref_is_null(mapping));
 
-   /* Skip unassigned I/Os...
-    * ...and I/Os that have already been assigned (e.g. for grouping).
-    */
-   if (rogue_ref_is_io_none(ref) ||
-       (rogue_ref_is_io(ref) && rogue_ref_get_io(ref) == io)) {
-      *ref = rogue_ref_io(target_io);
-      return;
-   }
-
-   if (alu == ROGUE_ALU_MAIN) {
-      /* Hookup feedthrough outputs to W0 using IS4. */
-      if (is_dst && rogue_io_is_ft(io)) {
-         if (io == ROGUE_IO_FTE) {
-            *(rogue_instr_group_io_sel_ref(map, ROGUE_IO_IS5)) =
-               rogue_ref_io(io);
-            io = ROGUE_IO_W1;
-         } else {
-            *(rogue_instr_group_io_sel_ref(map, ROGUE_IO_IS4)) =
-               rogue_ref_io(io);
-            io = ROGUE_IO_W0;
-         }
-      }
-
-      /* Movc source. */
-      /* TODO: hardcoded to use fte and s1 for now. */
-      if (!is_dst && io == ROGUE_IO_FTE) {
-         enum rogue_io src = ROGUE_IO_S1;
-         *(rogue_instr_group_io_sel_ref(map, ROGUE_IO_IS0)) = rogue_ref_io(src);
-         *(rogue_instr_group_io_sel_ref(map, ROGUE_IO_IS4)) = rogue_ref_io(io);
-         io = src;
-      }
-
-      /* Pack source */
-      if (!is_dst && io == ROGUE_IO_IS3) {
-         enum rogue_io src = ROGUE_IO_S0;
-         *(rogue_instr_group_io_sel_ref(map, ROGUE_IO_IS0)) = rogue_ref_io(src);
-         *(rogue_instr_group_io_sel_ref(map, ROGUE_IO_IS3)) =
-            rogue_ref_io(ROGUE_IO_FTE);
-         io = src;
-      }
-
-      /* w0/w1 used as sources. */
-      if (!is_dst && rogue_io_is_dst(io)) {
-         enum rogue_io dst_ft =
-            (io == ROGUE_IO_W0 ? ROGUE_IO_IS4 : ROGUE_IO_IS5);
-         enum rogue_io src = ROGUE_IO_S0;
-         *(rogue_instr_group_io_sel_ref(map, dst_ft)) =
-            rogue_ref_io(ROGUE_IO_FTE);
-         *(rogue_instr_group_io_sel_ref(map, ROGUE_IO_IS0)) = rogue_ref_io(src);
-         io = src;
-      }
-
-      /* ADD64 fourth source */
-      if (!is_dst && io == ROGUE_IO_IS0) {
-         enum rogue_io src = ROGUE_IO_S3;
-         *(rogue_instr_group_io_sel_ref(map, io)) = rogue_ref_io(src);
-         io = src;
-      }
-
-      /* Test source(s). */
-      /* TODO: tidy up. */
-      if (!is_dst && io == ROGUE_IO_IS1) {
-         enum rogue_io src = ROGUE_IO_S0;
-         enum rogue_io ft = ROGUE_IO_FT0;
-
-         /* Already set up. */
-         if (io != ft)
-            *(rogue_instr_group_io_sel_ref(map, io)) = rogue_ref_io(ft);
-
-         io = src;
-      }
-
-      if (!is_dst && io == ROGUE_IO_IS2) {
-         enum rogue_io src = ROGUE_IO_S3;
-         enum rogue_io ft = ROGUE_IO_FT1;
-
-         /* Already set up. */
-         if (io != ft)
-            *(rogue_instr_group_io_sel_ref(map, io)) = rogue_ref_io(ft);
-
-         io = src;
-      }
-   } else if (alu == ROGUE_ALU_BITWISE) {
-      if (is_dst) {
-         if (io == ROGUE_IO_FT5 || io == ROGUE_IO_FT4 || io == ROGUE_IO_FT1)
-            io = ROGUE_IO_W0;
-         else if (io == ROGUE_IO_FT3)
-            io = ROGUE_IO_W1;
-      }
-   }
-
-   /* Set if not already set. */
-   if (rogue_ref_is_null(rogue_instr_group_io_sel_ref(map, io)))
-      *(rogue_instr_group_io_sel_ref(map, io)) = *ref;
-
-   *ref = rogue_ref_io(target_io);
+   *mapping = ref;
 }
 
-/* TODO NEXT: Abort if anything in sel map is already set. */
-/* TODO NEXT: Assert that these are register refs being set. */
+static inline bool rogue_io_mapping_is_set(rogue_instr_group_io_sel *map,
+                                           enum rogue_io io)
+{
+   rogue_ref *mapping = rogue_instr_group_io_sel_ref(map, io);
+   return !rogue_ref_is_null(mapping);
+}
 
-static void rogue_lower_alu_io(rogue_alu_instr *alu, rogue_instr_group *group)
+static inline enum rogue_io rogue_route_io(rogue_instr_group_io_sel *map,
+                                           enum rogue_io io,
+                                           enum rogue_io route_io)
+{
+   rogue_set_io_mapping(map, route_io, rogue_ref_io(io));
+   return route_io;
+}
+
+/* Find an unused source that matches any register restrictions. */
+static inline enum rogue_io rogue_find_unused_src(rogue_instr_group_io_sel *map,
+                                                  rogue_ref *ref,
+                                                  uint64_t io_set)
+{
+   /* 0 = no restrictions. */
+   if (!io_set)
+      io_set = ~0ULL;
+
+   uint64_t supported_io_set = rogue_reg_supported_io_srcs(ref) & io_set;
+
+   for (unsigned u = 0; u < ARRAY_SIZE(map->srcs); ++u) {
+      enum rogue_io src_io = ROGUE_IO_S0 + u;
+      rogue_ref *src_ref = &map->srcs[u];
+      if (rogue_ref_is_null(src_ref) &&
+          rogue_io_supported(src_io, supported_io_set))
+         return src_io;
+   }
+
+   return ROGUE_IO_INVALID;
+}
+
+/* Deferring allocation of I/O with multiple options means we have a chance to
+ * first allocate the I/O with a single fixed option. */
+
+static inline bool rogue_alloc_io_sel(rogue_instr_group *group,
+                                      uint64_t io_set,
+                                      rogue_ref *ref,
+                                      bool is_dst,
+                                      bool deferred)
+{
+   rogue_instr_group_io_sel *map = &group->io_sel;
+   /* unsigned group_instr_count = util_bitcount64(group->header.phases); */
+   enum rogue_alu alu = group->header.alu;
+
+   unsigned io_set_count = util_bitcount64(io_set);
+
+   /* No phase I/O specified, check we haven't somehow been passed a
+    * reg/regarray and return. Exception for vertex output registers as they
+    * aren't real.
+    */
+   if (!io_set_count) {
+      assert(!rogue_ref_is_reg_or_regarray(ref) ||
+             (is_dst && rogue_ref_is_vtxout_reg(ref)));
+      return false;
+   }
+
+   /* What we do next depends on whether the I/O layout has already been given
+    * to us via the instruction operand reference, or if we need to allocate it
+    * ourselves. */
+   if (rogue_ref_is_io(ref)) {
+      enum rogue_io ref_io = rogue_ref_get_io(ref);
+      /* We have phase I/O but the instruction operand reference is already set
+       * to it, nothing else to do. */
+      if (BITFIELD64_BIT(ref_io) & io_set)
+         return false;
+
+      /* Set to none - leave in place. Might have an effect on how an op is
+       * encoded, or might just be an optional/default value. */
+      if (rogue_io_is_none(ref_io))
+         return false;
+
+      /* If we've been passed I/O that *doesn't* match what's expected, then we
+       * need to ensure it's allowed. */
+
+      /* If we've been passed a feedthrough, it should be because we want to end
+       * up with an internal source selector. */
+      if (rogue_io_is_ft(ref_io)) {
+         /* There should only be a single option if we have an internal source
+          * selector. */
+         assert(io_set_count == 1);
+
+         enum rogue_io io = rogue_phase_io(io_set);
+         assert(rogue_io_is_iss(io));
+
+         /* Set the ISS and update the operand reference to point to the ISS. */
+         rogue_set_io_mapping(map, io, *ref);
+         *ref = rogue_ref_io(io);
+
+         return false;
+      }
+
+      if (ref_io == ROGUE_IO_P0)
+         return false;
+
+      /* If we've been passed anything else, we shouldn't have reached this
+       * point.
+       */
+      unreachable("Mismatching I/O set in instruction operand.");
+   } else if (rogue_ref_is_reg_or_regarray(ref)) {
+      /* If there's only one place the reg/regarray needs to end up, the logic
+       * is simple. */
+      if (io_set_count == 1) {
+         enum rogue_io io = rogue_phase_io(io_set);
+
+         if (rogue_io_is_src(io) || rogue_io_is_dst(io)) {
+            /* For sources used as sources/destinations, or destinations used as
+             * destinations, simply set them and update the operand reference.
+             */
+            if (rogue_io_is_src(io) || (rogue_io_is_dst(io) && is_dst)) {
+               rogue_set_io_mapping(map, io, *ref);
+               *ref = rogue_ref_io(io);
+
+               return false;
+            } else if (rogue_io_is_dst(io) && !is_dst) {
+               /* Special case: Destinations used as sources require routing
+                * from a source. */
+
+               /* Defer allocation, as IS0 can point to one of many sources. */
+               if (!deferred)
+                  return true;
+
+               enum rogue_io iss_io = (io == ROGUE_IO_W0) ? ROGUE_IO_IS4
+                                                          : ROGUE_IO_IS5;
+
+               /* Find an unused source to use. */
+               enum rogue_io src_io = rogue_find_unused_src(map, ref, 0);
+               if (src_io == ROGUE_IO_INVALID)
+                  unreachable("Unable to find source I/O for scheduling");
+
+               /* Route the ISS and destination, and update the operand
+                * reference. */
+               rogue_set_io_mapping(map, iss_io, rogue_ref_io(ROGUE_IO_FTE));
+               rogue_set_io_mapping(map,
+                                    ROGUE_IO_FTE,
+                                    rogue_ref_io(ROGUE_IO_IS0));
+               rogue_set_io_mapping(map, ROGUE_IO_IS0, rogue_ref_io(src_io));
+
+               rogue_set_io_mapping(map, src_io, *ref);
+               *ref = rogue_ref_io(io);
+               return false;
+            }
+
+            unreachable("Unsupported source/destination combination.");
+         } else if (rogue_io_is_ft(io)) {
+            /* If we're assigning to a feedthrough and this is a destination, we
+             * can set up source selectors accordingly. */
+            if (is_dst) {
+               switch (alu) {
+               /* For the main ALU, route the feedthrough to W0 or W1 if it's
+                * already occupied. */
+               case ROGUE_ALU_MAIN: {
+                  enum rogue_io orig_io = io;
+                  enum rogue_io dst_io = ROGUE_IO_W0;
+                  enum rogue_io iss_io = ROGUE_IO_IS4;
+
+                  if (rogue_io_mapping_is_set(map, dst_io)) {
+                     dst_io = ROGUE_IO_W1;
+                     iss_io = ROGUE_IO_IS5;
+                  }
+
+                  /* If even W1 is occupied, or the source selector has already
+                   * been set, give up. */
+                  assert(!rogue_io_mapping_is_set(map, dst_io) &&
+                         !rogue_io_mapping_is_set(map, iss_io));
+
+                  /* SPECIAL CASE: If the output is FT0h, we need to route it
+                   * through FTE (this is done automatically in the hardware).
+                   */
+                  if (io == ROGUE_IO_FT0H)
+                     io = rogue_route_io(map, io, ROGUE_IO_FTE);
+
+                  /* Set the ISS and destination, and update the operand
+                   * reference. */
+                  rogue_set_io_mapping(map, iss_io, rogue_ref_io(io));
+                  rogue_set_io_mapping(map, dst_io, *ref);
+                  *ref = rogue_ref_io(orig_io);
+                  return false;
+               }
+
+               /* For the bitwise ALU, we currently only support a subset of
+                * outputs/feedthroughs. */
+               /* TODO: Support the rest. */
+               case ROGUE_ALU_BITWISE: {
+                  enum rogue_io orig_io = io;
+                  enum rogue_io dst_io;
+
+                  /* When phase 1 is not present, route FT4 = FT1. */
+                  if (io == ROGUE_IO_FT1)
+                     io = rogue_route_io(map, io, ROGUE_IO_FT4);
+
+                  /* When phase 2 is not present, route FT5 = FT4. */
+                  if (io == ROGUE_IO_FT4)
+                     io = rogue_route_io(map, io, ROGUE_IO_FT5);
+
+                  /* TODO: We only support the FT5 = W0 output for now. */
+                  if (io == ROGUE_IO_FT5)
+                     dst_io = ROGUE_IO_W0;
+                  else
+                     unreachable("Unsupported bitwise I/O.");
+
+                  /* Set the destination, and update the operand reference. */
+                  rogue_set_io_mapping(map, dst_io, *ref);
+                  *ref = rogue_ref_io(orig_io);
+                  return false;
+               }
+
+                  /* No feedthroughs in the control ALU. */
+
+               default:
+                  break;
+               }
+
+               unreachable("Unsupported instruction group ALU.");
+            } else {
+               /* If we have a source register for a feedthrough, it *must* be
+                * FTE in the main ALU, otherwise there's no other way to route
+                * it without an additional BYP and it's too late to insert one
+                * into the group at this stage.
+                */
+               assert(alu == ROGUE_ALU_MAIN);
+               assert(io == ROGUE_IO_FTE);
+
+               /* Defer allocation, as IS0 can point to one of many sources. */
+               if (!deferred)
+                  return true;
+
+               /* FINISHME */
+               abort();
+
+               return false;
+            }
+         } else if (rogue_io_is_iss(io)) {
+            /* Internal source selectors only exist in the MAIN ALU and, as
+             * their name suggests, are only ever sources. */
+            assert(alu == ROGUE_ALU_MAIN);
+            assert(!is_dst);
+
+            /* Defer allocation, as IS0 can point to one of many sources. */
+            if (!deferred)
+               return true;
+
+            enum rogue_io orig_io = io;
+
+            /* Find an unused source to use. */
+            enum rogue_io src_io = rogue_find_unused_src(map, ref, 0);
+            if (src_io == ROGUE_IO_INVALID)
+               unreachable("Unable to find source I/O for scheduling");
+
+            /* For IS1-5, we route through FTE. For IS0, there is no need. */
+            if (io == ROGUE_IO_IS0) {
+               rogue_set_io_mapping(map, io, rogue_ref_io(src_io));
+            } else {
+               rogue_set_io_mapping(map, io, rogue_ref_io(ROGUE_IO_FTE));
+               rogue_set_io_mapping(map,
+                                    ROGUE_IO_FTE,
+                                    rogue_ref_io(ROGUE_IO_IS0));
+               rogue_set_io_mapping(map, ROGUE_IO_IS0, rogue_ref_io(src_io));
+            }
+
+            rogue_set_io_mapping(map, src_io, *ref);
+            *ref = rogue_ref_io(orig_io);
+            return false;
+         }
+      } else {
+         if (!deferred)
+            return true;
+
+         /* We can handle FTE. */
+         if (BITFIELD64_BIT(ROGUE_IO_FTE) & io_set) {
+            enum rogue_io io = ROGUE_IO_FTE;
+
+            /* Find an unused source to use. */
+            enum rogue_io src_io = rogue_find_unused_src(map, ref, 0);
+            if (src_io == ROGUE_IO_INVALID)
+               unreachable("Unable to find source I/O for scheduling");
+
+            rogue_set_io_mapping(map, ROGUE_IO_FTE, rogue_ref_io(ROGUE_IO_IS0));
+            rogue_set_io_mapping(map, ROGUE_IO_IS0, rogue_ref_io(src_io));
+
+            rogue_set_io_mapping(map, src_io, *ref);
+            *ref = rogue_ref_io(io);
+
+            return false;
+         }
+
+         uint64_t srcs =
+            BITFIELD64_BIT(ROGUE_IO_S0) | BITFIELD64_BIT(ROGUE_IO_S1) |
+            BITFIELD64_BIT(ROGUE_IO_S2) | BITFIELD64_BIT(ROGUE_IO_S3) |
+            BITFIELD64_BIT(ROGUE_IO_S4) | BITFIELD64_BIT(ROGUE_IO_S5);
+         if (srcs & io_set) {
+            /* Find an unused source to use. */
+            enum rogue_io src_io = rogue_find_unused_src(map, ref, io_set);
+            if (src_io == ROGUE_IO_INVALID)
+               unreachable("Unable to find source I/O for scheduling");
+
+            rogue_set_io_mapping(map, src_io, *ref);
+            *ref = rogue_ref_io(src_io);
+
+            return false;
+         }
+
+         unreachable("Unsupported I/O allocation.");
+      }
+   }
+
+   return false;
+}
+
+static bool rogue_schedule_alu_io(rogue_alu_instr *alu,
+                                  rogue_instr_group *group,
+                                  bool deferred)
 {
    const rogue_alu_op_info *info = &rogue_alu_op_infos[alu->op];
+   bool needs_deferring = false;
 
    for (unsigned u = 0; u < info->num_dsts; ++u) {
-      enum rogue_io io = rogue_phase_io(info->phase_io.dst[u]);
-      if (io == ROGUE_IO_INVALID)
-         continue;
-
-      rogue_set_io_sel(&group->io_sel,
-                       group->header.alu,
-                       io,
-                       &alu->dst[u].ref,
-                       true);
+      needs_deferring |= rogue_alloc_io_sel(group,
+                                            info->io.dst_set[u],
+                                            &alu->dst[u].ref,
+                                            true,
+                                            deferred);
    }
 
    for (unsigned u = 0; u < info->num_srcs; ++u) {
-      enum rogue_io io = rogue_phase_io(info->phase_io.src[u]);
-      if (io == ROGUE_IO_INVALID)
-         continue;
-
-      rogue_set_io_sel(&group->io_sel,
-                       group->header.alu,
-                       io,
-                       &alu->src[u].ref,
-                       false);
+      needs_deferring |= rogue_alloc_io_sel(group,
+                                            info->io.src_set[u],
+                                            &alu->src[u].ref,
+                                            false,
+                                            deferred);
    }
+
+   return needs_deferring;
 }
 
-static void rogue_lower_backend_io(rogue_backend_instr *backend,
-                                   rogue_instr_group *group)
+static bool rogue_schedule_backend_io(rogue_backend_instr *backend,
+                                      rogue_instr_group *group,
+                                      bool deferred)
 {
    const rogue_backend_op_info *info = &rogue_backend_op_infos[backend->op];
+   bool needs_deferring = false;
 
    for (unsigned u = 0; u < info->num_dsts; ++u) {
-      enum rogue_io io = rogue_phase_io(info->phase_io.dst[u]);
-      if (io == ROGUE_IO_INVALID)
-         continue;
-
-      rogue_set_io_sel(&group->io_sel,
-                       group->header.alu,
-                       io,
-                       &backend->dst[u].ref,
-                       true);
+      needs_deferring |= rogue_alloc_io_sel(group,
+                                            info->io.dst_set[u],
+                                            &backend->dst[u].ref,
+                                            true,
+                                            deferred);
    }
 
    for (unsigned u = 0; u < info->num_srcs; ++u) {
-      enum rogue_io io = rogue_phase_io(info->phase_io.src[u]);
-      if (io == ROGUE_IO_INVALID)
-         continue;
-
-      rogue_set_io_sel(&group->io_sel,
-                       group->header.alu,
-                       io,
-                       &backend->src[u].ref,
-                       false);
+      needs_deferring |= rogue_alloc_io_sel(group,
+                                            info->io.src_set[u],
+                                            &backend->src[u].ref,
+                                            false,
+                                            deferred);
    }
+
+   return needs_deferring;
 }
 
-static void rogue_lower_ctrl_io(rogue_ctrl_instr *ctrl,
-                                rogue_instr_group *group)
+static bool rogue_schedule_ctrl_io(rogue_ctrl_instr *ctrl,
+                                   rogue_instr_group *group,
+                                   bool deferred)
 {
    const rogue_ctrl_op_info *info = &rogue_ctrl_op_infos[ctrl->op];
+   bool needs_deferring = false;
 
    for (unsigned u = 0; u < info->num_dsts; ++u) {
-      enum rogue_io io = rogue_phase_io(info->phase_io.dst[u]);
-      if (io == ROGUE_IO_INVALID)
-         continue;
-
-      rogue_set_io_sel(&group->io_sel,
-                       group->header.alu,
-                       io,
-                       &ctrl->dst[u].ref,
-                       true);
+      needs_deferring |= rogue_alloc_io_sel(group,
+                                            info->io.dst_set[u],
+                                            &ctrl->dst[u].ref,
+                                            true,
+                                            deferred);
    }
 
    for (unsigned u = 0; u < info->num_srcs; ++u) {
-      enum rogue_io io = rogue_phase_io(info->phase_io.src[u]);
-      if (io == ROGUE_IO_INVALID)
-         continue;
-
-      rogue_set_io_sel(&group->io_sel,
-                       group->header.alu,
-                       io,
-                       &ctrl->src[u].ref,
-                       false);
+      needs_deferring |= rogue_alloc_io_sel(group,
+                                            info->io.src_set[u],
+                                            &ctrl->src[u].ref,
+                                            false,
+                                            deferred);
    }
+
+   return needs_deferring;
 }
 
-static void rogue_lower_bitwise_io(rogue_bitwise_instr *bitwise,
-                                   rogue_instr_group *group)
+static bool rogue_schedule_bitwise_io(rogue_bitwise_instr *bitwise,
+                                      rogue_instr_group *group,
+                                      bool deferred)
 {
    const rogue_bitwise_op_info *info = &rogue_bitwise_op_infos[bitwise->op];
+   bool needs_deferring = false;
 
    for (unsigned u = 0; u < info->num_dsts; ++u) {
-      enum rogue_io io = rogue_phase_io(info->phase_io.dst[u]);
-      if (io == ROGUE_IO_INVALID)
-         continue;
-
-      rogue_set_io_sel(&group->io_sel,
-                       group->header.alu,
-                       io,
-                       &bitwise->dst[u].ref,
-                       true);
+      needs_deferring |= rogue_alloc_io_sel(group,
+                                            info->io.dst_set[u],
+                                            &bitwise->dst[u].ref,
+                                            true,
+                                            deferred);
    }
 
    for (unsigned u = 0; u < info->num_srcs; ++u) {
-      enum rogue_io io = rogue_phase_io(info->phase_io.src[u]);
-      if (io == ROGUE_IO_INVALID)
-         continue;
-
-      rogue_set_io_sel(&group->io_sel,
-                       group->header.alu,
-                       io,
-                       &bitwise->src[u].ref,
-                       false);
+      needs_deferring |= rogue_alloc_io_sel(group,
+                                            info->io.src_set[u],
+                                            &bitwise->src[u].ref,
+                                            false,
+                                            deferred);
    }
+
+   return needs_deferring;
 }
 
-static void rogue_lower_instr_group_io(rogue_instr *instr,
-                                       rogue_instr_group *group)
+static bool rogue_schedule_instr_group_io(rogue_instr_group *group,
+                                          bool deferred)
 {
-   switch (instr->type) {
-   case ROGUE_INSTR_TYPE_ALU:
-      rogue_lower_alu_io(rogue_instr_as_alu(instr), group);
-      break;
+   bool needs_deferring = false;
 
-   case ROGUE_INSTR_TYPE_BACKEND:
-      rogue_lower_backend_io(rogue_instr_as_backend(instr), group);
-      break;
+   rogue_foreach_phase_in_set (p, group->header.phases) {
+      const rogue_instr *instr = group->instrs[p];
+      switch (instr->type) {
+      case ROGUE_INSTR_TYPE_ALU:
+         needs_deferring |=
+            rogue_schedule_alu_io(rogue_instr_as_alu(instr), group, deferred);
+         break;
 
-   case ROGUE_INSTR_TYPE_CTRL:
-      rogue_lower_ctrl_io(rogue_instr_as_ctrl(instr), group);
-      break;
+      case ROGUE_INSTR_TYPE_BACKEND:
+         needs_deferring |=
+            rogue_schedule_backend_io(rogue_instr_as_backend(instr),
+                                      group,
+                                      deferred);
+         break;
 
-   case ROGUE_INSTR_TYPE_BITWISE:
-      rogue_lower_bitwise_io(rogue_instr_as_bitwise(instr), group);
-      break;
+      case ROGUE_INSTR_TYPE_CTRL:
+         needs_deferring |=
+            rogue_schedule_ctrl_io(rogue_instr_as_ctrl(instr), group, deferred);
+         break;
 
-   default:
-      unreachable("Unsupported instruction group type.");
+      case ROGUE_INSTR_TYPE_BITWISE:
+         needs_deferring |=
+            rogue_schedule_bitwise_io(rogue_instr_as_bitwise(instr),
+                                      group,
+                                      deferred);
+         break;
+
+      default:
+         unreachable("Unsupported instruction group type.");
+      }
    }
+
+   return needs_deferring;
 }
 
 /* This function uses unreachables rather than asserts because some Rogue IR
@@ -329,9 +540,6 @@ static inline void rogue_instr_group_put(rogue_instr *instr,
    /* Set conditional execution flag. */
    group->header.exec_cond = instr->exec_cond;
    instr->exec_cond = ROGUE_EXEC_COND_INVALID;
-
-   /* Lower I/O to sources/destinations/ISS. */
-   rogue_lower_instr_group_io(instr, group);
 }
 
 static inline void rogue_move_instr_to_group(rogue_instr *instr,
@@ -885,6 +1093,11 @@ static void rogue_calc_padding_size(rogue_instr_group *group)
 
 static void rogue_finalise_instr_group(rogue_instr_group *group)
 {
+   /* Schedule I/O to sources/destinations/ISS and between instructions. */
+   bool needs_deferring = rogue_schedule_instr_group_io(group, false);
+   if (needs_deferring)
+      rogue_schedule_instr_group_io(group, true);
+
    rogue_calc_dsts_size(group);
    rogue_calc_iss_size(group);
    rogue_calc_srcs_size(group, true);

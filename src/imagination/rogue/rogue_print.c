@@ -560,6 +560,39 @@ rogue_print_instr_group_io_sel(FILE *fp, const rogue_instr_group_io_sel *io_sel)
    if (present)
       fputs(" ", fp);
 
+   /* Print virtual feed-throughs. */
+   const rogue_ref *fts[] = {
+      &io_sel->fte,
+      &io_sel->ft4,
+      &io_sel->ft5,
+   };
+   enum rogue_io ios[ARRAY_SIZE(fts)] = {
+      ROGUE_IO_FTE,
+      ROGUE_IO_FT4,
+      ROGUE_IO_FT5,
+   };
+
+   present = false;
+   for (unsigned u = 0; u < ARRAY_SIZE(fts); ++u) {
+      if (!rogue_ref_is_null(fts[u])) {
+         if (present)
+            fputs(", ", fp);
+
+         present = true;
+
+         rogue_print_io(fp, ios[u]);
+         fputs("=", fp);
+
+         if (rogue_ref_is_io(fts[u])) {
+            rogue_print_io(fp, fts[u]->io);
+         } else {
+            unreachable("Unsupported feedthrough map.");
+         }
+      }
+   }
+   if (present)
+      fputs(" ", fp);
+
    /* Print internal sources. */
    present = false;
    for (unsigned i = 0; i < ARRAY_SIZE(io_sel->iss); ++i) {

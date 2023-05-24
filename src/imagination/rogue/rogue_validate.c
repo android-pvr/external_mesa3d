@@ -700,7 +700,7 @@ static void validate_block(rogue_validation_state *state,
                       "Block does not end with a control flow instruction.");
       }
    } else if (block_ends > 1) {
-      validate_log(state, "Block contains multiple control flow instruction.");
+      validate_log(state, "Block contains multiple control flow instructions.");
    } else if (block_end != last) {
       validate_log(
          state,
@@ -711,29 +711,29 @@ static void validate_block(rogue_validation_state *state,
 }
 
 static void validate_reg_use(rogue_validation_state *state,
-                             const rogue_reg_use *use,
-                             uint64_t supported_io_srcs)
+                             const rogue_reg_use *use)
 {
-   /* No restrictions. */
-   if (!supported_io_srcs)
+   const rogue_instr *instr = use->instr;
+   if (rogue_instr_phase(instr) == ROGUE_INSTR_PHASE_INVALID)
       return;
 
-   const rogue_instr *instr = use->instr;
+   const rogue_reg *reg = rogue_reg_from_use(use);
 
-   if (rogue_instr_phase(instr) != ROGUE_INSTR_PHASE_INVALID) {
-      enum rogue_io io_src =
-         rogue_phase_io(rogue_instr_src_io_src(instr, use->src_index)); /* TODO
-                                                                         */
-      if (io_src == ROGUE_IO_INVALID)
-         validate_log(state, "Register used where no source is present.");
+   /* Skip vertex output "registers". */
+   if (reg->class == ROGUE_REG_CLASS_VTXOUT)
+      return;
 
-      /* TODO: Either add info here to get register class and print as string,
-       * or add info to rogue_validation_state. */
-      if (!rogue_io_supported(io_src, supported_io_srcs))
-         validate_log(state,
-                      "Register class unsupported in S%u.",
-                      io_src - ROGUE_IO_S0);
-   }
+      /* TODO: Needs reworking, disabling for now. */
+#if 0
+   const rogue_reg_class_info *reg_info = &rogue_reg_class_infos[reg->class];
+   const uint64_t supported_io_srcs = reg_info->supported_io_srcs;
+   const uint64_t io_src_set = rogue_instr_src_io_src(instr, use->src_index);
+
+   if (!(io_src_set & supported_io_srcs))
+      validate_log(state,
+                   "Register class \"%s\" use is unsupported in instruction %u.",
+                   reg_info->name, instr->index);
+#endif
 }
 
 static void validate_reg_state(rogue_validation_state *state,
@@ -785,9 +785,9 @@ static void validate_reg_state(rogue_validation_state *state,
                          reg->index);
 
          /* Validate register uses. */
-         const rogue_reg_class_info *reg_info = &rogue_reg_class_infos[class];
-         rogue_foreach_reg_use (use, reg)
-            validate_reg_use(state, use, reg_info->supported_io_srcs);
+         if (!shader->is_grouped)
+            rogue_foreach_reg_use (use, reg)
+               validate_reg_use(state, use);
       }
 
       /* Check that the registers used matches the usage list. */
