@@ -792,6 +792,43 @@ static VkResult pvr_pds_descriptor_program_create_and_upload(
    } else {
       uint32_t addr_literals = 0;
 
+      u_foreach_bit (set_num, layout->per_stage_descriptor_masks[stage]) {
+         const struct pvr_descriptor_set_layout_mem_layout *reg_layout =
+            &layout
+                ->required_register_layout_in_dwords_per_stage[stage][set_num];
+
+         if (layout->per_stage_required_register_usage[stage] == 0)
+            continue;
+
+         if (reg_layout->primary_size == 0)
+            continue;
+
+         program.descriptor_sets[program.descriptor_set_count] =
+            (struct pvr_pds_descriptor_set){
+               .descriptor_set = set_num,
+               .size_in_dwords = reg_layout->primary_size,
+               .destination = reg_layout->primary_offset,
+               .primary = true,
+               .offset_in_dwords = 0,
+            };
+
+         program.descriptor_set_count++;
+
+         if (reg_layout->secondary_size == 0)
+            continue;
+
+         program.descriptor_sets[program.descriptor_set_count] =
+            (struct pvr_pds_descriptor_set){
+               .descriptor_set = set_num,
+               .size_in_dwords = reg_layout->secondary_size,
+               .destination = reg_layout->secondary_offset,
+               .primary = false,
+               .offset_in_dwords = 0,
+            };
+
+         program.descriptor_set_count++;
+      }
+
       if (sh_reg_layout->descriptor_set_addrs_table.present) {
          program.addr_literals[addr_literals] = (struct pvr_pds_addr_literal){
             .type = PVR_PDS_ADDR_LITERAL_DESC_SET_ADDRS_TABLE,
@@ -1187,6 +1224,12 @@ pvr_pipeline_alloc_shareds(const struct pvr_device *device,
 
    struct pvr_sh_reg_layout reg_layout = { 0 };
    uint32_t next_free_sh_reg = 0;
+
+   /* Reserve space for the descriptors required to be uploaded at the beginning
+    * of the shareds. This simplifies the code for locating the shareds utilized
+    * by a specific binding.
+    */
+   next_free_sh_reg += layout->per_stage_required_register_usage[stage];
 
    reg_layout.descriptor_set_addrs_table.present =
       !!(layout->shader_stage_mask & BITFIELD_BIT(stage));

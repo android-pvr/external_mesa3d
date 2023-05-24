@@ -4102,8 +4102,6 @@ pvr_process_addr_literal(struct pvr_cmd_buffer *cmd_buffer,
    return VK_SUCCESS;
 }
 
-#undef PVR_SELECT
-
 static VkResult pvr_setup_descriptor_mappings_new(
    struct pvr_cmd_buffer *const cmd_buffer,
    enum pvr_stage_allocation stage,
@@ -4222,6 +4220,91 @@ static VkResult pvr_setup_descriptor_mappings_new(
          break;
       }
 
+      case PVR_PDS_CONST_MAP_ENTRY_TYPE_DESCRIPTOR_SET: {
+         const struct pvr_const_map_entry_descriptor_set *desc_set_entry =
+            (struct pvr_const_map_entry_descriptor_set *)entries;
+         const struct pvr_descriptor_set_layout_mem_layout *mem_layout;
+         const uint32_t desc_set_num = desc_set_entry->descriptor_set;
+         const struct pvr_descriptor_set *descriptor_set;
+         pvr_dev_addr_t desc_set_addr;
+         uint64_t desc_portion_offset;
+
+         assert(desc_set_num < PVR_MAX_DESCRIPTOR_SETS);
+
+         struct pvr_descriptor_state *desc_state =
+            PVR_SELECT(&cmd_buffer->state.gfx_desc_state,
+                       &cmd_buffer->state.gfx_desc_state,
+                       &cmd_buffer->state.compute_desc_state);
+
+         /* TODO: Is the application allowed to not bind a desc set that was
+          * defined in the pipeline layout?
+          */
+         /* We skip DMAing unbound descriptor sets. */
+         if (!(desc_state->valid_mask & BITFIELD_BIT(desc_set_num))) {
+            const struct pvr_const_map_entry_literal32 *literal;
+            uint32_t zero_literal_value;
+
+            /* The code segment contains a DOUT instructions so in the data
+             * section we have to write a DOUTD_SRC0 and DOUTD_SRC1.
+             * We'll write 0 for DOUTD_SRC0 since we don't have a buffer to DMA.
+             * We're expecting a LITERAL32 entry containing the value for
+             * DOUTD_SRC1 next so let's make sure we get it and write it
+             * with BSIZE to 0 disabling the DMA operation.
+             * We don't want the LITERAL32 to be processed as normal otherwise
+             * we'd be DMAing from an address of 0.
+             */
+
+            entries += sizeof(*desc_set_entry);
+            literal = (struct pvr_const_map_entry_literal32 *)entries;
+
+            assert(literal->type == PVR_PDS_CONST_MAP_ENTRY_TYPE_LITERAL32);
+
+            zero_literal_value =
+               literal->literal_value &
+               PVR_ROGUE_PDSINST_DOUT_FIELDS_DOUTD_SRC1_BSIZE_CLRMSK;
+
+            PVR_WRITE(qword_buffer,
+                      UINT64_C(0),
+                      desc_set_entry->const_offset,
+                      pds_info->data_size_in_dwords);
+
+            PVR_WRITE(dword_buffer,
+                      zero_literal_value,
+                      desc_set_entry->const_offset,
+                      pds_info->data_size_in_dwords);
+
+            entries += sizeof(*literal);
+            i++;
+            continue;
+         }
+
+         descriptor_set = desc_state->descriptor_sets[desc_set_num];
+         desc_set_addr = descriptor_set->required_bo->dev_addr;
+         mem_layout =
+            &descriptor_set->layout
+                ->required_in_memory_layout_in_dwords_per_stage[stage];
+
+         if (desc_set_entry->primary)
+            desc_portion_offset = PVR_DW_TO_BYTES(mem_layout->primary_offset);
+         else
+            desc_portion_offset = PVR_DW_TO_BYTES(mem_layout->secondary_offset);
+
+         desc_set_addr =
+            PVR_DEV_ADDR_OFFSET(desc_set_addr, desc_portion_offset);
+
+         desc_set_addr = PVR_DEV_ADDR_OFFSET(
+            desc_set_addr,
+            PVR_DW_TO_BYTES((uint64_t)desc_set_entry->offset_in_dwords));
+
+         PVR_WRITE(qword_buffer,
+                   desc_set_addr.addr,
+                   desc_set_entry->const_offset,
+                   pds_info->data_size_in_dwords);
+
+         entries += sizeof(*desc_set_entry);
+         break;
+      }
+
       default:
          unreachable("Unsupported map entry type.");
       }
@@ -4233,6 +4316,8 @@ static VkResult pvr_setup_descriptor_mappings_new(
 
    return VK_SUCCESS;
 }
+
+#undef PVR_SELECT
 
 static VkResult pvr_setup_descriptor_mappings(
    struct pvr_cmd_buffer *const cmd_buffer,
