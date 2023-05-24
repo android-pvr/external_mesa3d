@@ -211,9 +211,8 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
       rogue_ssa_vec_regarray(b->shader, channels, tex->dest.ssa.index, 0);
    rogue_regarray *smp_coords = NULL;
    /* TODO NEXT: get from driver. */
-   rogue_regarray *image_state = rogue_shared_regarray(b->shader, 4, 4);
-   rogue_regarray *smp_state = rogue_shared_regarray(b->shader, 4, 0);
-   assert(false);
+   rogue_regarray *image_state = rogue_shared_regarray(b->shader, 4, 0);
+   rogue_regarray *smp_state = rogue_shared_regarray(b->shader, 4, 4);
 
    assert(channels == 4);
    assert(coord_components == 2);
