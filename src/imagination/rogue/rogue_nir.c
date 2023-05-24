@@ -350,6 +350,11 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
    /* TODO: Investigate this further. */
    /* NIR_PASS_V(nir, nir_opt_move, nir_move_load_ubo | nir_move_load_input); */
 
+   /* Out of SSA pass. */
+   NIR_PASS_V(nir, nir_convert_from_ssa, true, false);
+
+   NIR_PASS_V(nir, nir_opt_dce);
+
    /* TODO: Re-enable scheduling after register pressure tweaks. */
 #if 0
 	/* Instruction scheduling. */
@@ -372,8 +377,9 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
                                &nir->num_outputs,
                                nir->info.stage);
 
-   /* Renumber SSA defs. */
+   /* Renumber SSA defs and regs. */
    nir_index_ssa_defs(nir_shader_get_entrypoint(nir));
+   nir_index_local_regs(nir_shader_get_entrypoint(nir));
 
    /* Gather info into nir shader struct. */
    nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));

@@ -70,37 +70,6 @@ static inline bool rogue_lower_alu_instr(rogue_builder *b, rogue_alu_instr *alu)
    return false;
 }
 
-static inline bool rogue_lower_PHI(rogue_builder *b, rogue_ctrl_instr *phi)
-{
-   assert(phi->phi);
-
-   rogue_ref dst = phi->dst[0].ref;
-
-   /* Turn the phi into a set of movs, inserted before the last instruction of
-    * their blocks. */
-   unsigned s = 0;
-   nir_foreach_phi_src (phi_src, phi->phi) {
-      rogue_ref src = phi->src[s].ref;
-      rogue_block *block =
-         rogue_block_cached(b->shader, true, phi_src->pred->index);
-
-      assert(!list_is_empty(&block->instrs));
-
-      rogue_instr *last_block_instr =
-         list_last_entry(&block->instrs, rogue_instr, link);
-      b->cursor = rogue_cursor_before_instr(last_block_instr);
-
-      rogue_alu_instr *mbyp0 = rogue_MBYP0(b, dst, src);
-      rogue_merge_instr_commentf(&mbyp0->instr, &phi->instr, "phi src %u", s);
-
-      ++s;
-   }
-
-   rogue_instr_delete(&phi->instr);
-
-   return true;
-}
-
 static inline bool rogue_lower_END(rogue_builder *b, rogue_ctrl_instr *end)
 {
    /* If the instruction before is a non-control instruction, set
@@ -127,9 +96,6 @@ static inline bool rogue_lower_ctrl_instr(rogue_builder *b,
    switch (ctrl->op) {
    case ROGUE_CTRL_OP_END:
       return rogue_lower_END(b, ctrl);
-
-   case ROGUE_CTRL_OP_PHI:
-      return rogue_lower_PHI(b, ctrl);
 
    default:
       break;

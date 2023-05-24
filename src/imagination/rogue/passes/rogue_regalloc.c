@@ -22,6 +22,7 @@
  */
 
 #include "rogue.h"
+#include "rogue_builder.h"
 #include "util/macros.h"
 #include "util/ralloc.h"
 #include "util/register_allocate.h"
@@ -62,6 +63,7 @@ static void rogue_regarray_liveness(rogue_regarray *regarray,
 static void rogue_reg_liveness(rogue_reg *reg, rogue_live_range *live_range)
 {
    assert(list_is_singular(&reg->writes) || list_is_empty(&reg->writes));
+
    if (!list_is_empty(&reg->writes)) {
       rogue_reg_write *write =
          list_first_entry(&reg->writes, rogue_reg_write, link);
@@ -99,8 +101,11 @@ bool rogue_regalloc(rogue_shader *shader)
    if (!num_ssa_regs)
       return false;
 
-   assert(list_is_empty(&shader->regs[ROGUE_REG_CLASS_TEMP]));
-   unsigned hw_temps = rogue_reg_class_infos[ROGUE_REG_CLASS_TEMP].num;
+   /* assert(list_is_empty(&shader->regs[ROGUE_REG_CLASS_TEMP])); */
+   unsigned num_temps_prealloced =
+      rogue_count_used_regs(shader, ROGUE_REG_CLASS_TEMP);
+   unsigned hw_temps =
+      rogue_reg_class_infos[ROGUE_REG_CLASS_TEMP].num - num_temps_prealloced;
 
    /* Setup regset and register classes. */
    struct ra_regs *ra_regs = ra_alloc_reg_set(shader, hw_temps, true);
@@ -110,7 +115,7 @@ bool rogue_regalloc(rogue_shader *shader)
       struct ra_class *ra_class = ra_alloc_contig_reg_class(ra_regs, stride);
       assert(c == ra_class_index(ra_class));
 
-      for (unsigned t = 0; t < hw_temps - (stride - 1); ++t)
+      for (unsigned t = num_temps_prealloced; t < hw_temps - (stride - 1); ++t)
          if (!(t % stride))
             ra_class_add_reg(ra_class, t);
    }
@@ -374,5 +379,6 @@ bool rogue_regalloc(rogue_shader *shader)
    }
 
    ralloc_free(ra_regs);
+
    return progress;
 }
