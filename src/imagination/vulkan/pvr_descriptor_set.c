@@ -1318,6 +1318,62 @@ static uint16_t pvr_get_descriptor_secondary_offset(
    return (uint16_t)offset;
 }
 
+static uint16_t pvr_get_required_descriptor_primary_offset(
+   const struct pvr_device *device,
+   const struct pvr_descriptor_set_layout *layout,
+   const struct pvr_descriptor_set_layout_binding *binding,
+   const uint32_t stage,
+   const uint32_t desc_idx)
+{
+   const struct pvr_descriptor_set_layout_mem_layout *mem_layout;
+   struct pvr_descriptor_size_info size_info;
+   uint32_t offset;
+
+   assert(stage < ARRAY_SIZE(layout->memory_layout_in_dwords_per_stage));
+   assert(desc_idx < binding->descriptor_count);
+
+   pvr_descriptor_size_info_init(device, binding->type, &size_info);
+
+   mem_layout = &layout->required_in_memory_layout_in_dwords_per_stage[stage];
+
+   offset = mem_layout->primary_offset;
+   offset += binding->required_per_stage_offset_in_dwords[stage].primary;
+   offset += (desc_idx * size_info.primary);
+
+   /* Offset must be less than 16bits. */
+   assert(offset < UINT16_MAX);
+
+   return (uint16_t)offset;
+}
+
+static uint16_t pvr_get_required_descriptor_secondary_offset(
+   const struct pvr_device *device,
+   const struct pvr_descriptor_set_layout *layout,
+   const struct pvr_descriptor_set_layout_binding *binding,
+   const uint32_t stage,
+   const uint32_t desc_idx)
+{
+   const struct pvr_descriptor_set_layout_mem_layout *mem_layout;
+   struct pvr_descriptor_size_info size_info;
+   uint32_t offset;
+
+   assert(stage < ARRAY_SIZE(layout->memory_layout_in_dwords_per_stage));
+   assert(desc_idx < binding->descriptor_count);
+
+   pvr_descriptor_size_info_init(device, binding->type, &size_info);
+
+   mem_layout = &layout->required_in_memory_layout_in_dwords_per_stage[stage];
+
+   offset = mem_layout->secondary_offset;
+   offset += binding->required_per_stage_offset_in_dwords[stage].secondary;
+   offset += (desc_idx * size_info.secondary);
+
+   /* Offset must be less than 16bits. */
+   assert(offset < UINT16_MAX);
+
+   return (uint16_t)offset;
+}
+
 #define PVR_MAX_DESCRIPTOR_MEM_SIZE_IN_DWORDS (4 * 1024)
 
 static VkResult
@@ -1405,6 +1461,26 @@ pvr_descriptor_set_create(struct pvr_device *device,
                offset_in_dwords += 4;
 
             memcpy((uint8_t *)pvr_bo_suballoc_get_map_addr(set->pvr_bo) +
+                      PVR_DW_TO_BYTES(offset_in_dwords),
+                   sampler->descriptor.words,
+                   sizeof(sampler->descriptor.words));
+
+            /* Patch the required_bo. */
+            /* TODO: For now we'll keep the above code. Eventually we should
+             * redo the descriptor set logic so that we don't end up with two
+             * different layouts.
+             */
+
+            offset_in_dwords = pvr_get_descriptor_primary_offset(device,
+                                                                 layout,
+                                                                 binding,
+                                                                 stage,
+                                                                 j);
+
+            if (binding->type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+               offset_in_dwords += 4;
+
+            memcpy((uint8_t *)pvr_bo_suballoc_get_map_addr(set->required_bo) +
                       PVR_DW_TO_BYTES(offset_in_dwords),
                    sampler->descriptor.words,
                    sizeof(sampler->descriptor.words));
@@ -1602,6 +1678,25 @@ static void pvr_descriptor_update_sampler(
          memcpy(mem_ptr + primary_offset,
                 sampler->descriptor.words,
                 sizeof(sampler->descriptor.words));
+
+         /* Patch the required_bo. */
+         /* TODO: For now we'll keep the above code. Eventually we should redo
+          * the descriptor set logic so that we don't end up with two different
+          * layouts.
+          */
+
+         mem_ptr = pvr_bo_suballoc_get_map_addr(set->required_bo);
+
+         primary_offset = pvr_get_required_descriptor_primary_offset(
+            device,
+            set->layout,
+            binding,
+            j,
+            write_set->dstArrayElement + i);
+
+         memcpy(mem_ptr + primary_offset,
+                sampler->descriptor.words,
+                sizeof(sampler->descriptor.words));
       }
    }
 }
@@ -1688,6 +1783,9 @@ static void pvr_descriptor_update_sampler_texture(
    uint32_t end_stage)
 {
    const struct pvr_device_info *dev_info = &device->pdevice->dev_info;
+   struct pvr_descriptor_size_info size_info;
+
+   pvr_descriptor_size_info_init(device, binding->type, &size_info);
 
    for (uint32_t i = 0; i < write_set->descriptorCount; i++) {
       PVR_FROM_HANDLE(pvr_image_view,
@@ -1749,6 +1847,51 @@ static void pvr_descriptor_update_sampler_texture(
                                                 iview,
                                                 write_set->descriptorType,
                                                 mem_ptr + secondary_offset);
+
+         /* Patch the required_bo. */
+         /* TODO: For now we'll keep the above code. Eventually we should redo
+          * the descriptor set logic so that we don't end up with two different
+          * layouts.
+          */
+
+         mem_ptr = pvr_bo_suballoc_get_map_addr(set->required_bo);
+
+         /* TODO: Use `struct pvr_combined_image_sampler_descriptor` ? */
+
+         primary_offset = pvr_get_required_descriptor_primary_offset(
+            device,
+            set->layout,
+            binding,
+            j,
+            write_set->dstArrayElement + i);
+
+         secondary_offset =
+            pvr_get_descriptor_secondary_offset(device,
+                                                set->layout,
+                                                binding,
+                                                j,
+                                                write_set->dstArrayElement + i);
+
+         pvr_write_image_descriptor_primaries(dev_info,
+                                              iview,
+                                              write_set->descriptorType,
+                                              mem_ptr + primary_offset);
+
+         if (!binding->has_immutable_samplers) {
+            PVR_FROM_HANDLE(pvr_sampler,
+                            sampler,
+                            write_set->pImageInfo[i].sampler);
+            set->descriptors[desc_idx].sampler = sampler;
+
+            memcpy(mem_ptr + primary_offset + PVR_IMAGE_DESCRIPTOR_SIZE,
+                   sampler->descriptor.words,
+                   sizeof(sampler->descriptor.words));
+         }
+
+         pvr_write_image_descriptor_secondaries(dev_info,
+                                                iview,
+                                                write_set->descriptorType,
+                                                mem_ptr + secondary_offset);
       }
    }
 }
@@ -1792,6 +1935,38 @@ static void pvr_descriptor_update_texture(
                                               binding,
                                               j,
                                               write_set->dstArrayElement + i);
+         secondary_offset =
+            pvr_get_descriptor_secondary_offset(device,
+                                                set->layout,
+                                                binding,
+                                                j,
+                                                write_set->dstArrayElement + i);
+
+         pvr_write_image_descriptor_primaries(dev_info,
+                                              iview,
+                                              write_set->descriptorType,
+                                              mem_ptr + primary_offset);
+
+         pvr_write_image_descriptor_secondaries(dev_info,
+                                                iview,
+                                                write_set->descriptorType,
+                                                mem_ptr + secondary_offset);
+
+         /* Patch the required_bo. */
+         /* TODO: For now we'll keep the above code. Eventually we should redo
+          * the descriptor set logic so that we don't end up with two different
+          * layouts.
+          */
+
+         mem_ptr = pvr_bo_suballoc_get_map_addr(set->required_bo);
+
+         primary_offset = pvr_get_required_descriptor_primary_offset(
+            device,
+            set->layout,
+            binding,
+            j,
+            write_set->dstArrayElement + i);
+
          secondary_offset =
             pvr_get_descriptor_secondary_offset(device,
                                                 set->layout,
@@ -1959,6 +2134,44 @@ static void pvr_descriptor_update_input_attachment(
                                                    j,
                                                    write_set->dstArrayElement +
                                                       i);
+
+            pvr_write_image_descriptor_secondaries(dev_info,
+                                                   iview,
+                                                   write_set->descriptorType,
+                                                   mem_ptr + secondary_offset);
+         }
+
+         /* Patch the required_bo. */
+         /* TODO: For now we'll keep the above code. Eventually we should redo
+          * the descriptor set logic so that we don't end up with two different
+          * layouts.
+          */
+
+         mem_ptr = pvr_bo_suballoc_get_map_addr(set->required_bo);
+
+         primary_offset = pvr_get_required_descriptor_primary_offset(
+            device,
+            set->layout,
+            binding,
+            j,
+            write_set->dstArrayElement + i);
+
+         pvr_write_image_descriptor_primaries(dev_info,
+                                              iview,
+                                              write_set->descriptorType,
+                                              mem_ptr + primary_offset);
+
+         *(uint64_t *)(mem_ptr + primary_offset + PVR_IMAGE_DESCRIPTOR_SIZE) =
+            device->input_attachment_sampler;
+
+         if (!PVR_HAS_FEATURE(dev_info, tpu_array_textures)) {
+            const uint32_t secondary_offset =
+               pvr_get_required_descriptor_primary_offset(
+                  device,
+                  set->layout,
+                  binding,
+                  j,
+                  write_set->dstArrayElement + i);
 
             pvr_write_image_descriptor_secondaries(dev_info,
                                                    iview,
@@ -2166,6 +2379,71 @@ static void pvr_copy_descriptor_set(struct pvr_device *device,
                                              dst_binding,
                                              stage,
                                              copy_set->dstArrayElement);
+
+      memcpy(dst_mem_ptr + dst_primary_offset,
+             src_mem_ptr + src_primary_offset,
+             PVR_DW_TO_BYTES(size_info.primary) * copy_set->descriptorCount);
+
+      memcpy(dst_mem_ptr + dst_secondary_offset,
+             src_mem_ptr + src_secondary_offset,
+             PVR_DW_TO_BYTES(size_info.secondary) * copy_set->descriptorCount);
+   }
+
+   switch (src_binding->type) {
+   case VK_DESCRIPTOR_TYPE_SAMPLER:
+   case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+   case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+   case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+   case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+      break;
+
+   default:
+      return;
+   }
+
+   /* TODO: See if this can be done in a better way since the code is pretty
+    * close to what's above.
+    */
+
+   src_mem_ptr = pvr_bo_suballoc_get_map_addr(src_set->required_bo);
+   dst_mem_ptr = pvr_bo_suballoc_get_map_addr(dst_set->required_bo);
+
+   u_foreach_bit (stage, dst_binding->shader_stage_mask) {
+      uint16_t src_secondary_offset;
+      uint16_t dst_secondary_offset;
+      uint16_t src_primary_offset;
+      uint16_t dst_primary_offset;
+
+      /* Offset calculation functions expect descriptor_index to be
+       * binding relative not layout relative.
+       */
+      src_primary_offset =
+         pvr_get_required_descriptor_primary_offset(device,
+                                                    src_set->layout,
+                                                    src_binding,
+                                                    stage,
+                                                    copy_set->srcArrayElement);
+
+      dst_primary_offset =
+         pvr_get_required_descriptor_primary_offset(device,
+                                                    dst_set->layout,
+                                                    dst_binding,
+                                                    stage,
+                                                    copy_set->dstArrayElement);
+
+      src_secondary_offset = pvr_get_required_descriptor_secondary_offset(
+         device,
+         src_set->layout,
+         src_binding,
+         stage,
+         copy_set->srcArrayElement);
+
+      dst_secondary_offset = pvr_get_required_descriptor_secondary_offset(
+         device,
+         dst_set->layout,
+         dst_binding,
+         stage,
+         copy_set->dstArrayElement);
 
       memcpy(dst_mem_ptr + dst_primary_offset,
              src_mem_ptr + src_primary_offset,
