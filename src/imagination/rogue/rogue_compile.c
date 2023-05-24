@@ -850,6 +850,40 @@ trans_nir_intrinsic_load_num_workgroups_base_addr_img(rogue_builder *b,
                            "load_num_workgroups_base_addr_img.hi32");
 }
 
+static void trans_nir_intrinsic_load_vertex_id(rogue_builder *b,
+                                               nir_intrinsic_instr *intr)
+{
+   unsigned vtx_id_index =
+      b->shader->ctx->stage_data.vs.special_vars.vertex_id_offset;
+
+   unsigned load_size;
+   rogue_ref dst = nir_intr_dst32(b->shader, intr, &load_size);
+   assert(load_size == 1);
+
+   assert(vtx_id_index != ROGUE_REG_UNUSED);
+   rogue_reg *src = rogue_vtxin_reg(b->shader, vtx_id_index);
+
+   rogue_alu_instr *mov = rogue_MOV(b, dst, rogue_ref_reg(src));
+   rogue_add_instr_commentf(&mov->instr, "load_vertex_id");
+}
+
+static void trans_nir_intrinsic_load_instance_id(rogue_builder *b,
+                                                 nir_intrinsic_instr *intr)
+{
+   unsigned instance_id_index =
+      b->shader->ctx->stage_data.vs.special_vars.instance_id_offset;
+
+   unsigned load_size;
+   rogue_ref dst = nir_intr_dst32(b->shader, intr, &load_size);
+   assert(load_size == 1);
+
+   assert(instance_id_index != ROGUE_REG_UNUSED);
+   rogue_reg *src = rogue_vtxin_reg(b->shader, instance_id_index);
+
+   rogue_alu_instr *mov = rogue_MOV(b, dst, rogue_ref_reg(src));
+   rogue_add_instr_commentf(&mov->instr, "load_instance_id(");
+}
+
 static void trans_nir_intrinsic_discard(rogue_builder *b,
                                         nir_intrinsic_instr *intr)
 {
@@ -908,6 +942,12 @@ static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
 
    case nir_intrinsic_load_num_workgroups_base_addr_img:
       return trans_nir_intrinsic_load_num_workgroups_base_addr_img(b, intr);
+
+   case nir_intrinsic_load_vertex_id:
+      return trans_nir_intrinsic_load_vertex_id(b, intr);
+
+   case nir_intrinsic_load_instance_id:
+      return trans_nir_intrinsic_load_instance_id(b, intr);
 
    case nir_intrinsic_discard:
       return trans_nir_intrinsic_discard(b, intr);
