@@ -1224,6 +1224,7 @@ static void pvr_free_descriptor_set(struct pvr_device *device,
                                     struct pvr_descriptor_set *set)
 {
    list_del(&set->link);
+   pvr_bo_suballoc_free(set->required_bo);
    pvr_bo_suballoc_free(set->pvr_bo);
    vk_object_free(&device->vk, &pool->alloc, set);
 }
@@ -1361,6 +1362,17 @@ pvr_descriptor_set_create(struct pvr_device *device,
                                &set->pvr_bo);
       if (result != VK_SUCCESS)
          goto err_free_descriptor_set;
+
+      if (layout->required_in_memory_total_size_in_dwords) {
+         result = pvr_bo_suballoc(
+            &device->suballoc_general,
+            PVR_DW_TO_BYTES(layout->required_in_memory_total_size_in_dwords),
+            cache_line_size,
+            false,
+            &set->required_bo);
+         if (result != VK_SUCCESS)
+            goto err_free_pvr_bo;
+      }
    }
 
    set->layout = layout;
@@ -1405,6 +1417,9 @@ pvr_descriptor_set_create(struct pvr_device *device,
    *descriptor_set_out = set;
 
    return VK_SUCCESS;
+
+err_free_pvr_bo:
+   pvr_bo_suballoc_free(set->pvr_bo);
 
 err_free_descriptor_set:
    vk_object_free(&device->vk, &pool->alloc, set);

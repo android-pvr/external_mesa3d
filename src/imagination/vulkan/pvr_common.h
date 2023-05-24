@@ -386,6 +386,9 @@ struct pvr_descriptor_set {
    const struct pvr_descriptor_pool *pool;
 
    struct pvr_suballoc_bo *pvr_bo;
+   /* Buffer containing the descriptors that are required to be in the shareds.
+    */
+   struct pvr_suballoc_bo *required_bo;
 
    /* Links this descriptor set into pvr_descriptor_pool::descriptor_sets list.
     */
