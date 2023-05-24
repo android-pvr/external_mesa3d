@@ -550,4 +550,78 @@ pvr_get_descriptor_binding(const struct pvr_descriptor_set_layout *layout,
                   pvr_compare_layout_binding);
 }
 
+static uint32_t pvr_get_required_descriptor_primary_sh_reg(
+   const struct pvr_pipeline_layout *layout,
+   enum pvr_stage_allocation stage,
+   uint32_t set_num,
+   const struct pvr_descriptor_set_layout_binding *binding)
+{
+   const struct pvr_descriptor_set_layout_mem_layout *reg_layout =
+      &layout->required_register_layout_in_dwords_per_stage[stage][set_num];
+   uint32_t primary_offset;
+
+   switch (binding->type) {
+   case VK_DESCRIPTOR_TYPE_SAMPLER:
+   case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+   case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+   case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+   case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+      break;
+
+   default:
+      unreachable("Descriptor is not located in the shareds");
+   }
+
+   assert(layout->per_stage_required_register_usage[stage] > 0);
+   assert(layout->per_stage_descriptor_masks[stage] & BITFIELD_BIT(set_num));
+   assert(set_num < layout->set_count);
+
+   primary_offset = reg_layout->primary_offset;
+   primary_offset +=
+      binding->required_per_stage_offset_in_dwords[stage].primary;
+
+   /* TODO: Do we need to do anything for bindings with multiple descriptors in
+    * them?
+    */
+
+   return primary_offset;
+}
+
+static uint32_t pvr_get_sampler_descriptor_secondary_sh_reg(
+   const struct pvr_pipeline_layout *layout,
+   enum pvr_stage_allocation stage,
+   uint32_t set_num,
+   const struct pvr_descriptor_set_layout_binding *binding)
+{
+   const struct pvr_descriptor_set_layout_mem_layout *reg_layout =
+      &layout->required_register_layout_in_dwords_per_stage[stage][set_num];
+   uint32_t primary_offset;
+
+   switch (binding->type) {
+   case VK_DESCRIPTOR_TYPE_SAMPLER:
+   case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+   case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+   case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+   case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+      break;
+
+   default:
+      unreachable("Descriptor is not located in the shareds");
+   }
+
+   assert(layout->per_stage_required_register_usage[stage] > 0);
+   assert(layout->per_stage_descriptor_masks[stage] & BITFIELD_BIT(set_num));
+   assert(set_num < layout->set_count);
+
+   primary_offset = reg_layout->secondary_offset;
+   primary_offset +=
+      binding->required_per_stage_offset_in_dwords[stage].secondary;
+
+   /* TODO: Do we need to do anything for bindings with multiple descriptors in
+    * them?
+    */
+
+   return primary_offset;
+}
+
 #endif /* PVR_COMMON_H */
