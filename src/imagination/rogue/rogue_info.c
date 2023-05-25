@@ -559,9 +559,9 @@ const rogue_backend_op_info rogue_backend_op_infos[ROGUE_BACKEND_OP_COUNT] = {
       /* TODO: This may depend on the other options set. */
       .src_stride = {
          [1] = 3,
-         [2] = 1,
+         [2] = ~0,
          [3] = 3,
-         [4] = 1,
+         [4] = ~0,
       },
       .valnum_src = 5,
       .dst_valnum_mask = B(0),
@@ -586,7 +586,7 @@ const rogue_backend_op_info rogue_backend_op_infos[ROGUE_BACKEND_OP_COUNT] = {
       /* TODO: This may depend on the other options set. */
       .src_stride = {
          [1] = 3,
-         [2] = 1,
+         [2] = ~0,
          [3] = 3,
          [4] = ~0,
       },
@@ -613,9 +613,9 @@ const rogue_backend_op_info rogue_backend_op_infos[ROGUE_BACKEND_OP_COUNT] = {
       /* TODO: This may depend on the other options set. */
       .src_stride = {
          [1] = 3,
-         [2] = 1,
+         [2] = ~0,
          [3] = 3,
-         [4] = 1,
+         [4] = ~0,
       },
       .valnum_src = 5,
       .dst_valnum_mask = B(0),

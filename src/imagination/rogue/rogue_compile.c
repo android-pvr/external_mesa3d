@@ -157,6 +157,97 @@ static rogue_ref nir_alu_dst32(rogue_shader *shader,
              : rogue_temp_reg(shader, alu->dest.dest.reg.reg->index));
 }
 
+static rogue_ref nir_tex_src32(rogue_shader *shader,
+                               const nir_tex_instr *tex,
+                               unsigned src_num,
+                               unsigned *src_components)
+{
+   bool is_ssa = tex->src[src_num].src.is_ssa;
+   assert(nir_src_bit_size(tex->src[src_num].src) == 32);
+
+   unsigned num_components = nir_src_num_components(tex->src[src_num].src);
+   ASSERTED unsigned components_required = nir_tex_instr_src_size(tex, src_num);
+
+   assert(num_components == components_required);
+
+   if (src_components)
+      *src_components = num_components;
+
+   if (num_components > 1) {
+      assert(is_ssa);
+      return rogue_ref_regarray(
+         rogue_ssa_vec_regarray(shader,
+                                num_components,
+                                tex->src[src_num].src.ssa->index,
+                                0));
+   }
+
+   return rogue_ref_reg(
+      is_ssa ? rogue_ssa_reg(shader, tex->src[src_num].src.ssa->index)
+             : rogue_temp_reg(shader, tex->src[src_num].src.reg.reg->index));
+}
+
+static rogue_ref nir_tex_src32_component(rogue_shader *shader,
+                                         const nir_tex_instr *tex,
+                                         unsigned src_num,
+                                         unsigned comp_num)
+{
+   bool is_ssa = tex->src[src_num].src.is_ssa;
+   assert(nir_src_bit_size(tex->src[src_num].src) == 32);
+
+   unsigned num_components = nir_src_num_components(tex->src[src_num].src);
+   ASSERTED unsigned components_required = nir_tex_instr_src_size(tex, src_num);
+
+   assert(num_components == components_required);
+
+   if (num_components > 1) {
+      assert(is_ssa);
+      return rogue_ref_regarray(
+         rogue_ssa_vec_regarray(shader,
+                                1,
+                                tex->src[src_num].src.ssa->index,
+                                comp_num));
+   }
+
+   assert(comp_num == 0);
+
+   return rogue_ref_reg(
+      is_ssa ? rogue_ssa_reg(shader, tex->src[src_num].src.ssa->index)
+             : rogue_temp_reg(shader, tex->src[src_num].src.reg.reg->index));
+}
+
+static rogue_ref nir_tex_dst32(rogue_shader *shader,
+                               const nir_tex_instr *tex,
+                               unsigned *dst_components,
+                               bool *is_16bit)
+{
+   bool is_ssa = tex->dest.is_ssa;
+   assert(nir_dest_bit_size(tex->dest) == 32 ||
+          nir_dest_bit_size(tex->dest) == 16);
+
+   unsigned num_components = nir_dest_num_components(tex->dest);
+   ASSERTED unsigned components_required = nir_tex_instr_result_size(tex);
+
+   assert(num_components == components_required);
+
+   if (dst_components)
+      *dst_components = num_components;
+
+   if (is_16bit)
+      *is_16bit = (nir_dest_bit_size(tex->dest) == 16);
+
+   /* SSA, so always assigning to the entire vector. */
+   if (num_components > 1) {
+      assert(is_ssa);
+      return rogue_ref_regarray(
+         rogue_ssa_vec_regarray(shader, num_components, tex->dest.ssa.index, 0));
+   }
+
+   return rogue_ref_reg(is_ssa
+                           ? rogue_ssa_reg(shader, tex->dest.ssa.index)
+                           : rogue_temp_reg(shader, tex->dest.reg.reg->index));
+}
+
 static rogue_ref nir_intr_src32(rogue_shader *shader,
                                 const nir_intrinsic_instr *intr,
                                 unsigned src_num,
@@ -308,14 +399,25 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
 {
    unsigned channels = nir_dest_num_components(tex->dest);
    unsigned coord_components = tex->coord_components;
-   rogue_regarray *dst =
-      rogue_ssa_vec_regarray(b->shader, channels, tex->dest.ssa.index, 0);
-   rogue_regarray *smp_coords = NULL;
+
+   rogue_ref smp_data_ref;
+   unsigned coords_src = ROGUE_REG_UNUSED;
+   unsigned proj_src = ROGUE_REG_UNUSED;
+   unsigned lod_src = ROGUE_REG_UNUSED;
+   unsigned ddx_src = ROGUE_REG_UNUSED;
+   unsigned ddy_src = ROGUE_REG_UNUSED;
+   unsigned ms_idx_src = ROGUE_REG_UNUSED;
+
+   bool pack_f16;
+   unsigned dst_components;
+   rogue_ref dst = nir_tex_dst32(b->shader, tex, &dst_components, &pack_f16);
+   assert(!pack_f16);
+
    /* TODO NEXT: get from driver. */
    rogue_regarray *image_state = rogue_shared_regarray(b->shader, 4, 0);
    rogue_regarray *smp_state = rogue_shared_regarray(b->shader, 4, 4);
 
-   assert(channels == 4);
+   assert(channels <= 4);
    assert(coord_components == 2);
    assert(tex->sampler_dim == GLSL_SAMPLER_DIM_2D);
    assert(!tex->is_array);
@@ -327,35 +429,159 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
 
    /* TODO NEXT: process tex->texture_index and tex->sampler_index */
 
+   unsigned smp_data_components = 0;
+
    for (unsigned u = 0; u < tex->num_srcs; ++u) {
+      unsigned src_components;
+      nir_tex_src32(b->shader, tex, u, &src_components);
       switch (tex->src[u].src_type) {
       case nir_tex_src_coord:
-         assert(!smp_coords);
-         smp_coords = rogue_ssa_vec_regarray(b->shader,
-                                             coord_components,
-                                             tex->src[u].src.ssa->index,
-                                             0);
-         continue;
+         assert(coords_src == ROGUE_REG_UNUSED);
+         coords_src = u;
+         break;
+
+      case nir_tex_src_bias:
+      case nir_tex_src_lod:
+         /* TODO: promote to shared regs if uniform */
+         assert(lod_src == ROGUE_REG_UNUSED);
+         lod_src = u;
+         break;
+
+      case nir_tex_src_projector:
+         assert(proj_src == ROGUE_REG_UNUSED);
+         proj_src = u;
+         break;
+
+      case nir_tex_src_ddx:
+         assert(ddx_src == ROGUE_REG_UNUSED);
+         ddx_src = u;
+         break;
+
+      case nir_tex_src_ddy:
+         assert(ddy_src == ROGUE_REG_UNUSED);
+         ddy_src = u;
+         break;
+
+      case nir_tex_src_ms_index:
+         assert(ms_idx_src == ROGUE_REG_UNUSED);
+         ms_idx_src = u;
+         break;
 
       default:
-         break;
+         unreachable("Unsupported NIR tex source type.");
       }
 
-      unreachable("Unsupported NIR tex instruction op.");
+      smp_data_components += src_components;
    }
 
-   assert(smp_coords);
+   if (tex->is_array)
+      coord_components--;
+
+   assert(coords_src != ROGUE_REG_UNUSED);
+
+   /* Move all the data into contiguous temp regs */
+   if (smp_data_components > coord_components) {
+      /* TODO: SSA arrays with 4+ size */
+      assert(smp_data_components <= 4);
+      unsigned data_base_idx = b->shader->ctx->next_ssa_idx;
+      ++b->shader->ctx->next_ssa_idx;
+      rogue_regarray *smp_data = rogue_ssa_vec_regarray(b->shader,
+                                                        smp_data_components,
+                                                        data_base_idx,
+                                                        0);
+      unsigned data_idx = 0;
+
+#define ADD_SMP_DATA(src_idx, component)                                \
+   do {                                                                 \
+      rogue_regarray *data =                                            \
+         rogue_ssa_vec_regarray(b->shader, 1, data_base_idx, data_idx); \
+      rogue_ref src =                                                   \
+         nir_tex_src32_component(b->shader, tex, src_idx, component);   \
+      rogue_MOV(b, rogue_ref_regarray(data), src);                      \
+      ++data_idx;                                                       \
+   } while (0)
+
+      for (unsigned i = 0; i < coord_components; i++)
+         ADD_SMP_DATA(coords_src, i);
+
+      if (proj_src != ROGUE_REG_UNUSED)
+         ADD_SMP_DATA(proj_src, 0);
+
+      /* TODO: lower the shadow samplers */
+      assert(!tex->is_shadow);
+      assert(!tex->is_new_style_shadow);
+
+      if (lod_src != ROGUE_REG_UNUSED)
+         ADD_SMP_DATA(lod_src, 0);
+
+      assert((ddx_src == ROGUE_REG_UNUSED) == (ddy_src == ROGUE_REG_UNUSED));
+      if (ddx_src != ROGUE_REG_UNUSED) {
+         for (unsigned i = 0; i < coord_components; i++) {
+            ADD_SMP_DATA(ddx_src, i);
+            ADD_SMP_DATA(ddy_src, i);
+         }
+      }
+
+      assert(!tex->is_array);
+
+      if (ms_idx_src != ROGUE_REG_UNUSED) {
+         rogue_reg *data =
+            rogue_ssa_vec_reg(b->shader, data_base_idx, data_idx);
+         rogue_reg *src = rogue_ssa_vec_reg(b->shader,
+                                            tex->src[ms_idx_src].src.ssa->index,
+                                            0);
+         rogue_ISHL(b,
+                    rogue_ref_reg(data),
+                    rogue_ref_reg(src),
+                    rogue_ref_imm(16));
+         ++data_idx;
+      }
+
+#undef ADD_SMP_DATA
+
+      assert(data_idx == smp_data_components);
+      smp_data_ref = rogue_ref_regarray(smp_data);
+   } else {
+      smp_data_ref = nir_tex_src32(b->shader, tex, coords_src, NULL);
+   }
 
    rogue_backend_instr *smp2d = rogue_SMP2D(b,
-                                            rogue_ref_regarray(dst),
+                                            dst,
                                             rogue_ref_drc(0),
                                             rogue_ref_regarray(image_state),
-                                            rogue_ref_regarray(smp_coords),
+                                            smp_data_ref,
                                             rogue_ref_regarray(smp_state),
                                             rogue_none(),
                                             rogue_ref_val(channels));
 
-   /* rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_SLCWRITEBACK); */
+   if (proj_src != ROGUE_REG_UNUSED)
+      rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_PROJ);
+
+   if (lod_src != ROGUE_REG_UNUSED) {
+      rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_PPLOD);
+      switch (tex->op) {
+      case nir_texop_txf:
+      case nir_texop_txl:
+         assert(ddx_src == ROGUE_REG_UNUSED);
+         rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_REPLACE);
+         break;
+
+      case nir_texop_txb:
+         assert(ddx_src == ROGUE_REG_UNUSED);
+         rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_REPLACE);
+         break;
+
+      default:
+         unreachable("Invalid tex op");
+      }
+   }
+
+   if (ddx_src != ROGUE_REG_UNUSED)
+      rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_GRADIENT);
+
+   if (ms_idx_src != ROGUE_REG_UNUSED)
+      rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_SNO);
+
    rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_FCNORM);
 }
 
@@ -363,6 +589,11 @@ static void trans_nir_tex(rogue_builder *b, nir_tex_instr *tex)
 {
    switch (tex->op) {
    case nir_texop_tex:
+   case nir_texop_txb:
+   case nir_texop_txl:
+   case nir_texop_txd:
+   case nir_texop_txf:
+   case nir_texop_txf_ms:
       return trans_nir_texop_tex(b, tex);
 
    default:
