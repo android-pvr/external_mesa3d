@@ -408,16 +408,13 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
    unsigned ddy_src = ROGUE_REG_UNUSED;
    unsigned ms_idx_src = ROGUE_REG_UNUSED;
 
+   unsigned texture_offset_src = ROGUE_REG_UNUSED;
+   unsigned sampler_offset_src = ROGUE_REG_UNUSED;
+
    bool pack_f16;
    unsigned dst_components;
    rogue_ref dst = nir_tex_dst32(b->shader, tex, &dst_components, &pack_f16);
    assert(!pack_f16);
-
-   /* TODO NEXT: dynamically uniform indexing */
-   rogue_regarray *image_state =
-      rogue_shared_regarray(b->shader, 4, tex->texture_index);
-   rogue_regarray *smp_state =
-      rogue_shared_regarray(b->shader, 4, tex->sampler_index);
 
    assert(channels <= 4);
    assert(coord_components == 2);
@@ -468,6 +465,16 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
          assert(ms_idx_src == ROGUE_REG_UNUSED);
          ms_idx_src = u;
          break;
+
+      case nir_tex_src_texture_offset:
+         assert(texture_offset_src == ROGUE_REG_UNUSED);
+         texture_offset_src = u;
+         continue;
+
+      case nir_tex_src_sampler_offset:
+         assert(sampler_offset_src == ROGUE_REG_UNUSED);
+         sampler_offset_src = u;
+         continue;
 
       default:
          unreachable("Unsupported NIR tex source type.");
@@ -547,12 +554,40 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
       smp_data_ref = nir_tex_src32(b->shader, tex, coords_src, NULL);
    }
 
+   rogue_ref image_state;
+   if (texture_offset_src != ROGUE_REG_UNUSED) {
+      rogue_MOV(b,
+                rogue_ref_reg(rogue_index_reg(b->shader, 0)),
+                nir_tex_src32(b->shader, tex, texture_offset_src, NULL));
+
+      image_state =
+         rogue_ref_reg_indexed(rogue_shared_reg(b->shader, tex->texture_index),
+                               0);
+   } else {
+      image_state = rogue_ref_regarray(
+         rogue_shared_regarray(b->shader, 4, tex->texture_index));
+   }
+
+   rogue_ref smp_state;
+   if (sampler_offset_src != ROGUE_REG_UNUSED) {
+      rogue_MOV(b,
+                rogue_ref_reg(rogue_index_reg(b->shader, 1)),
+                nir_tex_src32(b->shader, tex, sampler_offset_src, NULL));
+
+      smp_state =
+         rogue_ref_reg_indexed(rogue_shared_reg(b->shader, tex->sampler_index),
+                               1);
+   } else {
+      smp_state = rogue_ref_regarray(
+         rogue_shared_regarray(b->shader, 4, tex->sampler_index));
+   }
+
    rogue_backend_instr *smp2d = rogue_SMP2D(b,
                                             dst,
                                             rogue_ref_drc(0),
-                                            rogue_ref_regarray(image_state),
+                                            image_state,
                                             smp_data_ref,
-                                            rogue_ref_regarray(smp_state),
+                                            smp_state,
                                             rogue_none(),
                                             rogue_ref_val(channels));
 
