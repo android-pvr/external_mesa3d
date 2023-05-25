@@ -3909,6 +3909,8 @@ bool rogue_nir_expand_swizzles_to_vec(nir_shader *shader);
 
 bool rogue_nir_pfo(nir_shader *shader, struct rogue_fs_build_data *fs_data);
 
+bool rogue_nir_lower_tex(nir_shader *shader, rogue_build_ctx *ctx);
+
 bool rogue_nir_lower_io(nir_shader *shader, rogue_build_ctx *ctx, bool late);
 
 rogue_shader *rogue_nir_to_rogue(rogue_build_ctx *ctx, const nir_shader *nir);

@@ -413,9 +413,11 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
    rogue_ref dst = nir_tex_dst32(b->shader, tex, &dst_components, &pack_f16);
    assert(!pack_f16);
 
-   /* TODO NEXT: get from driver. */
-   rogue_regarray *image_state = rogue_shared_regarray(b->shader, 4, 0);
-   rogue_regarray *smp_state = rogue_shared_regarray(b->shader, 4, 4);
+   /* TODO NEXT: dynamically uniform indexing */
+   rogue_regarray *image_state =
+      rogue_shared_regarray(b->shader, 4, tex->texture_index);
+   rogue_regarray *smp_state =
+      rogue_shared_regarray(b->shader, 4, tex->sampler_index);
 
    assert(channels <= 4);
    assert(coord_components == 2);

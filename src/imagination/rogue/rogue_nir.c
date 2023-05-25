@@ -328,7 +328,7 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
    /* Lower samplers. */
    NIR_PASS_V(nir, nir_opt_dce);
    NIR_PASS_V(nir, nir_opt_deref);
-   NIR_PASS_V(nir, nir_lower_samplers);
+   NIR_PASS_V(nir, rogue_nir_lower_tex, ctx);
 
    rogue_nir_opt_loop(ctx, nir);
 

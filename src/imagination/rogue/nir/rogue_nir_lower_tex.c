@@ -1,0 +1,219 @@
+/*
+ * Copyright © 2023 Imagination Technologies Ltd.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice (including the next
+ * paragraph) shall be included in all copies or substantial portions of the
+ * Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+#include "nir/nir.h"
+#include "nir/nir_builder.h"
+#include "rogue.h"
+#include "util/macros.h"
+
+#include <assert.h>
+#include <stdbool.h>
+#include <stdint.h>
+
+/**
+ * \file rogue_nir_lower_tex.c
+ *
+ * \brief Contains the rogue_nir_lower_tex pass.
+ */
+
+static void get_tex_deref_layout(nir_builder *b,
+                                 nir_deref_instr *deref,
+                                 rogue_build_ctx *ctx,
+                                 bool sampler,
+                                 bool primary,
+                                 uint32_t *sh_base_index,
+                                 nir_ssa_def **index_ssa)
+{
+   uint32_t imm_index = 0;
+   *index_ssa = NULL;
+
+   if (deref->deref_type == nir_deref_type_array) {
+      assert(deref->arr.index.is_ssa);
+      if (nir_src_is_const(deref->arr.index))
+         imm_index = nir_src_as_uint(deref->arr.index);
+      else
+         *index_ssa = deref->arr.index.ssa;
+
+      deref = nir_deref_instr_parent(deref);
+   }
+
+   assert(deref->deref_type == nir_deref_type_var);
+   nir_variable *var = deref->var;
+
+   unsigned desc_set = var->data.descriptor_set;
+   unsigned binding = var->data.binding;
+   enum pvr_stage_allocation pvr_stage =
+      mesa_stage_to_pvr(b->shader->info.stage);
+   const struct pvr_pipeline_layout *pipeline_layout = ctx->pipeline_layout;
+   const struct pvr_descriptor_set_layout *set_layout =
+      pipeline_layout->set_layout[desc_set];
+   assert(binding < set_layout->binding_count);
+
+   /* Calculate offset for the descriptor/binding in this set. */
+   const struct pvr_descriptor_set_layout_binding *binding_layout =
+      pvr_get_descriptor_binding(set_layout, binding);
+
+   unsigned desc_size;
+   switch (binding_layout->type) {
+   case VK_DESCRIPTOR_TYPE_SAMPLER:
+      assert(sampler);
+      desc_size = PVR_SAMPLER_DESCRIPTOR_SIZE;
+      break;
+
+   case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+      desc_size = PVR_SAMPLER_DESCRIPTOR_SIZE + PVR_IMAGE_DESCRIPTOR_SIZE;
+      break;
+
+   case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+   case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+   case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+      assert(!sampler);
+      desc_size = PVR_IMAGE_DESCRIPTOR_SIZE;
+      break;
+
+   default:
+      unreachable("Descriptor is not located in the shareds");
+   }
+
+   if (primary) {
+      *sh_base_index =
+         pvr_get_required_descriptor_primary_sh_reg(pipeline_layout,
+                                                    pvr_stage,
+                                                    desc_set,
+                                                    binding_layout);
+   } else {
+      *sh_base_index =
+         pvr_get_sampler_descriptor_secondary_sh_reg(pipeline_layout,
+                                                     pvr_stage,
+                                                     desc_set,
+                                                     binding_layout);
+   }
+
+   *sh_base_index += imm_index * desc_size;
+
+   /* First comes image state and then the sampler in the driver layout */
+   if (binding_layout->type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER &&
+       sampler) {
+      *sh_base_index += PVR_IMAGE_DESCRIPTOR_SIZE;
+   }
+
+   if (*index_ssa)
+      *index_ssa = nir_imul_imm(b, *index_ssa, desc_size);
+}
+
+static bool lower_tex_instr_img(nir_builder *b,
+                                nir_intrinsic_instr *instr,
+                                rogue_build_ctx *ctx)
+{
+   /* TODO: Implement */
+   return false;
+}
+
+static bool
+lower_tex_instr_tex(nir_builder *b, nir_tex_instr *tex, rogue_build_ctx *ctx)
+{
+   bool progress = false;
+
+   b->cursor = nir_before_instr(&tex->instr);
+
+   int sampler_src_idx =
+      nir_tex_instr_src_index(tex, nir_tex_src_sampler_deref);
+   if (sampler_src_idx >= 0) {
+      nir_deref_instr *deref = nir_src_as_deref(tex->src[sampler_src_idx].src);
+      nir_tex_instr_remove_src(tex, sampler_src_idx);
+
+      nir_ssa_def *index_ssa;
+      get_tex_deref_layout(b,
+                           deref,
+                           ctx,
+                           true,
+                           true,
+                           &tex->sampler_index,
+                           &index_ssa);
+
+      if (index_ssa) {
+         nir_tex_instr_add_src(tex,
+                               nir_tex_src_sampler_offset,
+                               nir_src_for_ssa(index_ssa));
+      }
+      progress = true;
+   }
+
+   int tex_src_idx = nir_tex_instr_src_index(tex, nir_tex_src_texture_deref);
+   if (tex_src_idx >= 0) {
+      nir_deref_instr *deref = nir_src_as_deref(tex->src[tex_src_idx].src);
+      nir_tex_instr_remove_src(tex, tex_src_idx);
+
+      nir_ssa_def *index_ssa;
+      get_tex_deref_layout(b,
+                           deref,
+                           ctx,
+                           false,
+                           true,
+                           &tex->texture_index,
+                           &index_ssa);
+
+      if (index_ssa) {
+         nir_tex_instr_add_src(tex,
+                               nir_tex_src_texture_offset,
+                               nir_src_for_ssa(index_ssa));
+      }
+      progress = true;
+   }
+
+   return progress;
+}
+
+static bool lower_tex_instr(nir_builder *b, nir_instr *instr, void *ctx)
+{
+   switch (instr->type) {
+   case nir_instr_type_intrinsic:
+      return lower_tex_instr_img(b, nir_instr_as_intrinsic(instr), ctx);
+      break;
+
+   case nir_instr_type_tex:
+      return lower_tex_instr_tex(b, nir_instr_as_tex(instr), ctx);
+      break;
+
+   default:
+      break;
+   }
+
+   return false;
+}
+
+PUBLIC
+bool rogue_nir_lower_tex(nir_shader *shader, rogue_build_ctx *ctx)
+{
+   bool progress = false;
+
+   progress = nir_shader_instructions_pass(shader,
+                                           lower_tex_instr,
+                                           nir_metadata_dominance,
+                                           ctx);
+
+   if (progress)
+      nir_opt_dce(shader);
+
+   return progress;
+}
