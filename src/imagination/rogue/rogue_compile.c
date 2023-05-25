@@ -983,7 +983,7 @@ static void trans_nir_intrinsic_store_global(rogue_builder *b,
 
    unsigned store_size;
    rogue_ref src = nir_intr_src32(b->shader, intr, 0, &store_size);
-   assert(store_size == 1); /* TODO: Burst store support. */
+   assert(store_size <= 16);
 
    rogue_backend_instr *st = rogue_ST(b,
                                       src,
