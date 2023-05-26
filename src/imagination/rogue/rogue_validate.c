@@ -190,7 +190,7 @@ static void validate_dst(rogue_validation_state *state,
                          dst_size,
                          rogue_ref_get_regarray_size(&dst->ref));
          }
-      } else if (dst_size > 1) {
+      } else if (dst_size > 1 && !rogue_ref_is_reg_indexed(&dst->ref)) {
          validate_log(state, "Expected regarray type for destination.");
       }
    }
@@ -238,7 +238,7 @@ static void validate_src(rogue_validation_state *state,
                          src_size,
                          rogue_ref_get_regarray_size(&src->ref));
          }
-      } else if (src_size > 1) {
+      } else if (src_size > 1 && !rogue_ref_is_reg_indexed(&src->ref)) {
          validate_log(state, "Expected regarray type for source.");
       }
    }

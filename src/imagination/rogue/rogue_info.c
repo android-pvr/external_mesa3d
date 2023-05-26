@@ -550,9 +550,9 @@ const rogue_backend_op_info rogue_backend_op_infos[ROGUE_BACKEND_OP_COUNT] = {
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
       .supported_src_types = {
          [0] = T(DRC),
-         [1] = T(REGARRAY),
+         [1] = T(REG) | T(REGARRAY), /* Indexed access is of type reg */
          [2] = T(REG) | T(REGARRAY),
-         [3] = T(REGARRAY),
+         [3] = T(REG) | T(REGARRAY), /* Indexed access is of type reg */
          [4] = T(REGARRAY) | T(IO),
          [5] = T(VAL),
       },
@@ -577,9 +577,9 @@ const rogue_backend_op_info rogue_backend_op_infos[ROGUE_BACKEND_OP_COUNT] = {
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
       .supported_src_types = {
          [0] = T(DRC),
-         [1] = T(REGARRAY),
+         [1] = T(REG) | T(REGARRAY), /* Indexed access is of type reg */
          [2] = T(REG) | T(REGARRAY),
-         [3] = T(REGARRAY),
+         [3] = T(REG) | T(REGARRAY), /* Indexed access is of type reg */
          [4] = T(REGARRAY) | T(IO),
          [5] = T(VAL),
       },
@@ -604,9 +604,9 @@ const rogue_backend_op_info rogue_backend_op_infos[ROGUE_BACKEND_OP_COUNT] = {
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
       .supported_src_types = {
          [0] = T(DRC),
-         [1] = T(REGARRAY),
+         [1] = T(REG) | T(REGARRAY), /* Indexed access is of type reg */
          [2] = T(REG) | T(REGARRAY),
-         [3] = T(REGARRAY),
+         [3] = T(REG) | T(REGARRAY), /* Indexed access is of type reg */
          [4] = T(REGARRAY) | T(IO),
          [5] = T(VAL),
       },

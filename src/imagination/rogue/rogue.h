@@ -1017,7 +1017,8 @@ static inline bool rogue_ref_is_regarray(const rogue_ref *ref)
 
 static inline bool rogue_ref_is_reg_or_regarray(const rogue_ref *ref)
 {
-   return rogue_ref_is_reg(ref) || rogue_ref_is_regarray(ref);
+   return rogue_ref_is_reg(ref) || rogue_ref_is_regarray(ref) ||
+          rogue_ref_is_reg_indexed(ref);
 }
 
 static inline bool rogue_ref_is_io(const rogue_ref *ref)
