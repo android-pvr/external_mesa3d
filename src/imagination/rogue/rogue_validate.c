@@ -346,6 +346,54 @@ static bool validate_backend_op_mod_combo(uint64_t mods)
    return true;
 }
 
+static void validate_backend_instr_ATST(rogue_validation_state *state,
+                                        const rogue_backend_instr *atst)
+{
+   /* Count ATST.IFBs. */
+   if (!rogue_backend_op_mod_is_set(atst, ROGUE_BACKEND_OP_MOD_IFB))
+      ++state->ctx.atst_noifbs;
+}
+
+static void validate_backend_instr_ST(rogue_validation_state *state,
+                                      const rogue_backend_instr *st)
+{
+   /* If data points to temps/vertex inputs, they have to be contiguous. */
+   const rogue_ref *data_ref = &st->src[0].ref;
+   const rogue_ref *addr_ref = &st->src[4].ref;
+
+   enum rogue_reg_class data_class;
+   unsigned data_index;
+   if (!rogue_ref_reg_regarray_info(data_ref, &data_class, &data_index, NULL)) {
+      validate_log(state, "Invalid type for ST data.");
+      return;
+   }
+
+   /* Skip if this isn't the case. */
+   /* TODO: Other validation requirements! */
+   if (data_class != ROGUE_REG_CLASS_TEMP &&
+       data_class != ROGUE_REG_CLASS_VTXIN)
+      return;
+
+   /* Address must point to either temps/vertex inputs. */
+   enum rogue_reg_class addr_class;
+   unsigned addr_index;
+   if (!rogue_ref_reg_regarray_info(addr_ref, &addr_class, &addr_index, NULL)) {
+      validate_log(state, "Invalid type for ST address.");
+      return;
+   }
+
+   /* If one or both are still in SSA, skip the check. */
+   if (data_class == ROGUE_REG_CLASS_SSA || addr_class == ROGUE_REG_CLASS_SSA)
+      return;
+
+   if (addr_class != ROGUE_REG_CLASS_TEMP &&
+       addr_class != ROGUE_REG_CLASS_VTXIN)
+      validate_log(state, "Invalid address register class for ST op.");
+
+   if (data_index != (addr_index + 2))
+      validate_log(state, "ST address and data are not contiguous.");
+}
+
 static void validate_backend_instr(rogue_validation_state *state,
                                    const rogue_backend_instr *backend)
 {
@@ -403,12 +451,21 @@ static void validate_backend_instr(rogue_validation_state *state,
                       &backend->src[info->valnum_src].ref,
                       info->src_valnum_mask);
       }
-   }
 
-   /* Count ATST.IFBs. */
-   if (backend->op == ROGUE_BACKEND_OP_ATST &&
-       !rogue_backend_op_mod_is_set(backend, ROGUE_BACKEND_OP_MOD_IFB))
-      ++state->ctx.atst_noifbs;
+      /* Custom validation for certain ops. */
+      switch (backend->op) {
+      case ROGUE_BACKEND_OP_ATST:
+         validate_backend_instr_ATST(state, backend);
+         break;
+
+      case ROGUE_BACKEND_OP_ST:
+         validate_backend_instr_ST(state, backend);
+         break;
+
+      default:
+         break;
+      }
+   }
 }
 
 static bool validate_ctrl_op_mod_combo(uint64_t mods)

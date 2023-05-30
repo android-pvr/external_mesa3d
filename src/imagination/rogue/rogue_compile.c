@@ -2060,9 +2060,11 @@ void rogue_shader_passes(rogue_shader *shader)
       rogue_print_pass_debug(shader, "before passes", stdout);
 
    /* Passes */
+   /* TODO: likely want/need to loop/repeat the first set of these. */
    ROGUE_PASS_V(shader, rogue_constreg);
-   ROGUE_PASS_V(shader, rogue_copy_prop);
-   ROGUE_PASS_V(shader, rogue_dce);
+   /* ROGUE_PASS_V(shader, rogue_copy_prop); */
+   /* ROGUE_PASS_V(shader, rogue_dce); */
+   ROGUE_PASS_V(shader, rogue_schedule_st_regs);
    ROGUE_PASS_V(shader, rogue_lower_pseudo_ops);
    ROGUE_PASS_V(shader, rogue_constreg);
    ROGUE_PASS_V(shader, rogue_schedule_wdf, false);

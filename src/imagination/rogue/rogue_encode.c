@@ -121,7 +121,7 @@ static inline bool rogue_ref_needs_olchk(const rogue_ref *ref)
    enum rogue_reg_class class;
    unsigned index;
 
-   if (!rogue_ref_reg_regarray_info(ref, &class, &index))
+   if (!rogue_ref_reg_regarray_info(ref, &class, &index, NULL))
       return false;
 
    /* Pixout class should be lowered at this point,

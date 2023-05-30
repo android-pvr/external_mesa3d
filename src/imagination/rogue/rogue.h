@@ -1039,9 +1039,11 @@ static inline unsigned rogue_ref_get_regarray_size(const rogue_ref *ref)
    unreachable("Ref is not a regarray.");
 }
 
+MUST_CHECK
 static inline bool rogue_ref_reg_regarray_info(const rogue_ref *ref,
                                                enum rogue_reg_class *class,
-                                               unsigned *index)
+                                               unsigned *index,
+                                               unsigned *size)
 {
    enum rogue_reg_class reg_class;
    unsigned reg_index;
@@ -1061,6 +1063,9 @@ static inline bool rogue_ref_reg_regarray_info(const rogue_ref *ref,
 
    if (index)
       *index = reg_index;
+
+   if (size)
+      *size = rogue_ref_is_reg(ref) ? 1 : ref->regarray->size;
 
    return true;
 }
@@ -2906,6 +2911,61 @@ static inline bool rogue_src_reg_replace(rogue_reg_use *use, rogue_reg *new_reg)
    return true;
 }
 
+/* Special case: regarrays of size 1. */
+static inline bool rogue_src_reg_replace_regarray(rogue_reg_use *reg_use,
+                                                  rogue_regarray *new_regarray)
+{
+   unsigned src_index = reg_use->src_index;
+   rogue_instr *instr = reg_use->instr;
+   rogue_ref *ref;
+
+   rogue_regarray_use *regarray_use;
+   assert(new_regarray->size == 1);
+
+   switch (instr->type) {
+   case ROGUE_INSTR_TYPE_ALU: {
+      rogue_alu_instr *alu = rogue_instr_as_alu(instr);
+      ref = &alu->src[src_index].ref;
+      regarray_use = &alu->src_use[src_index].regarray;
+      break;
+   }
+
+   case ROGUE_INSTR_TYPE_BACKEND: {
+      rogue_backend_instr *backend = rogue_instr_as_backend(instr);
+      ref = &backend->src[src_index].ref;
+      regarray_use = &backend->src_use[src_index].regarray;
+      break;
+   }
+
+   case ROGUE_INSTR_TYPE_CTRL: {
+      rogue_ctrl_instr *ctrl = rogue_instr_as_ctrl(instr);
+      ref = &ctrl->src[src_index].ref;
+      regarray_use = &ctrl->src_use[src_index].regarray;
+      break;
+   }
+
+   case ROGUE_INSTR_TYPE_BITWISE: {
+      rogue_bitwise_instr *bitwise = rogue_instr_as_bitwise(instr);
+      ref = &bitwise->src[src_index].ref;
+      regarray_use = &bitwise->src_use[src_index].regarray;
+      break;
+   }
+
+   default:
+      unreachable("Unsupported instruction type.");
+      return false;
+   }
+
+   /* We don't want to be modifying regarrays. */
+   assert(rogue_ref_is_reg(ref));
+
+   rogue_unlink_instr_use_reg(instr, reg_use);
+   *ref = rogue_ref_regarray(new_regarray);
+   rogue_link_instr_use_regarray(instr, regarray_use, new_regarray, src_index);
+
+   return true;
+}
+
 static inline bool rogue_reg_replace(rogue_reg *old_reg, rogue_reg *new_reg)
 {
    bool replaced = true;
@@ -3214,19 +3274,24 @@ static struct rogue_ref64 rogue_shared_ref64(rogue_shader *shader,
    };
 }
 
+static inline unsigned rogue_index_from_regarray(rogue_regarray *regarray)
+{
+   const struct rogue_reg_cache_key cache_key = {
+      .val = regarray->regs[0]->index,
+   };
+   assert(!cache_key.component);
+   assert(cache_key.vec); /* TODO: maybe not needed? */
+
+   return cache_key.index;
+}
+
 static struct rogue_ref64
 rogue_ssa_ref64_from_regarray(rogue_shader *shader, rogue_regarray *regarray)
 {
    assert(regarray->size == 2);
    assert(regarray->regs[0]->class == ROGUE_REG_CLASS_SSA);
 
-   const struct rogue_reg_cache_key cache_key = {
-      .val = regarray->regs[0]->index,
-   };
-   assert(!cache_key.component);
-   assert(cache_key.vec);
-
-   unsigned index = cache_key.index;
+   unsigned index = rogue_index_from_regarray(regarray);
 
    return (rogue_ref64){
       .ref64 = rogue_ref_regarray(rogue_ssa_vec_regarray(shader, 2, index, 0)),
@@ -3476,6 +3541,8 @@ bool rogue_schedule_instr_groups(rogue_shader *shader, bool multi_instr_groups);
 bool rogue_schedule_uvsw(rogue_shader *shader, bool latency_hiding);
 
 bool rogue_schedule_wdf(rogue_shader *shader, bool latency_hiding);
+
+bool rogue_schedule_st_regs(rogue_shader *shader);
 
 bool rogue_trim(rogue_shader *shader);
 
