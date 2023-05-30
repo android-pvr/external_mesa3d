@@ -26,6 +26,7 @@
 #include "util/macros.h"
 #include "util/ralloc.h"
 #include "util/register_allocate.h"
+#include "util/sparse_array.h"
 #include "util/u_qsort.h"
 
 #include <stdbool.h>
@@ -37,7 +38,16 @@
  * \brief Contains the rogue_regalloc pass.
  */
 
+#define ROGUE_RA_CLASS_INFO_NODE_SIZE 64
+
 /* TODO: Internal register support for high register pressure regs. */
+/* TODO: vtxin register support. */
+
+typedef struct rogue_ra_class_info {
+   unsigned stride;
+   unsigned class_index;
+   enum rogue_reg_class hw_class;
+} rogue_ra_class_info;
 
 typedef struct rogue_live_range {
    unsigned start;
@@ -89,6 +99,27 @@ static int regarray_cmp(const void *lhs, const void *rhs, UNUSED void *arg)
    return 0;
 }
 
+static inline void rogue_ra_setup_class(struct ra_regs *ra_regs,
+                                        struct util_sparse_array *ra_class_info,
+                                        unsigned stride,
+                                        enum rogue_reg_class hw_class,
+                                        unsigned num_hw_prealloced,
+                                        unsigned num_hw)
+{
+   struct ra_class *ra_class = ra_alloc_contig_reg_class(ra_regs, stride);
+   unsigned class_index = ra_class_index(ra_class);
+
+   rogue_ra_class_info *class_info =
+      util_sparse_array_get(ra_class_info, stride);
+   class_info->stride = stride;
+   class_info->class_index = class_index;
+   class_info->hw_class = hw_class;
+
+   for (unsigned t = num_hw_prealloced; t < num_hw - (stride - 1); ++t)
+      if (!(t % stride))
+         ra_class_add_reg(ra_class, t);
+}
+
 PUBLIC
 bool rogue_regalloc(rogue_shader *shader)
 {
@@ -104,23 +135,10 @@ bool rogue_regalloc(rogue_shader *shader)
    /* assert(list_is_empty(&shader->regs[ROGUE_REG_CLASS_TEMP])); */
    unsigned num_temps_prealloced =
       rogue_count_used_regs(shader, ROGUE_REG_CLASS_TEMP);
-   unsigned hw_temps =
+   unsigned num_hw_temps =
       rogue_reg_class_infos[ROGUE_REG_CLASS_TEMP].num - num_temps_prealloced;
 
-   /* Setup regset and register classes. */
-   struct ra_regs *ra_regs = ra_alloc_reg_set(shader, hw_temps, true);
-
-   for (enum rogue_regalloc_class c = 0; c < ROGUE_REGALLOC_CLASS_COUNT; ++c) {
-      unsigned stride = regalloc_info[c].stride;
-      struct ra_class *ra_class = ra_alloc_contig_reg_class(ra_regs, stride);
-      assert(c == ra_class_index(ra_class));
-
-      for (unsigned t = num_temps_prealloced; t < hw_temps - (stride - 1); ++t)
-         if (!(t % stride))
-            ra_class_add_reg(ra_class, t);
-   }
-
-   ra_set_finalize(ra_regs, NULL);
+   struct ra_regs *ra_regs = ra_alloc_reg_set(shader, num_hw_temps, true);
 
    /* TODO: Consider tracking this in the shader itself, i.e. one list for child
     * regarrays, one for parents. Or, since children are already in a list in
@@ -155,6 +173,45 @@ bool rogue_regalloc(rogue_shader *shader)
                 sizeof(*parent_regarrays),
                 regarray_cmp,
                 NULL);
+
+   /* Setup regset and contiguous register classes. */
+   struct util_sparse_array ra_class_info;
+   util_sparse_array_init(&ra_class_info,
+                          sizeof(rogue_ra_class_info),
+                          ROGUE_RA_CLASS_INFO_NODE_SIZE);
+
+   bool single_regs = false;
+   for (unsigned u = 0; u < num_parent_regarrays; ++u) {
+      /* List sorted by size! So easily skip sizes we've already handled. */
+      if (u > 0 && (parent_regarrays[u]->size == parent_regarrays[u - 1]->size))
+         continue;
+
+      unsigned stride = parent_regarrays[u]->size;
+      rogue_ra_setup_class(ra_regs,
+                           &ra_class_info,
+                           stride,
+                           ROGUE_REG_CLASS_TEMP,
+                           num_temps_prealloced,
+                           num_hw_temps);
+      if (stride == 1)
+         single_regs = true;
+   }
+
+   /* Ensure we have support for single/standalone registers too. */
+   if (!single_regs) {
+      rogue_ra_setup_class(ra_regs,
+                           &ra_class_info,
+                           1,
+                           ROGUE_REG_CLASS_TEMP,
+                           num_temps_prealloced,
+                           num_hw_temps);
+   }
+
+   rogue_ra_class_info *single_class_info =
+      util_sparse_array_get(&ra_class_info, 1);
+   assert(single_class_info->stride == 1);
+
+   ra_set_finalize(ra_regs, NULL);
 
    /* Prepare live ranges. */
    rogue_live_range *ssa_live_range =
@@ -192,33 +249,16 @@ bool rogue_regalloc(rogue_shader *shader)
    for (unsigned u = 0; u < num_parent_regarrays; ++u) {
       rogue_regarray *regarray = parent_regarrays[u];
       unsigned base_index = regarray->regs[0]->index;
+      unsigned stride = regarray->size;
 
-      enum rogue_regalloc_class raclass;
-
-      switch (regarray->size) {
-      case 1:
-         raclass = ROGUE_REGALLOC_CLASS_TEMP_1;
-         break;
-
-      case 2:
-         raclass = ROGUE_REGALLOC_CLASS_TEMP_2;
-         break;
-
-      case 3:
-         raclass = ROGUE_REGALLOC_CLASS_TEMP_3;
-         break;
-
-      case 4:
-         raclass = ROGUE_REGALLOC_CLASS_TEMP_4;
-         break;
-
-      default:
-         unreachable("Unsupported regarray size.");
-      }
+      rogue_ra_class_info *class_info =
+         util_sparse_array_get(&ra_class_info, stride);
+      assert(class_info->stride == stride);
 
       ra_set_node_class(ra_graph,
                         base_index,
-                        ra_get_class_from_index(ra_regs, raclass));
+                        ra_get_class_from_index(ra_regs,
+                                                class_info->class_index));
    }
 
    /* Set register class for "standalone" registers. */
@@ -226,10 +266,10 @@ bool rogue_regalloc(rogue_shader *shader)
       if (reg->regarray)
          continue;
 
-      ra_set_node_class(ra_graph,
-                        reg->index,
-                        ra_get_class_from_index(ra_regs,
-                                                ROGUE_REGALLOC_CLASS_TEMP_1));
+      ra_set_node_class(
+         ra_graph,
+         reg->index,
+         ra_get_class_from_index(ra_regs, single_class_info->class_index));
    }
 
    /* Build interference graph from overlapping live ranges. */
@@ -265,9 +305,11 @@ bool rogue_regalloc(rogue_shader *shader)
          unsigned size = regarray->size;
          unsigned base_index = regarray->regs[0]->index;
          unsigned hw_base_index = ra_get_node_reg(ra_graph, base_index);
-         enum rogue_regalloc_class ra_class =
-            ra_class_index(ra_get_node_class(ra_graph, base_index));
-         enum rogue_reg_class new_class = regalloc_info[ra_class].class;
+
+         rogue_ra_class_info *class_info =
+            util_sparse_array_get(&ra_class_info, size);
+         assert(class_info->stride == size);
+         enum rogue_reg_class new_class = class_info->hw_class;
 
          rogue_print_regarray(fp, regarray);
          fputs(" -> ", fp);
@@ -281,10 +323,7 @@ bool rogue_regalloc(rogue_shader *shader)
             continue;
 
          unsigned hw_index = ra_get_node_reg(ra_graph, reg->index);
-
-         enum rogue_regalloc_class ra_class =
-            ra_class_index(ra_get_node_class(ra_graph, reg->index));
-         enum rogue_reg_class new_class = regalloc_info[ra_class].class;
+         enum rogue_reg_class new_class = single_class_info->hw_class;
 
          rogue_print_reg(fp, reg, ROGUE_IDX_NONE);
          fputs(" -> ", fp);
@@ -301,9 +340,12 @@ bool rogue_regalloc(rogue_shader *shader)
 
       unsigned base_index = regarray->regs[0]->index;
       unsigned hw_base_index = ra_get_node_reg(ra_graph, base_index);
-      enum rogue_regalloc_class ra_class =
-         ra_class_index(ra_get_node_class(ra_graph, base_index));
-      enum rogue_reg_class new_class = regalloc_info[ra_class].class;
+
+      unsigned stride = regarray->size;
+      rogue_ra_class_info *class_info =
+         util_sparse_array_get(&ra_class_info, stride);
+      assert(class_info->stride == stride);
+      enum rogue_reg_class new_class = class_info->hw_class;
 
       bool used = false;
       for (unsigned r = 0; r < regarray->size; ++r) {
@@ -336,10 +378,7 @@ bool rogue_regalloc(rogue_shader *shader)
    rogue_foreach_reg_safe (reg, shader, ROGUE_REG_CLASS_SSA) {
       assert(!reg->regarray);
       unsigned hw_index = ra_get_node_reg(ra_graph, reg->index);
-
-      enum rogue_regalloc_class ra_class =
-         ra_class_index(ra_get_node_class(ra_graph, reg->index));
-      enum rogue_reg_class new_class = regalloc_info[ra_class].class;
+      enum rogue_reg_class new_class = single_class_info->hw_class;
 
       /* First time using new register, modify in place. */
       if (!rogue_reg_is_used(shader, new_class, hw_index)) {
@@ -365,7 +404,7 @@ bool rogue_regalloc(rogue_shader *shader)
    rogue_foreach_reg_safe (reg, shader, ROGUE_REG_CLASS_EMC) {
       assert(!reg->regarray);
       unsigned hw_index = next_temp++;
-      enum rogue_reg_class new_class = ROGUE_REG_CLASS_TEMP;
+      enum rogue_reg_class new_class = single_class_info->hw_class;
 
       /* First time using new register, modify in place. */
       if (!rogue_reg_is_used(shader, new_class, hw_index)) {
@@ -378,6 +417,7 @@ bool rogue_regalloc(rogue_shader *shader)
       }
    }
 
+   util_sparse_array_finish(&ra_class_info);
    ralloc_free(ra_regs);
 
    return progress;

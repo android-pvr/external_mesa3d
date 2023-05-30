@@ -207,25 +207,6 @@ typedef struct rogue_special_reg_info {
 extern const rogue_special_reg_info
    rogue_special_reg_infos[ROGUE_SPECIAL_REG_COUNT];
 
-/* TODO: Do this dynamically by iterating
- * through regarrays and matching sizes.
- */
-enum rogue_regalloc_class {
-   ROGUE_REGALLOC_CLASS_TEMP_1,
-   ROGUE_REGALLOC_CLASS_TEMP_2,
-   ROGUE_REGALLOC_CLASS_TEMP_3,
-   ROGUE_REGALLOC_CLASS_TEMP_4,
-
-   ROGUE_REGALLOC_CLASS_COUNT,
-};
-
-typedef struct rogue_regalloc_info {
-   enum rogue_reg_class class;
-   unsigned stride;
-} rogue_regalloc_info;
-
-extern const rogue_regalloc_info regalloc_info[ROGUE_REGALLOC_CLASS_COUNT];
-
 #define ROGUE_ISA_DSTS 2
 #define ROGUE_ISA_SRCS 6
 #define ROGUE_ISA_ISSS 6

@@ -149,13 +149,6 @@ const rogue_special_reg_info rogue_special_reg_infos[ROGUE_SPECIAL_REG_COUNT] = 
 };
 #undef SR
 
-const rogue_regalloc_info regalloc_info[ROGUE_REGALLOC_CLASS_COUNT] = {
-   [ROGUE_REGALLOC_CLASS_TEMP_1] = { .class = ROGUE_REG_CLASS_TEMP, .stride = 1, },
-   [ROGUE_REGALLOC_CLASS_TEMP_2] = { .class = ROGUE_REG_CLASS_TEMP, .stride = 2, },
-   [ROGUE_REGALLOC_CLASS_TEMP_3] = { .class = ROGUE_REG_CLASS_TEMP, .stride = 3, },
-   [ROGUE_REGALLOC_CLASS_TEMP_4] = { .class = ROGUE_REG_CLASS_TEMP, .stride = 4, },
-};
-
 const rogue_reg_dst_info rogue_reg_dst_infos[ROGUE_REG_DST_VARIANTS] = {
    {
       .num_dsts = 1,
