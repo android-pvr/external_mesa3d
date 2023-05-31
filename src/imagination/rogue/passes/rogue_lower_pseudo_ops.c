@@ -371,6 +371,10 @@ static inline bool rogue_lower_INEG(rogue_builder *b, rogue_alu_instr *ineg)
 
 static inline bool rogue_lower_alu_instr(rogue_builder *b, rogue_alu_instr *alu)
 {
+   /* Skip real ops. */
+   if (alu->op < ROGUE_ALU_OP_PSEUDO)
+      return false;
+
    switch (alu->op) {
    case ROGUE_ALU_OP_MOV:
       return rogue_lower_MOV(b, alu);
@@ -421,6 +425,151 @@ static inline bool rogue_lower_alu_instr(rogue_builder *b, rogue_alu_instr *alu)
    return false;
 }
 
+static inline bool rogue_lower_ISHL(rogue_builder *b, rogue_bitwise_instr *ishl)
+{
+   rogue_bitwise_instr *byp0b = rogue_BYP0B(b,
+                                            rogue_ref_io(ROGUE_IO_FT0),
+                                            rogue_ref_io(ROGUE_IO_FT1),
+                                            rogue_ref_io(ROGUE_IO_S0),
+                                            ishl->src[0].ref);
+   rogue_set_instr_group_next(&byp0b->instr, true);
+   rogue_bitwise_instr *lsl2 = rogue_LSL2(b,
+                                          ishl->dst[0].ref,
+                                          rogue_ref_io(ROGUE_IO_FT4),
+                                          ishl->src[1].ref);
+
+   rogue_merge_instr_comment(&lsl2->instr, &ishl->instr, "ishl");
+   rogue_instr_delete(&ishl->instr);
+
+   return true;
+}
+
+static inline bool rogue_lower_ISHR(rogue_builder *b, rogue_bitwise_instr *ishr)
+{
+   rogue_bitwise_instr *byp0b = rogue_BYP0B(b,
+                                            rogue_ref_io(ROGUE_IO_FT0),
+                                            rogue_ref_io(ROGUE_IO_FT1),
+                                            rogue_ref_io(ROGUE_IO_S0),
+                                            ishr->src[0].ref);
+   rogue_set_instr_group_next(&byp0b->instr, true);
+   rogue_bitwise_instr *asr = rogue_ASR(b,
+                                        ishr->dst[0].ref,
+                                        rogue_ref_io(ROGUE_IO_FT4),
+                                        ishr->src[1].ref);
+   rogue_set_bitwise_op_mod(asr, ROGUE_BITWISE_OP_MOD_TWB);
+
+   rogue_merge_instr_comment(&asr->instr, &ishr->instr, "ishr");
+   rogue_instr_delete(&ishr->instr);
+
+   return true;
+}
+
+static inline bool rogue_lower_USHR(rogue_builder *b, rogue_bitwise_instr *ushr)
+{
+   rogue_bitwise_instr *byp0b = rogue_BYP0B(b,
+                                            rogue_ref_io(ROGUE_IO_FT0),
+                                            rogue_ref_io(ROGUE_IO_FT1),
+                                            rogue_ref_io(ROGUE_IO_S0),
+                                            ushr->src[0].ref);
+   rogue_set_instr_group_next(&byp0b->instr, true);
+   rogue_bitwise_instr *shr = rogue_SHR(b,
+                                        ushr->dst[0].ref,
+                                        rogue_ref_io(ROGUE_IO_FT4),
+                                        ushr->src[1].ref);
+
+   rogue_merge_instr_comment(&shr->instr, &ushr->instr, "ushr");
+   rogue_instr_delete(&ushr->instr);
+
+   return true;
+}
+
+static inline bool rogue_lower_IAND(rogue_builder *b, rogue_bitwise_instr *iand)
+{
+   rogue_instr *byp0s =
+      &rogue_BYP0S(b, rogue_ref_io(ROGUE_IO_FT2), iand->src[0].ref)->instr;
+   rogue_set_instr_group_next(byp0s, true);
+   rogue_bitwise_instr *and = rogue_AND(b,
+                                        iand->dst[0].ref,
+                                        rogue_none(),
+                                        rogue_ref_io(ROGUE_IO_FT2),
+                                        rogue_none(),
+                                        iand->src[1].ref);
+
+   rogue_merge_instr_comment(&and->instr, &iand->instr, "iand");
+   rogue_instr_delete(&iand->instr);
+
+   return true;
+}
+
+static inline bool rogue_lower_IOR(rogue_builder *b, rogue_bitwise_instr *ior)
+{
+   rogue_instr *byp0s =
+      &rogue_BYP0S(b, rogue_ref_io(ROGUE_IO_FT2), ior->src[0].ref)->instr;
+   rogue_set_instr_group_next(byp0s, true);
+   rogue_bitwise_instr * or = rogue_OR(b,
+                                       ior->dst[0].ref,
+                                       rogue_none(),
+                                       rogue_ref_io(ROGUE_IO_FT2),
+                                       rogue_none(),
+                                       ior->src[1].ref);
+
+   rogue_merge_instr_comment(& or->instr, &ior->instr, "ior");
+   rogue_instr_delete(&ior->instr);
+
+   return true;
+}
+
+static inline bool rogue_lower_IXOR(rogue_builder *b, rogue_bitwise_instr *ixor)
+{
+   rogue_instr *byp0s =
+      &rogue_BYP0S(b, rogue_ref_io(ROGUE_IO_FT2), ixor->src[0].ref)->instr;
+   rogue_set_instr_group_next(byp0s, true);
+   rogue_bitwise_instr * xor = rogue_XOR(b,
+                                         ixor->dst[0].ref,
+                                         rogue_none(),
+                                         rogue_ref_io(ROGUE_IO_FT2),
+                                         rogue_none(),
+                                         ixor->src[1].ref);
+
+   rogue_merge_instr_comment(&xor->instr, &ixor->instr, "ixor");
+   rogue_instr_delete(&ixor->instr);
+
+   return true;
+}
+
+static inline bool rogue_lower_bitwise_instr(rogue_builder *b,
+                                             rogue_bitwise_instr *bitwise)
+{
+   /* Skip real ops. */
+   if (bitwise->op < ROGUE_BITWISE_OP_PSEUDO)
+      return false;
+
+   switch (bitwise->op) {
+   case ROGUE_BITWISE_OP_ISHL:
+      return rogue_lower_ISHL(b, bitwise);
+
+   case ROGUE_BITWISE_OP_ISHR:
+      return rogue_lower_ISHR(b, bitwise);
+
+   case ROGUE_BITWISE_OP_USHR:
+      return rogue_lower_USHR(b, bitwise);
+
+   case ROGUE_BITWISE_OP_IAND:
+      return rogue_lower_IAND(b, bitwise);
+
+   case ROGUE_BITWISE_OP_IOR:
+      return rogue_lower_IOR(b, bitwise);
+
+   case ROGUE_BITWISE_OP_IXOR:
+      return rogue_lower_IXOR(b, bitwise);
+
+   default:
+      break;
+   }
+
+   return false;
+}
+
 /* TODO: This should only really be called after a distribute_src_mods pass (to
  * come later). */
 PUBLIC
@@ -435,15 +584,17 @@ bool rogue_lower_pseudo_ops(rogue_shader *shader)
    rogue_builder_init(&b, shader);
 
    rogue_foreach_instr_in_shader_safe (instr, shader) {
-      /* Skip real ops. */
-      if (rogue_instr_supported_phases(instr))
-         continue;
-
       b.cursor = rogue_cursor_before_instr(instr);
       switch (instr->type) {
       case ROGUE_INSTR_TYPE_ALU:
          progress |= rogue_lower_alu_instr(&b, rogue_instr_as_alu(instr));
          break;
+
+      case ROGUE_INSTR_TYPE_BITWISE:
+         progress |=
+            rogue_lower_bitwise_instr(&b, rogue_instr_as_bitwise(instr));
+         break;
+
       default:
          continue;
       }

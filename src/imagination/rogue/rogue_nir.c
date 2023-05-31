@@ -53,6 +53,8 @@ static const nir_shader_compiler_options nir_options = {
    .lower_fpow = true,
    .lower_fsat = true,
    .lower_fsqrt = true,
+   .lower_rotate = true, /* TODO: add nir option to convert ror to rol then
+                            enable this. */
    .has_fused_comp_and_csel = true,
    .support_8bit_alu = true,
    .support_16bit_alu = true,

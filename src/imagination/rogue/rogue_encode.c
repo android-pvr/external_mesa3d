@@ -1067,6 +1067,7 @@ static void rogue_encode_bitwise_instr(const rogue_bitwise_instr *bitwise,
 
    case ROGUE_BITWISE_OP_AND:
    case ROGUE_BITWISE_OP_OR:
+   case ROGUE_BITWISE_OP_XOR:
       instr_encoding->bitwise.phase1 = 1;
 
       switch (bitwise->op) {
@@ -1076,6 +1077,10 @@ static void rogue_encode_bitwise_instr(const rogue_bitwise_instr *bitwise,
 
       case ROGUE_BITWISE_OP_OR:
          instr_encoding->bitwise.ph1.op = PH1OP_OR;
+         break;
+
+      case ROGUE_BITWISE_OP_XOR:
+         instr_encoding->bitwise.ph1.op = PH1OP_XOR;
          break;
 
       default:
