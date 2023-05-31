@@ -619,7 +619,8 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
    if (ms_idx_src != ROGUE_REG_UNUSED)
       rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_SNO);
 
-   rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_FCNORM);
+   if (nir_alu_type_get_base_type(tex->dest_type) == nir_type_float)
+      rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_FCNORM);
 }
 
 static void trans_nir_tex(rogue_builder *b, nir_tex_instr *tex)
