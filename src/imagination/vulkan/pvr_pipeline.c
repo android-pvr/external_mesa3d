@@ -2616,6 +2616,25 @@ static void pvr_generate_iterator_commands(struct rogue_build_ctx *ctx)
 /** @} */
 /* End of \defgroup Graphics pipeline register allocation. */
 
+/* Passes the format information to the fragment shader for PFO. */
+static inline void
+pvr_graphics_pipeline_assign_pfo_fmts(struct rogue_fs_build_data *fs_data,
+                                      const struct pvr_render_pass *pass,
+                                      const struct pvr_render_subpass *subpass)
+{
+   /* TODO: Investigate and remove this assert. */
+   assert(subpass->color_count == 1);
+   for (unsigned u = 0; u < subpass->color_count; ++u) {
+      unsigned idx = subpass->color_attachments[u];
+      VkFormat vk_format = pass->attachments[idx].vk_format;
+
+      fs_data->format.vk = vk_format;
+      fs_data->format.pbe = pvr_get_pbe_accum_format(vk_format);
+      fs_data->format.pbe_bytes =
+         pvr_get_pbe_accum_format_size_in_bytes(vk_format);
+   }
+}
+
 /* Compiles and uploads shaders and PDS programs. */
 static VkResult
 pvr_graphics_pipeline_compile(struct pvr_device *const device,
@@ -2661,10 +2680,16 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
 
    uint32_t sh_count[PVR_STAGE_ALLOCATION_COUNT] = { 0 };
 
+   PVR_FROM_HANDLE(pvr_render_pass, pass, pCreateInfo->renderPass);
+   const struct pvr_render_subpass *const subpass =
+      &pass->subpasses[pCreateInfo->subpass];
+
    /* Setup shared build context. */
    ctx = rogue_build_context_create(compiler, layout);
    if (!ctx)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+   pvr_graphics_pipeline_assign_pfo_fmts(&ctx->stage_data.fs, pass, subpass);
 
    /* TODO: Fix this by having multiple variants of iterator PDS programs for
     * VK_EXT_extended_dynamic_state */

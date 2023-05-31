@@ -26,6 +26,7 @@
 #include "nir/nir_search_helpers.h"
 #include "rogue.h"
 #include "util/macros.h"
+#include "vulkan/vk_format.h"
 
 /**
  * \file rogue_nir_pfo.c
@@ -33,62 +34,127 @@
  * \brief Contains the rogue_nir_pfo pass.
  */
 
-static void insert_pfo(nir_builder *b,
-                       nir_intrinsic_instr *store_output,
-                       nir_src *output_src)
+static inline nir_ssa_def *
+do_pack(nir_builder *b, enum pvr_pbe_accum_format pbe, nir_ssa_def *chans)
 {
-   /* TODO: Support complex PFO with blending. */
-   /* TODO: Verify type is vec4. */
+   switch (pbe) {
+   case PVR_PBE_ACCUM_FORMAT_U8:
+      return nir_pack_unorm_4x8(b, chans);
 
-   /* Pack the output color components into U8888 format. */
-   nir_ssa_def *new_output_src_ssa = nir_pack_unorm_4x8(b, output_src->ssa);
-   nir_src new_output_src = nir_src_for_ssa(new_output_src_ssa);
+   case PVR_PBE_ACCUM_FORMAT_S8:
+      return nir_pack_snorm_4x8(b, chans);
 
-   /* Update the store_output intrinsic. */
-   nir_instr_rewrite_src(&store_output->instr, output_src, new_output_src);
-   nir_intrinsic_set_write_mask(store_output, 1);
-   store_output->num_components = 1;
-   nir_intrinsic_set_src_type(store_output, nir_type_uint32);
+   case PVR_PBE_ACCUM_FORMAT_U16:
+      return nir_pack_unorm_2x16(b, chans);
+
+   case PVR_PBE_ACCUM_FORMAT_S16:
+      return nir_pack_snorm_2x16(b, chans);
+
+   default:
+      break;
+   }
+
+   unreachable("Unsupported pbe_accum_format.");
+   return NULL;
+}
+
+static inline const struct glsl_type *
+pbe_accum_to_glsl_type(enum pvr_pbe_accum_format pbe)
+{
+   switch (pbe) {
+   case PVR_PBE_ACCUM_FORMAT_U8:
+   case PVR_PBE_ACCUM_FORMAT_U16:
+      return glsl_uintN_t_type(32);
+
+   case PVR_PBE_ACCUM_FORMAT_S8:
+   case PVR_PBE_ACCUM_FORMAT_S16:
+      return glsl_intN_t_type(32);
+
+#if 0
+   case PVR_PBE_ACCUM_FORMAT_F32:
+      return glsl_floatN_t_type(32);
+#endif
+
+   default:
+      break;
+   }
+
+   unreachable("Unsupported pbe_accum_format.");
+   return NULL;
+}
+
+/* TODO: Support complex PFO with blending. */
+static nir_ssa_def *
+lower_store_output(nir_builder *b, nir_instr *instr, void *cb_data)
+{
+   struct rogue_fs_build_data *fs_data = (struct rogue_fs_build_data *)cb_data;
+   /* VkFormat vk = fs_data->format.vk; */
+   enum pvr_pbe_accum_format pbe = fs_data->format.pbe;
+   unsigned pbe_bytes = fs_data->format.pbe_bytes;
+
+   /* bool is_norm = vk_format_is_normalized(vk); */
+   unsigned pbe_dwords = DIV_ROUND_UP(pbe_bytes, sizeof(uint32_t));
+
+   const struct glsl_type *glsl_type = pbe_accum_to_glsl_type(pbe);
+   nir_alu_type nir_type = nir_get_nir_type_for_glsl_type(glsl_type);
+
+   /* Rewrite the old store and perform the pack/conversion if needed. */
+
+   nir_intrinsic_instr *old_store = nir_instr_as_intrinsic(instr);
+   nir_src *output_src = &old_store->src[0];
+   unsigned components = nir_src_num_components(*output_src);
+   assert(components == 4);
+
+   nir_io_semantics sem = nir_intrinsic_io_semantics(old_store);
+   nir_variable *output_var =
+      nir_find_variable_with_location(b->shader,
+                                      nir_var_shader_out,
+                                      sem.location);
+
+   b->cursor = nir_before_instr(instr);
+
+   unsigned input_size = components / pbe_dwords;
+   assert(!(components % pbe_dwords));
+   nir_component_mask_t chan_mask = nir_component_mask(input_size);
+
+   nir_ssa_def *chans, *pack;
+   for (unsigned out = 0; out < pbe_dwords; ++out) {
+      chans = nir_channels(b, output_src->ssa, chan_mask << (out * input_size));
+      /* TODO: Make the pack optional. */
+      pack = do_pack(b, pbe, chans);
+      nir_store_output(b,
+                       pack,
+                       nir_iadd_imm(b, old_store->src[1].ssa, out),
+                       .base = nir_intrinsic_base(old_store),
+                       .src_type = nir_type,
+                       .write_mask = 1,
+                       .io_semantics = nir_intrinsic_io_semantics(old_store));
+   }
+
+   /* Update the variable and dereference types. */
+   output_var->type = glsl_type;
+
+   return NIR_LOWER_INSTR_PROGRESS_REPLACE;
+}
+
+static bool is_store_output(const nir_instr *instr, UNUSED const void *cb_data)
+{
+   if (instr->type != nir_instr_type_intrinsic)
+      return false;
+
+   nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
+   return intr->intrinsic == nir_intrinsic_store_output;
 }
 
 PUBLIC
-void rogue_nir_pfo(nir_shader *shader)
+bool rogue_nir_pfo(nir_shader *shader, struct rogue_fs_build_data *fs_data)
 {
-   nir_function_impl *impl = nir_shader_get_entrypoint(shader);
-   nir_builder b;
-
    /* Only apply to fragment shaders. */
    if (shader->info.stage != MESA_SHADER_FRAGMENT)
-      return;
+      return false;
 
-   b = nir_builder_create(impl);
-
-   nir_foreach_block (block, impl) {
-      nir_foreach_instr_safe (instr, block) {
-         if (instr->type == nir_instr_type_intrinsic) {
-            /* Find the store_output intrinsic and pack the output value. */
-            nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
-
-            if (intr->intrinsic != nir_intrinsic_store_output)
-               continue;
-
-            b.cursor = nir_before_instr(&intr->instr);
-            insert_pfo(&b, intr, &intr->src[0]);
-         } else if (instr->type == nir_instr_type_deref) {
-            /* Find variable derefs and update their type. */
-            nir_deref_instr *deref = nir_instr_as_deref(instr);
-
-            if (!nir_deref_mode_is(deref, nir_var_shader_out))
-               continue;
-
-            if (deref->deref_type != nir_deref_type_var)
-               continue;
-
-            nir_variable *out = nir_deref_instr_get_variable(deref);
-
-            deref->type = glsl_uintN_t_type(32);
-            out->type = glsl_uintN_t_type(32);
-         }
-      }
-   }
+   return nir_shader_lower_instructions(shader,
+                                        is_store_output,
+                                        lower_store_output,
+                                        fs_data);
 }

@@ -38,6 +38,7 @@
 
 #include "pvr_types.h"
 #include "csbgen/rogue_hwdefs.h"
+#include "vulkan/pvr_formats.h"
 #include "vulkan/pvr_limits.h"
 #include "vulkan/pvr_common.h"
 
@@ -3535,6 +3536,12 @@ typedef struct rogue_build_data {
       bool phas; /* Indicates the presence of PHAS instruction. */
       bool discard;
       bool side_effects;
+
+      struct {
+         VkFormat vk;
+         enum pvr_pbe_accum_format pbe;
+         unsigned pbe_bytes;
+      } format;
    } fs;
    struct rogue_vs_build_data {
       /* TODO: Should these be removed since the driver allocates the vertex
@@ -3645,7 +3652,7 @@ nir_shader *rogue_spirv_to_nir(rogue_build_ctx *ctx,
                                struct nir_spirv_specialization *spec);
 
 /* Custom NIR passes. */
-void rogue_nir_pfo(nir_shader *shader);
+bool rogue_nir_pfo(nir_shader *shader, struct rogue_fs_build_data *fs_data);
 
 bool rogue_nir_lower_io(nir_shader *shader, rogue_build_ctx *ctx, bool late);
 
