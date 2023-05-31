@@ -1793,7 +1793,7 @@ enum rogue_bitwise_op {
 
    /* Pseudo-instructions. */
    ROGUE_BITWISE_OP_PSEUDO,
-   ROGUE_BITWISE_OP_ = ROGUE_BITWISE_OP_PSEUDO,
+   ROGUE_BITWISE_OP_MOVI = ROGUE_BITWISE_OP_PSEUDO,
 
    ROGUE_BITWISE_OP_COUNT,
 };

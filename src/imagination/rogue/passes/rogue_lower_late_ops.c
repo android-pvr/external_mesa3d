@@ -104,6 +104,35 @@ static inline bool rogue_lower_ctrl_instr(rogue_builder *b,
    return false;
 }
 
+static inline bool rogue_lower_MOVI(rogue_builder *b, rogue_bitwise_instr *movi)
+{
+   rogue_bitwise_instr *byp0b =
+      rogue_BYP0B(b,
+                  rogue_ref_io(ROGUE_IO_FT0),
+                  movi->dst[0].ref,
+                  rogue_ref_io(ROGUE_IO_S0),
+                  rogue_ref_val(rogue_ref_get_imm(&movi->src[0].ref)->imm.u32));
+
+   rogue_merge_instr_comment(&byp0b->instr, &movi->instr, "movi");
+   rogue_instr_delete(&movi->instr);
+
+   return true;
+}
+
+static inline bool rogue_lower_bitwise_instr(rogue_builder *b,
+                                             rogue_bitwise_instr *bitwise)
+{
+   switch (bitwise->op) {
+   case ROGUE_BITWISE_OP_MOVI:
+      return rogue_lower_MOVI(b, bitwise);
+
+   default:
+      break;
+   }
+
+   return false;
+}
+
 PUBLIC
 bool rogue_lower_late_ops(rogue_shader *shader)
 {
@@ -128,6 +157,11 @@ bool rogue_lower_late_ops(rogue_shader *shader)
 
       case ROGUE_INSTR_TYPE_CTRL:
          progress |= rogue_lower_ctrl_instr(&b, rogue_instr_as_ctrl(instr));
+         break;
+
+      case ROGUE_INSTR_TYPE_BITWISE:
+         progress |=
+            rogue_lower_bitwise_instr(&b, rogue_instr_as_bitwise(instr));
          break;
 
       default:

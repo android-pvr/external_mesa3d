@@ -67,10 +67,7 @@ static inline bool rogue_lower_FNABS(rogue_builder *b, rogue_alu_instr *fnabs)
 static inline bool rogue_lower_FFLR(rogue_builder *b, rogue_alu_instr *fflr)
 {
    rogue_alu_instr *fadd =
-      rogue_FADD(b,
-                 fflr->dst[0].ref,
-                 fflr->src[0].ref,
-                 rogue_ref_reg(rogue_const_reg(b->shader, 0)));
+      rogue_FADD(b, fflr->dst[0].ref, fflr->src[0].ref, rogue_ref_imm(0));
    rogue_merge_instr_comment(&fadd->instr, &fflr->instr, "fflr");
    rogue_set_alu_src_mod(fadd, 0, ROGUE_ALU_SRC_MOD_FLR);
    rogue_instr_delete(&fflr->instr);
@@ -125,10 +122,7 @@ static inline bool rogue_lower_CND(rogue_builder *b,
 
 static inline bool rogue_lower_CNDB(rogue_builder *b, rogue_alu_instr *cndb)
 {
-   return rogue_lower_CND(b,
-                          cndb,
-                          rogue_ref_reg(rogue_const_reg(b->shader, 143)),
-                          rogue_ref_reg(rogue_const_reg(b->shader, 0)));
+   return rogue_lower_CND(b, cndb, rogue_ref_imm(~0), rogue_ref_imm(0));
 }
 
 static inline bool rogue_lower_CNDSEL(rogue_builder *b, rogue_alu_instr *cndsel)
@@ -148,9 +142,7 @@ static inline bool rogue_lower_ZEROSEL(rogue_builder *b,
                              "zerosel (src)");
 
    rogue_alu_instr *tst_mbyp1 =
-      rogue_MBYP1(b,
-                  rogue_ref_io(ROGUE_IO_FT1),
-                  rogue_ref_reg(rogue_const_reg(b->shader, 0)));
+      rogue_MBYP1(b, rogue_ref_io(ROGUE_IO_FT1), rogue_ref_imm(0));
    rogue_set_instr_group_next(&tst_mbyp1->instr, true);
    rogue_merge_instr_comment(&tst_mbyp1->instr, &zerosel->instr, "zerosel (0)");
 
@@ -194,9 +186,7 @@ static inline bool rogue_lower_SETPRED(rogue_builder *b,
                              "setpred (src)");
 
    rogue_alu_instr *tst_mbyp1 =
-      rogue_MBYP1(b,
-                  rogue_ref_io(ROGUE_IO_FT1),
-                  rogue_ref_reg(rogue_const_reg(b->shader, 0)));
+      rogue_MBYP1(b, rogue_ref_io(ROGUE_IO_FT1), rogue_ref_imm(0));
    rogue_set_instr_group_next(&tst_mbyp1->instr, true);
    rogue_merge_instr_comment(&tst_mbyp1->instr,
                              &setpred->instr,
@@ -233,13 +223,7 @@ static inline bool rogue_lower_MOV(rogue_builder *b, rogue_alu_instr *mov)
          unsigned imm_mov_idx = b->shader->ctx->next_ssa_idx++;
          rogue_reg *imm_mov = rogue_ssa_reg(b->shader, imm_mov_idx);
          src = rogue_ref_reg(imm_mov);
-
-         rogue_BYP0B(
-            b,
-            rogue_ref_io(ROGUE_IO_FT0),
-            src,
-            rogue_ref_io(ROGUE_IO_S0),
-            rogue_ref_val(rogue_ref_get_imm(&mov->src[0].ref)->imm.u32));
+         rogue_MOVI(b, src, mov->src[0].ref);
       }
 
       instr = &rogue_UVSW_WRITE(b, mov->dst[0].ref, src)->instr;
@@ -262,13 +246,7 @@ static inline bool rogue_lower_MOV(rogue_builder *b, rogue_alu_instr *mov)
        * we need to do a bitwise bypass.
        */
       if (rogue_ref_is_imm(&mov->src[0].ref)) {
-         instr = &rogue_BYP0B(b,
-                              rogue_ref_io(ROGUE_IO_FT0),
-                              mov->dst[0].ref,
-                              rogue_ref_io(ROGUE_IO_S0),
-                              rogue_ref_val(
-                                 rogue_ref_get_imm(&mov->src[0].ref)->imm.u32))
-                     ->instr;
+         instr = &rogue_MOVI(b, mov->dst[0].ref, mov->src[0].ref)->instr;
       } else {
          instr = &rogue_MBYP0(b, mov->dst[0].ref, mov->src[0].ref)->instr;
       }
@@ -282,14 +260,13 @@ static inline bool rogue_lower_MOV(rogue_builder *b, rogue_alu_instr *mov)
 
 static inline bool rogue_lower_IADD32(rogue_builder *b, rogue_alu_instr *iadd32)
 {
-   rogue_alu_instr *add64_32 =
-      rogue_ADD64_32(b,
-                     iadd32->dst[0].ref,
-                     rogue_none(),
-                     iadd32->src[0].ref,
-                     rogue_ref_reg(rogue_const_reg(b->shader, 0)),
-                     iadd32->src[1].ref,
-                     rogue_none());
+   rogue_alu_instr *add64_32 = rogue_ADD64_32(b,
+                                              iadd32->dst[0].ref,
+                                              rogue_none(),
+                                              iadd32->src[0].ref,
+                                              rogue_ref_imm(0),
+                                              iadd32->src[1].ref,
+                                              rogue_none());
 
    /* Propagate op/source mods. */
    add64_32->mod = iadd32->mod;
@@ -331,14 +308,13 @@ static inline bool rogue_lower_IADD64(rogue_builder *b, rogue_alu_instr *iadd64)
 
 static inline bool rogue_lower_IMUL32(rogue_builder *b, rogue_alu_instr *imul32)
 {
-   rogue_alu_instr *madd32 =
-      rogue_MADD32(b,
-                   imul32->dst[0].ref,
-                   rogue_none(),
-                   imul32->src[0].ref,
-                   imul32->src[1].ref,
-                   rogue_ref_reg(rogue_const_reg(b->shader, 0)),
-                   rogue_none());
+   rogue_alu_instr *madd32 = rogue_MADD32(b,
+                                          imul32->dst[0].ref,
+                                          rogue_none(),
+                                          imul32->src[0].ref,
+                                          imul32->src[1].ref,
+                                          rogue_ref_imm(0),
+                                          rogue_none());
 
    /* Propagate op/source mods. */
    madd32->mod = imul32->mod;
@@ -355,15 +331,14 @@ static inline bool rogue_lower_IMUL64(rogue_builder *b, rogue_alu_instr *imul64)
 {
    rogue_ref64 dst = rogue_ssa_ref64_from_alu_dst(b->shader, imul64, 0);
 
-   rogue_alu_instr *madd64 =
-      rogue_MADD64(b,
-                   dst.lo32,
-                   dst.hi32,
-                   imul64->src[0].ref,
-                   imul64->src[1].ref,
-                   rogue_ref_reg(rogue_const_reg(b->shader, 0)),
-                   rogue_ref_reg(rogue_const_reg(b->shader, 0)),
-                   rogue_none());
+   rogue_alu_instr *madd64 = rogue_MADD64(b,
+                                          dst.lo32,
+                                          dst.hi32,
+                                          imul64->src[0].ref,
+                                          imul64->src[1].ref,
+                                          rogue_ref_imm(0),
+                                          rogue_ref_imm(0),
+                                          rogue_none());
 
    /* Propagate op/source mods. */
    madd64->mod = imul64->mod;
@@ -378,14 +353,13 @@ static inline bool rogue_lower_IMUL64(rogue_builder *b, rogue_alu_instr *imul64)
 
 static inline bool rogue_lower_INEG(rogue_builder *b, rogue_alu_instr *ineg)
 {
-   rogue_alu_instr *add64_32 =
-      rogue_ADD64_32(b,
-                     ineg->dst[0].ref,
-                     rogue_none(),
-                     rogue_ref_reg(rogue_const_reg(b->shader, 0)),
-                     rogue_ref_reg(rogue_const_reg(b->shader, 0)),
-                     ineg->src[0].ref,
-                     rogue_none());
+   rogue_alu_instr *add64_32 = rogue_ADD64_32(b,
+                                              ineg->dst[0].ref,
+                                              rogue_none(),
+                                              rogue_ref_imm(0),
+                                              rogue_ref_imm(0),
+                                              ineg->src[0].ref,
+                                              rogue_none());
 
    rogue_set_alu_src_mod(add64_32, 2, ROGUE_ALU_SRC_MOD_NEG);
 

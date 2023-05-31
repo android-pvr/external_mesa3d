@@ -651,6 +651,14 @@ const rogue_bitwise_op_info rogue_bitwise_op_infos[ROGUE_BITWISE_OP_COUNT] = {
          [0] = T(REG) | T(REGARRAY) | T(IO),
       },
    },
+   [ROGUE_BITWISE_OP_MOVI] = { .str = "movi", .num_dsts = 1, .num_srcs = 1,
+      .supported_dst_types = {
+         [0] = T(REG) | T(REGARRAY),
+      },
+      .supported_src_types = {
+         [0] = T(IMM),
+      },
+   },
 };
 #undef T
 #undef IO
@@ -705,7 +713,7 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       },
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY) | T(IO), },
       .supported_src_types = {
-         [0] = T(REG) | T(REGARRAY),
+         [0] = T(REG) | T(REGARRAY) | T(IMM),
       },
    },
    [ROGUE_ALU_OP_MBYP1] = { .str = "mbyp1", .num_dsts = 1, .num_srcs = 1,
@@ -716,7 +724,7 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       },
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY) | T(IO), },
       .supported_src_types = {
-         [0] = T(REG) | T(REGARRAY),
+         [0] = T(REG) | T(REGARRAY) | T(IMM),
       },
    },
    [ROGUE_ALU_OP_FRCP] = { .str = "frcp", .num_dsts = 1, .num_srcs = 1,
@@ -845,8 +853,8 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       },
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
       .supported_src_types = {
-         [0] = T(REG) | T(REGARRAY),
-         [1] = T(REG) | T(REGARRAY),
+         [0] = T(REG) | T(REGARRAY) | T(IMM),
+         [1] = T(REG) | T(REGARRAY) | T(IMM),
       },
    },
    [ROGUE_ALU_OP_FMAD] = { .str = "fmad", .num_dsts = 1, .num_srcs = 3,
@@ -860,9 +868,9 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       },
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
       .supported_src_types = {
-         [0] = T(REG) | T(REGARRAY),
-         [1] = T(REG) | T(REGARRAY),
-         [2] = T(REG) | T(REGARRAY),
+         [0] = T(REG) | T(REGARRAY) | T(IMM),
+         [1] = T(REG) | T(REGARRAY) | T(IMM),
+         [2] = T(REG) | T(REGARRAY) | T(IMM),
       },
    },
    /* TODO NEXT!: Validate - can/must only select element if non-32-bit type, element has to be same for both args if both args present, 16-bit must be 0 or 1, 32-bit must be 0-3 (can't have no element set)
@@ -906,8 +914,8 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       },
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY), [1] = T(REG) | T(REGARRAY) | T(IO), [2] = T(IO) },
       .supported_src_types = {
-         [0] = T(REG) | T(REGARRAY),
-         [1] = T(REG) | T(REGARRAY),
+         [0] = T(REG) | T(REGARRAY) | T(IMM),
+         [1] = T(REG) | T(REGARRAY) | T(IMM),
          [2] = T(REG) | T(REGARRAY) | T(IMM),
          [3] = T(REG) | T(REGARRAY)| T(IO) | T(IMM),
          [4] = T(IO),
@@ -924,8 +932,8 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       },
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY), [1] = T(REG) | T(REGARRAY) | T(IO) },
       .supported_src_types = {
-         [0] = T(REG) | T(REGARRAY),
-         [1] = T(REG) | T(REGARRAY),
+         [0] = T(REG) | T(REGARRAY) | T(IMM),
+         [1] = T(REG) | T(REGARRAY) | T(IMM),
          [2] = T(REG) | T(REGARRAY) | T(IMM),
          [3] = T(IO),
       },
@@ -941,8 +949,8 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       },
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY), [1] = T(REG) | T(REGARRAY) | T(IO) },
       .supported_src_types = {
-         [0] = T(REG) | T(REGARRAY),
-         [1] = T(REG) | T(REGARRAY),
+         [0] = T(REG) | T(REGARRAY) | T(IMM),
+         [1] = T(REG) | T(REGARRAY) | T(IMM),
          [2] = T(REG) | T(REGARRAY) | T(IMM),
          [3] = T(IO),
       },
@@ -958,8 +966,8 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       },
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY), [1] = T(REG) | T(REGARRAY) | T(IO) },
       .supported_src_types = {
-         [0] = T(REG) | T(REGARRAY),
-         [1] = T(REG) | T(REGARRAY),
+         [0] = T(REG) | T(REGARRAY) | T(IMM),
+         [1] = T(REG) | T(REGARRAY) | T(IMM),
          [2] = T(REG) | T(REGARRAY) | T(IMM),
          [3] = T(REG) | T(REGARRAY)| T(IO) | T(IMM),
          [4] = T(IO),
@@ -1098,8 +1106,8 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       },
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
       .supported_src_types = {
-         [0] = T(REG) | T(REGARRAY),
-         [1] = T(REG) | T(REGARRAY),
+         [0] = T(REG) | T(REGARRAY) | T(IMM),
+         [1] = T(REG) | T(REGARRAY) | T(IMM),
       },
    },
    [ROGUE_ALU_OP_IADD64] = { .str = "iadd64", .num_dsts = 1, .num_srcs = 2,
@@ -1128,8 +1136,8 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       },
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
       .supported_src_types = {
-         [0] = T(REG) | T(REGARRAY),
-         [1] = T(REG) | T(REGARRAY),
+         [0] = T(REG) | T(REGARRAY) | T(IMM),
+         [1] = T(REG) | T(REGARRAY) | T(IMM),
       },
    },
    [ROGUE_ALU_OP_IMUL64] = { .str = "imul64", .num_dsts = 1, .num_srcs = 2,
@@ -1140,8 +1148,8 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       },
       .supported_dst_types = { [0] = T(REGARRAY), },
       .supported_src_types = {
-         [0] = T(REG) | T(REGARRAY),
-         [1] = T(REG) | T(REGARRAY),
+         [0] = T(REG) | T(REGARRAY) | T(IMM),
+         [1] = T(REG) | T(REGARRAY) | T(IMM),
       },
       .dst_stride = {
          [0] = 1,

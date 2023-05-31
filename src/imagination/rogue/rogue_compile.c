@@ -1934,6 +1934,7 @@ void rogue_shader_passes(rogue_shader *shader)
    ROGUE_PASS_V(shader, rogue_copy_prop);
    ROGUE_PASS_V(shader, rogue_dce);
    ROGUE_PASS_V(shader, rogue_lower_pseudo_ops);
+   ROGUE_PASS_V(shader, rogue_constreg);
    ROGUE_PASS_V(shader, rogue_schedule_wdf, false);
    ROGUE_PASS_V(shader, rogue_schedule_uvsw, false);
    ROGUE_PASS_V(shader, rogue_trim);
