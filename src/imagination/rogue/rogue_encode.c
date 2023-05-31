@@ -1091,8 +1091,7 @@ static void rogue_encode_ctrl_instr(const rogue_ctrl_instr *ctrl,
             list_entry(ctrl->target_block->instrs.next,
                        rogue_instr_group,
                        link);
-         offset._ = block_group->size.offset - (ctrl->instr.group->size.offset +
-                                                ctrl->instr.group->size.total);
+         offset._ = block_group->size.offset - ctrl->instr.group->size.offset;
       }
 
       instr_encoding->ctrl.ba.offset_7_1 = offset._7_1;
