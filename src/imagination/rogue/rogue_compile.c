@@ -786,6 +786,21 @@ static void trans_nir_alu_pack_unorm_4x8(rogue_builder *b, nir_alu_instr *alu)
    rogue_set_alu_op_mod(pck_u8888, ROGUE_ALU_OP_MOD_SCALE);
 }
 
+static void trans_nir_alu_pack_unorm_2x16(rogue_builder *b, nir_alu_instr *alu)
+{
+   ASSERTED unsigned dst_components;
+   rogue_ref dst = nir_ssa_reg_alu_dst32(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   unsigned src_components;
+   rogue_ref src = nir_ssa_reg_alu_src32(b->shader, alu, 0, &src_components);
+   assert(src_components == 2);
+
+   rogue_alu_instr *pck_u1616 = rogue_PCK_U1616(b, dst, src);
+   rogue_set_instr_repeat(&pck_u1616->instr, src_components);
+   rogue_set_alu_op_mod(pck_u1616, ROGUE_ALU_OP_MOD_SCALE);
+}
+
 static void rogue_apply_alu_src_mods(rogue_alu_instr *rogue_alu,
                                      nir_alu_instr *nir_alu,
                                      bool reverse)
@@ -1486,6 +1501,10 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
    switch (alu->op) {
    case nir_op_pack_unorm_4x8:
       return trans_nir_alu_pack_unorm_4x8(b, alu);
+      return;
+
+   case nir_op_pack_unorm_2x16:
+      return trans_nir_alu_pack_unorm_2x16(b, alu);
       return;
 
    case nir_op_fadd:
