@@ -1011,6 +1011,16 @@ static inline bool rogue_ref_is_special_reg(const rogue_ref *ref)
    return rogue_ref_is_reg(ref) && ref->reg->class == ROGUE_REG_CLASS_SPECIAL;
 }
 
+static inline bool rogue_ref_is_const_reg(const rogue_ref *ref)
+{
+   return rogue_ref_is_reg(ref) && ref->reg->class == ROGUE_REG_CLASS_CONST;
+}
+
+static inline bool rogue_ref_is_ssa_reg(const rogue_ref *ref)
+{
+   return rogue_ref_is_reg(ref) && ref->reg->class == ROGUE_REG_CLASS_SSA;
+}
+
 static inline bool rogue_ref_is_vtxout_reg(const rogue_ref *ref)
 {
    return rogue_ref_is_reg(ref) && ref->reg->class == ROGUE_REG_CLASS_VTXOUT;

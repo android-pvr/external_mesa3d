@@ -33,6 +33,7 @@
  * \brief Contains the rogue_copy_prop pass.
  */
 
+#if 0
 static bool can_back_prop(rogue_alu_instr *mov)
 {
    /* TODO: Check for src/dst modifiers when support is added for them. */
@@ -50,7 +51,7 @@ static bool can_back_prop(rogue_alu_instr *mov)
     * have special consts in them leaves dangling regs after this. */
    if (mov->dst[0].ref.reg->class == ROGUE_REG_CLASS_VTXOUT) {
       return false;
-#if 0
+#   if 0
       rogue_reg_write *write =
          list_first_entry(&mov->src[0].ref.reg->writes, rogue_reg_write, link);
 
@@ -60,7 +61,7 @@ static bool can_back_prop(rogue_alu_instr *mov)
       rogue_alu_instr *alu = rogue_instr_as_alu(write->instr);
       if (alu->op != ROGUE_ALU_OP_MOV)
          return false;
-#endif
+#   endif
    }
 
    /* Is the source register only written to once? */
@@ -136,6 +137,30 @@ static bool rogue_forward_prop(rogue_alu_instr *mov)
 
    return true;
 }
+#endif
+
+static bool rogue_const_prop(rogue_alu_instr *mov)
+{
+   if (!rogue_ref_is_const_reg(&mov->src[0].ref))
+      return false;
+
+   if (!rogue_ref_is_ssa_reg(&mov->dst[0].ref))
+      return false;
+
+   rogue_reg *mov_src = mov->src[0].ref.reg;
+   rogue_reg *mov_dst = mov->dst[0].ref.reg;
+
+   bool success = true;
+   rogue_foreach_reg_use_safe (use, mov_dst) {
+      success &= rogue_src_reg_replace(use, mov_src);
+   }
+
+   assert(success);
+
+   rogue_instr_delete(&mov->instr);
+
+   return true;
+}
 
 /* Copy propagation pass. */
 /* Forward and back, so that regarrays can be handled to a degree (making sure
@@ -157,10 +182,14 @@ bool rogue_copy_prop(rogue_shader *shader)
       if (mov->op != ROGUE_ALU_OP_MOV)
          continue;
 
+#if 0
       if (can_forward_prop(mov))
          progress |= rogue_forward_prop(mov);
       else if (can_back_prop(mov))
          progress |= rogue_back_prop(mov);
+#endif
+
+      progress |= rogue_const_prop(mov);
    }
 
    return progress;

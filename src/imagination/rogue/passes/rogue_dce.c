@@ -32,6 +32,7 @@
  * \brief Contains the rogue_dce pass.
  */
 
+#if 0
 /* TODO:
  * 0) Add bools/flags to registers in rogue_info that specifies whether they can
  * be I/O registers (i.e. populated by driver/used by driver).
@@ -87,6 +88,7 @@ static bool rogue_dce_instrs(rogue_shader *shader)
 
    return progress;
 }
+#endif
 
 /* TODO: Do this in rogue_trim instead? */
 static bool rogue_try_release_reg(rogue_reg *reg)
@@ -114,9 +116,11 @@ static bool rogue_dce_regs(rogue_shader *shader)
       progress |= rogue_try_release_reg(reg);
    }
 
+#if 0
    rogue_foreach_reg_safe (reg, shader, ROGUE_REG_CLASS_TEMP) {
       progress |= rogue_try_release_reg(reg);
    }
+#endif
 
    return progress;
 }
@@ -129,7 +133,9 @@ bool rogue_dce(rogue_shader *shader)
 
    bool progress = false;
 
+#if 0
    progress |= rogue_dce_instrs(shader);
+#endif
    progress |= rogue_dce_regs(shader);
 
    return progress;
