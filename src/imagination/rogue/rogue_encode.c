@@ -256,6 +256,7 @@ static void rogue_encode_instr_group_header(rogue_instr_group *group,
       case ROGUE_CTRL_OP_CNDEF:
       case ROGUE_CTRL_OP_CNDEND:
       case ROGUE_CTRL_OP_CNDLT:
+      case ROGUE_CTRL_OP_CNDSM:
          h.ctrlop = CTRLOP_CND;
          break;
 
@@ -475,7 +476,9 @@ static void rogue_encode_alu_instr(const rogue_alu_instr *alu,
       }
       break;
 
-   case ROGUE_ALU_OP_TST: {
+   case ROGUE_ALU_OP_TST0:
+   case ROGUE_ALU_OP_TST1:
+   case ROGUE_ALU_OP_TST2: {
       instr_encoding->alu.op = ALUOP_TST;
       instr_encoding->alu.tst.pwen = rogue_ref_is_io_p0(&alu->dst[1].ref);
 
@@ -552,7 +555,7 @@ static void rogue_encode_alu_instr(const rogue_alu_instr *alu,
       bool e_none = !e0 && !e1 && !e2 && !e3;
 
       instr_encoding->alu.movc.movw0 = rogue_alu_movc_ft(&alu->src[1].ref);
-      instr_encoding->alu.movc.movw1 = rogue_alu_movc_ft(&alu->src[2].ref);
+      instr_encoding->alu.movc.movw1 = rogue_alu_movc_ft(&alu->src[3].ref);
 
       if (instr_size == 2) {
          instr_encoding->alu.movc.ext = 1;
@@ -575,6 +578,7 @@ static void rogue_encode_alu_instr(const rogue_alu_instr *alu,
       break;
    }
 
+   case ROGUE_ALU_OP_PCK_CONST0:
    case ROGUE_ALU_OP_PCK_U8888:
    case ROGUE_ALU_OP_PCK_S8888:
    case ROGUE_ALU_OP_PCK_U1616:
@@ -595,6 +599,10 @@ static void rogue_encode_alu_instr(const rogue_alu_instr *alu,
          rogue_alu_op_mod_is_set(alu, OM(SCALE));
 
       switch (alu->op) {
+      case ROGUE_ALU_OP_PCK_CONST0:
+         instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_ZERO;
+         break;
+
       case ROGUE_ALU_OP_PCK_U8888:
          instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_U8888;
          break;
@@ -1106,6 +1114,7 @@ static void rogue_encode_ctrl_instr(const rogue_ctrl_instr *ctrl,
    case ROGUE_CTRL_OP_CNDEF:
    case ROGUE_CTRL_OP_CNDEND:
    case ROGUE_CTRL_OP_CNDLT:
+   case ROGUE_CTRL_OP_CNDSM:
       switch (ctrl->op) {
       case ROGUE_CTRL_OP_CNDST:
          instr_encoding->ctrl.cnd.cndinst = CNDINST_ST;
@@ -1123,6 +1132,10 @@ static void rogue_encode_ctrl_instr(const rogue_ctrl_instr *ctrl,
          instr_encoding->ctrl.cnd.cndinst = CNDINST_LT;
          break;
 
+      case ROGUE_CTRL_OP_CNDSM:
+         instr_encoding->ctrl.cnd.cndinst = CNDINST_SM;
+         break;
+
       default:
          unreachable("Unsupported ctrl op.");
       }
@@ -1131,6 +1144,7 @@ static void rogue_encode_ctrl_instr(const rogue_ctrl_instr *ctrl,
       case ROGUE_CTRL_OP_CNDST:
       case ROGUE_CTRL_OP_CNDEF:
       case ROGUE_CTRL_OP_CNDLT:
+      case ROGUE_CTRL_OP_CNDSM:
          if (rogue_ctrl_op_mod_is_set(ctrl, OM(ALWAYS)))
             instr_encoding->ctrl.cnd.pcnd = PCND_ALWAYS;
          else if (rogue_ctrl_op_mod_is_set(ctrl, OM(P0_TRUE)))
@@ -1143,15 +1157,21 @@ static void rogue_encode_ctrl_instr(const rogue_ctrl_instr *ctrl,
             unreachable("Missing conditional test.");
          break;
 
+      default:
+         break;
+      }
+
+      switch (ctrl->op) {
+      case ROGUE_CTRL_OP_CNDST:
+      case ROGUE_CTRL_OP_CNDEF:
       case ROGUE_CTRL_OP_CNDEND:
-         instr_encoding->ctrl.cnd.pcnd = PCND_ALWAYS;
+      case ROGUE_CTRL_OP_CNDLT:
+         instr_encoding->ctrl.cnd.adjust = rogue_ref_get_val(&ctrl->src[1].ref);
          break;
 
       default:
-         unreachable("Unsupported ctrl op.");
+         break;
       }
-
-      instr_encoding->ctrl.cnd.adjust = rogue_ref_get_val(&ctrl->src[1].ref);
 
       break;
 
@@ -1193,9 +1213,23 @@ static void rogue_encode_bitwise_instr(const rogue_bitwise_instr *bitwise,
          unreachable("Missing sign-bit position modifier.");
       break;
 
+   case ROGUE_BITWISE_OP_TZ:
+   case ROGUE_BITWISE_OP_TNZ:
+      instr_encoding->bitwise.ph2.top =
+         (bitwise->op == ROGUE_BITWISE_OP_TZ) ? TOP_TZ : TOP_TNZ;
+      assert(rogue_ref_get_io(&bitwise->src[0].ref) == ROGUE_IO_FT5 ||
+             rogue_ref_get_io(&bitwise->src[0].ref) == ROGUE_IO_FT3);
+      instr_encoding->bitwise.ph2.tsrc =
+         (rogue_ref_get_io(&bitwise->src[0].ref) == ROGUE_IO_FT5) ? TSRC_FT5
+                                                                  : TSRC_FT3;
+      assert(rogue_ref_is_io_p0(&bitwise->dst[0].ref));
+      instr_encoding->bitwise.ph2.pwen = 1;
+      break;
+
    case ROGUE_BITWISE_OP_AND:
    case ROGUE_BITWISE_OP_OR:
    case ROGUE_BITWISE_OP_XOR:
+   case ROGUE_BITWISE_OP_BYP1L:
       instr_encoding->bitwise.phase1 = 1;
 
       switch (bitwise->op) {
@@ -1211,19 +1245,24 @@ static void rogue_encode_bitwise_instr(const rogue_bitwise_instr *bitwise,
          instr_encoding->bitwise.ph1.op = PH1OP_XOR;
          break;
 
+      case ROGUE_BITWISE_OP_BYP1L:
+         instr_encoding->bitwise.ph1.op = PH1OP_BYP;
+         break;
+
       default:
          unreachable("Unsupported bitwise op.");
       }
 
-      instr_encoding->bitwise.ph1.mska =
-         !rogue_ref_is_io_none(&bitwise->src[0].ref);
-      instr_encoding->bitwise.ph1.mskb =
-         !rogue_ref_is_io_none(&bitwise->src[2].ref);
+      if (bitwise->op != ROGUE_BITWISE_OP_BYP1L) {
+         instr_encoding->bitwise.ph1.mska =
+            !rogue_ref_is_io_none(&bitwise->src[0].ref);
+         instr_encoding->bitwise.ph1.mskb =
+            !rogue_ref_is_io_none(&bitwise->src[2].ref);
+      }
       break;
 
    case ROGUE_BITWISE_OP_BYP0B: {
       instr_encoding->bitwise.phase0 = 1;
-      instr_encoding->bitwise.ph0.cnt_byp = 1;
       instr_encoding->bitwise.ph0.shft = SHFT1_BYP;
 
       rogue_imm32 imm32;
@@ -1244,6 +1283,12 @@ static void rogue_encode_bitwise_instr(const rogue_bitwise_instr *bitwise,
 
       break;
    }
+
+   case ROGUE_BITWISE_OP_BYP0C:
+      instr_encoding->bitwise.phase0 = 1;
+      instr_encoding->bitwise.ph0.cnt_byp = 1;
+      instr_encoding->bitwise.ph0.csrc = CNT_S2;
+      break;
 
    case ROGUE_BITWISE_OP_BYP0S:
       instr_encoding->bitwise.phase0 = 1;

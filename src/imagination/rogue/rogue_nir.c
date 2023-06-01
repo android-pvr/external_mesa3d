@@ -56,6 +56,7 @@ static const nir_shader_compiler_options nir_options = {
    .lower_fsqrt = true,
    .lower_ftrunc = true,
    .lower_isign = true,
+   .lower_ffract = true,
    .lower_rotate = true, /* TODO: add nir option to convert ror to rol then
                             enable this. */
    .has_fused_comp_and_csel = true,
@@ -98,7 +99,9 @@ static void rogue_nir_opt_loop(struct rogue_build_ctx *ctx, nir_shader *nir)
       NIR_PASS(progress, nir, nir_opt_dce);
       NIR_PASS(progress, nir, nir_opt_dead_cf);
       NIR_PASS(progress, nir, nir_opt_cse);
-      NIR_PASS(progress, nir, nir_opt_peephole_select, ~0, true, true);
+
+      if (!ROGUE_DEBUG(SKIP_CF_OPTS))
+         NIR_PASS(progress, nir, nir_opt_peephole_select, 64, false, true);
 
       NIR_PASS(progress, nir, nir_lower_int64);
       NIR_PASS(progress, nir, nir_lower_alu);
@@ -117,11 +120,13 @@ static void rogue_nir_opt_loop(struct rogue_build_ctx *ctx, nir_shader *nir)
          NIR_PASS(progress, nir, nir_opt_remove_phis);
       }
 
-      NIR_PASS(progress,
-               nir,
-               nir_opt_if,
-               nir_opt_if_aggressive_last_continue |
-                  nir_opt_if_optimize_phi_true_false);
+      if (!ROGUE_DEBUG(SKIP_CF_OPTS))
+         NIR_PASS(progress,
+                  nir,
+                  nir_opt_if,
+                  nir_opt_if_aggressive_last_continue |
+                     nir_opt_if_optimize_phi_true_false);
+
       NIR_PASS(progress, nir, nir_opt_dead_cf);
       NIR_PASS(progress, nir, nir_opt_conditional_discard);
       NIR_PASS(progress, nir, nir_opt_remove_phis);
@@ -132,7 +137,9 @@ static void rogue_nir_opt_loop(struct rogue_build_ctx *ctx, nir_shader *nir)
 
       NIR_PASS(progress, nir, nir_opt_deref);
       NIR_PASS(progress, nir, nir_lower_alu_to_scalar, NULL, NULL);
-      NIR_PASS(progress, nir, nir_opt_loop_unroll);
+
+      if (!ROGUE_DEBUG(SKIP_CF_OPTS))
+         NIR_PASS(progress, nir, nir_opt_loop_unroll);
    } while (progress);
 }
 
@@ -330,6 +337,8 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
       NIR_PASS_V(nir, nir_opt_cse);
    } while (progress);
 
+   NIR_PASS_V(nir, nir_lower_load_const_to_scalar);
+
    /* Remove unused constant registers. */
    NIR_PASS_V(nir, nir_opt_dce);
 
@@ -342,7 +351,6 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
    }
    */
 
-   /* NIR_PASS_V(nir, nir_opt_move, nir_move_load_ubo); */
    //
 
    /* Move loads to just before they're needed. */
@@ -350,6 +358,11 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
     * them. */
    /* TODO: Investigate this further. */
    /* NIR_PASS_V(nir, nir_opt_move, nir_move_load_ubo | nir_move_load_input); */
+
+   /* TODO: Clean up duplicates and eventually remove this. */
+   /* TODO: if the swizzle is e.g. xxxx, this will work out of the box with
+    * rpt=1! */
+   NIR_PASS_V(nir, rogue_nir_expand_swizzles_to_vec);
 
    /* Out of SSA pass. */
    NIR_PASS_V(nir, nir_convert_from_ssa, true, false);
@@ -364,9 +377,6 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
 	};
 	NIR_PASS_V(nir, nir_schedule, &schedule_options);
 #endif
-
-   /* TODO: Clean up duplicates and eventually remove this. */
-   NIR_PASS_V(nir, rogue_nir_expand_swizzles_to_vec);
 
    /* Assign I/O locations. */
    nir_assign_io_var_locations(nir,

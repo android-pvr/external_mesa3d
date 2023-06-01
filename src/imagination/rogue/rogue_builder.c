@@ -70,6 +70,13 @@ static inline rogue_alu_instr *rogue_build_alu(rogue_builder *b,
    return alu;
 }
 
+static inline rogue_alu_instr *
+rogue_build_alu10(rogue_builder *b, enum rogue_alu_op op, rogue_ref dst0)
+{
+   rogue_ref dsts[] = { dst0 };
+   return rogue_build_alu(b, op, 1, dsts, 0, NULL);
+}
+
 static inline rogue_alu_instr *rogue_build_alu11(rogue_builder *b,
                                                  enum rogue_alu_op op,
                                                  rogue_ref dst0,
@@ -199,6 +206,15 @@ static inline rogue_alu_instr *rogue_build_alu35(rogue_builder *b,
 }
 
 /* TODO: Static inline in rogue.h? */
+#define ROGUE_BUILDER_DEFINE_ALU10(op)                             \
+   PUBLIC                                                          \
+   rogue_alu_instr *rogue_##op(rogue_builder *b, rogue_ref dst0)   \
+   {                                                               \
+      assert(rogue_alu_op_infos[ROGUE_ALU_OP_##op].num_dsts == 1); \
+      assert(rogue_alu_op_infos[ROGUE_ALU_OP_##op].num_srcs == 0); \
+      return rogue_build_alu10(b, ROGUE_ALU_OP_##op, dst0);        \
+   }
+
 #define ROGUE_BUILDER_DEFINE_ALU11(op)                             \
    PUBLIC                                                          \
    rogue_alu_instr *rogue_##op(rogue_builder *b,                   \

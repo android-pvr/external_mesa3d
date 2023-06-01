@@ -33,36 +33,9 @@
  * \brief Contains the rogue_lower_late_ops pass.
  */
 
-/* TODO NEXT!: Check if registers are being written to that require special
- * behaviour, like vertex out.
- */
-/* TODO NEXT!: Make sure that SSA regs aren't being used, late passes must
- * happen after SSA.
- */
-static inline bool rogue_lower_CMOV(rogue_builder *b, rogue_alu_instr *cmov)
-{
-   rogue_instr *instr_true =
-      &rogue_MBYP0(b, cmov->dst[0].ref, cmov->src[1].ref)->instr;
-   rogue_instr *instr_false =
-      &rogue_MBYP0(b, cmov->dst[0].ref, cmov->src[2].ref)->instr;
-
-   rogue_set_instr_exec_cond(instr_true, ROGUE_EXEC_COND_P0_TRUE);
-   rogue_set_instr_exec_cond(instr_false, ROGUE_EXEC_COND_P0_FALSE);
-
-   rogue_merge_instr_comment(instr_true, &cmov->instr, "cmov (true)");
-   rogue_merge_instr_comment(instr_false, &cmov->instr, "cmov (false)");
-
-   rogue_instr_delete(&cmov->instr);
-
-   return true;
-}
-
 static inline bool rogue_lower_alu_instr(rogue_builder *b, rogue_alu_instr *alu)
 {
    switch (alu->op) {
-   case ROGUE_ALU_OP_CMOV:
-      return rogue_lower_CMOV(b, alu);
-
    default:
       break;
    }

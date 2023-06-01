@@ -711,6 +711,9 @@ enum rogue_io {
    ROGUE_IO_P0,
    ROGUE_IO_PE,
 
+   /* Integer carry-out. */
+   ROGUE_IO_COUT,
+
    /* For optional instruction arguments. */
    ROGUE_IO_NONE,
 
@@ -1379,9 +1382,13 @@ enum rogue_alu_op {
    ROGUE_ALU_OP_MADD32,
    ROGUE_ALU_OP_MADD64,
 
-   ROGUE_ALU_OP_TST,
+   ROGUE_ALU_OP_TST0,
+   ROGUE_ALU_OP_TST1,
+   ROGUE_ALU_OP_TST2,
+
    ROGUE_ALU_OP_MOVC,
 
+   ROGUE_ALU_OP_PCK_CONST0,
    ROGUE_ALU_OP_PCK_U8888,
    ROGUE_ALU_OP_PCK_S8888,
    ROGUE_ALU_OP_PCK_U1616,
@@ -1398,12 +1405,16 @@ enum rogue_alu_op {
    /* Pseudo-instructions. */
    ROGUE_ALU_OP_PSEUDO,
    ROGUE_ALU_OP_MOV = ROGUE_ALU_OP_PSEUDO,
-   ROGUE_ALU_OP_CMOV, /** Conditional move. */
-   ROGUE_ALU_OP_SETPRED, /** Set predicate register. */
 
-   ROGUE_ALU_OP_CNDB, /** Conditional check (0/1). */
-   ROGUE_ALU_OP_CNDSEL, /** Conditional select (src0/src1). */
-   ROGUE_ALU_OP_ZEROSEL, /** Zero-compare select (src0/src1). */
+   ROGUE_ALU_OP_MIN,
+   ROGUE_ALU_OP_MAX,
+
+   ROGUE_ALU_OP_CMP, /** Compare. */
+   ROGUE_ALU_OP_CSEL, /** Conditional select. */
+
+   ROGUE_ALU_OP_SETPRED, /** Set predicate register. */
+   ROGUE_ALU_OP_GETPRED, /** Get predicate register. */
+   ROGUE_ALU_OP_NOT,
 
    ROGUE_ALU_OP_FABS,
    ROGUE_ALU_OP_FNEG,
@@ -1466,6 +1477,8 @@ enum rogue_alu_op_mod {
    ROGUE_ALU_OP_MOD_S32,
 
    ROGUE_ALU_OP_MOD_S, /** Signed. */
+
+   ROGUE_ALU_OP_MOD_INVERT,
 
    ROGUE_ALU_OP_MOD_COUNT,
 };
@@ -1532,10 +1545,11 @@ enum rogue_ctrl_op {
    ROGUE_CTRL_OP_BR, /* Branch: relative (to block). */
    ROGUE_CTRL_OP_BA, /* Branch: absolute (to address). */
 
-   ROGUE_CTRL_OP_CNDST, /** Condition start. */
-   ROGUE_CTRL_OP_CNDEF, /** Condition elif. */
-   ROGUE_CTRL_OP_CNDEND, /** Condition end. */
-   ROGUE_CTRL_OP_CNDLT, /** Condition loop-terminate. */
+   ROGUE_CTRL_OP_CNDST, /** Conditional start. */
+   ROGUE_CTRL_OP_CNDEF, /** Conditional elif. */
+   ROGUE_CTRL_OP_CNDEND, /** Conditional end. */
+   ROGUE_CTRL_OP_CNDLT, /** Conditional loop-test. */
+   ROGUE_CTRL_OP_CNDSM, /** Conditional set mask. */
 
    ROGUE_CTRL_OP_WDF,
 
@@ -1940,6 +1954,12 @@ typedef struct rogue_ctrl_instr {
    rogue_instr_src src[ROGUE_CTRL_OP_MAX_SRCS];
    rogue_src_use src_use[ROGUE_CTRL_OP_MAX_SRCS];
 
+   /* Is this instruction the start of a loop? */
+   bool loop_start;
+
+   /* Link to the start/end loop instruction from the end/start. */
+   rogue_instr *loop_link;
+
    rogue_block *target_block;
    rogue_block_use block_use;
 } rogue_ctrl_instr;
@@ -1979,7 +1999,12 @@ enum rogue_bitwise_op {
    ROGUE_BITWISE_OP_XOR,
 
    ROGUE_BITWISE_OP_BYP0B,
+   ROGUE_BITWISE_OP_BYP0C,
    ROGUE_BITWISE_OP_BYP0S,
+   ROGUE_BITWISE_OP_BYP1L,
+
+   ROGUE_BITWISE_OP_TZ,
+   ROGUE_BITWISE_OP_TNZ,
 
    /* Pseudo-instructions. */
    ROGUE_BITWISE_OP_PSEUDO,
@@ -2312,6 +2337,12 @@ typedef struct rogue_shader {
    struct list_head drc_trxns[ROGUE_DRCS]; /** List of drc transactions. */
 
    struct list_head imm_uses; /** List of immediate value uses. */
+
+   bool emc_initialised; /** Has the EMC been initialised? */
+   /* Number of conditional nesting levels in the innermost loop. */
+   unsigned loop_nestings;
+   /* Number of NIR loops in this shader. */
+   unsigned loops;
 
    bool is_grouped; /** Whether the instructions are grouped. */
 
@@ -3481,6 +3512,7 @@ enum rogue_debug {
    ROGUE_DEBUG_VLD_NONFATAL = BITFIELD_BIT(6),
    ROGUE_DEBUG_REGALLOC = BITFIELD_BIT(7),
    ROGUE_DEBUG_BURST_LOADS = BITFIELD_BIT(8),
+   ROGUE_DEBUG_SKIP_CF_OPTS = BITFIELD_BIT(9),
 };
 
 extern unsigned long rogue_debug;

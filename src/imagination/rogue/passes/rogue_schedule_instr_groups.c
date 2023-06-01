@@ -793,7 +793,9 @@ static void rogue_calc_alu_instrs_size(rogue_instr_group *group,
       }
       break;
 
-   case ROGUE_ALU_OP_TST:
+   case ROGUE_ALU_OP_TST0:
+   case ROGUE_ALU_OP_TST1:
+   case ROGUE_ALU_OP_TST2:
       group->size.instrs[phase] = 1;
 
       if (rogue_alu_op_mod_is_set(alu, OM(L)) ||
@@ -827,6 +829,7 @@ static void rogue_calc_alu_instrs_size(rogue_instr_group *group,
       break;
    }
 
+   case ROGUE_ALU_OP_PCK_CONST0:
    case ROGUE_ALU_OP_PCK_U8888:
    case ROGUE_ALU_OP_PCK_S8888:
    case ROGUE_ALU_OP_PCK_U1616:
@@ -994,6 +997,7 @@ static void rogue_calc_ctrl_instrs_size(rogue_instr_group *group,
    case ROGUE_CTRL_OP_CNDEF:
    case ROGUE_CTRL_OP_CNDEND:
    case ROGUE_CTRL_OP_CNDLT:
+   case ROGUE_CTRL_OP_CNDSM:
       group->size.instrs[phase] = 1;
       break;
 
@@ -1011,7 +1015,9 @@ static void rogue_calc_bitwise_instrs_size(rogue_instr_group *group,
                                            enum rogue_instr_phase phase)
 {
    switch (bitwise->op) {
+   case ROGUE_BITWISE_OP_BYP0C:
    case ROGUE_BITWISE_OP_BYP0S:
+   case ROGUE_BITWISE_OP_BYP1L:
    case ROGUE_BITWISE_OP_LSL0:
    case ROGUE_BITWISE_OP_LSL2:
    case ROGUE_BITWISE_OP_SHR:
@@ -1019,6 +1025,8 @@ static void rogue_calc_bitwise_instrs_size(rogue_instr_group *group,
    case ROGUE_BITWISE_OP_AND:
    case ROGUE_BITWISE_OP_OR:
    case ROGUE_BITWISE_OP_XOR:
+   case ROGUE_BITWISE_OP_TZ:
+   case ROGUE_BITWISE_OP_TNZ:
       group->size.instrs[phase] = 1;
       break;
 

@@ -120,6 +120,46 @@ static inline void rogue_ra_setup_class(struct ra_regs *ra_regs,
          ra_class_add_reg(ra_class, t);
 }
 
+/* TODO: Track successors/predecessors and do this properly when
+ * implementing full regalloc.
+ */
+static inline void
+rogue_extend_loop_reg_lifetimes(rogue_shader *shader,
+                                rogue_live_range *ssa_live_range,
+                                unsigned num_ssa_regs)
+{
+   rogue_live_range *loop_live_range =
+      rzalloc_array_size(NULL, sizeof(*loop_live_range), shader->loops);
+
+   unsigned l = 0;
+   rogue_foreach_instr_in_shader (instr, shader) {
+      if (instr->type != ROGUE_INSTR_TYPE_CTRL)
+         continue;
+
+      const rogue_ctrl_instr *ctrl = rogue_instr_as_ctrl(instr);
+      if (!ctrl->loop_start)
+         continue;
+
+      loop_live_range[l].start = instr->index;
+      loop_live_range[l].end = ctrl->loop_link->index;
+
+      ++l;
+   }
+
+   /* If an ssa reg stops being used in the middle of a loop, mark it as used
+    * until the end of the loop. */
+   for (unsigned u = 0; u < num_ssa_regs; ++u) {
+      for (l = 0; l < shader->loops; ++l) {
+         if ((ssa_live_range[u].end >= loop_live_range[l].start) &&
+             (ssa_live_range[u].end <= loop_live_range[l].end)) {
+            ssa_live_range[u].end = loop_live_range[l].end;
+         }
+      }
+   }
+
+   ralloc_free(loop_live_range);
+}
+
 PUBLIC
 bool rogue_regalloc(rogue_shader *shader)
 {
@@ -132,7 +172,6 @@ bool rogue_regalloc(rogue_shader *shader)
    if (!num_ssa_regs)
       return false;
 
-   /* assert(list_is_empty(&shader->regs[ROGUE_REG_CLASS_TEMP])); */
    unsigned num_temps_prealloced =
       rogue_count_used_regs(shader, ROGUE_REG_CLASS_TEMP);
    unsigned num_hw_temps =
@@ -240,6 +279,9 @@ bool rogue_regalloc(rogue_shader *shader)
       rogue_live_range *live_range = &ssa_live_range[reg->index];
       rogue_reg_liveness(reg, live_range);
    }
+
+   /* Extended lifetimes of SSA regs in loops. */
+   rogue_extend_loop_reg_lifetimes(shader, ssa_live_range, num_ssa_regs);
 
    struct ra_graph *ra_graph =
       ra_alloc_interference_graph(ra_regs, num_ssa_regs);

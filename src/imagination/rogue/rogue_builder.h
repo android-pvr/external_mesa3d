@@ -108,6 +108,9 @@ static inline rogue_block *rogue_push_nir_block(rogue_builder *b,
 }
 
 /* ALU instructions. */
+#define ROGUE_BUILDER_DEFINE_ALU10(op) \
+   rogue_alu_instr *rogue_##op(rogue_builder *b, rogue_ref dst0);
+
 #define ROGUE_BUILDER_DEFINE_ALU11(op)           \
    rogue_alu_instr *rogue_##op(rogue_builder *b, \
                                rogue_ref dst0,   \

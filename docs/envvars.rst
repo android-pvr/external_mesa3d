@@ -1708,6 +1708,8 @@ PowerVR driver environment variables
       Prints the register allocations before applying them.
    ``burst_loads``
       Skips scalarising NIR loads, enabling the USC to perform burst loads.
+   ``skip_cf_opts``
+      Skips some control-flow optimisations.
 
 .. envvar:: ROGUE_COLOR
 

@@ -48,6 +48,9 @@ static const struct debug_named_value rogue_debug_options[] = {
    { "vld_nonfatal", ROGUE_DEBUG_VLD_NONFATAL, "Non-fatal Rogue IR validation" },
    { "regalloc", ROGUE_DEBUG_REGALLOC, "Print register allocations" },
    { "burst_loads", ROGUE_DEBUG_BURST_LOADS, "Enable burst loads" },
+   { "skip_cf_opts",
+     ROGUE_DEBUG_SKIP_CF_OPTS,
+     "Skip some control-flow optimisations" },
    DEBUG_NAMED_VALUE_END,
 };
 
