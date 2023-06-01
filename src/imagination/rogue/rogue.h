@@ -3662,10 +3662,16 @@ mesa_stage_to_pvr(gl_shader_stage mesa_stage)
 }
 
 /* Max number of I/O varying variables.
- * Fragment shader: MAX_VARYING + 1 (W coefficient).
- * Vertex shader: MAX_VARYING + 1 (position slot).
+ * Fragment shader: VARYING_SLOT_POS + VARYING_SLOT_PNTC.
+ * Vertex shader: VARYING_SLOT_POS.
  */
-#define ROGUE_MAX_IO_VARYING_VARS (MAX_VARYING + 1)
+#define ROGUE_MAX_SYSVAL_VARYINGS (2)
+
+/* Max number of I/O varying variables.
+ * Fragment shader: Sysval varyings + MAX_VARYING.
+ * Vertex shader: Position + MAX_VARYING.
+ */
+#define ROGUE_MAX_IO_VARYING_VARS (MAX_VARYING + ROGUE_MAX_SYSVAL_VARYINGS)
 
 /* VERT_ATTRIB_GENERIC0-15 */
 #define ROGUE_MAX_IO_ATTRIB_VARS 16
@@ -3673,6 +3679,41 @@ mesa_stage_to_pvr(gl_shader_stage mesa_stage)
 /* Max buffers entries that can be used. */
 /* TODO: Currently UBOs are the only supported buffers. */
 #define ROGUE_MAX_BUFFERS 24
+
+static inline unsigned rogue_from_gl_varying_loc(gl_varying_slot gl_loc)
+{
+   switch (gl_loc) {
+   case VARYING_SLOT_POS:
+      return 0;
+
+   case VARYING_SLOT_PNTC:
+      return 1;
+
+   default:
+      assert(gl_loc >= VARYING_SLOT_VAR0 && gl_loc <= VARYING_SLOT_VAR31);
+      return (gl_loc - VARYING_SLOT_VAR0) + ROGUE_MAX_SYSVAL_VARYINGS;
+   }
+
+   unreachable("Unsupported gl_varying_slot.");
+}
+
+static inline gl_varying_slot gl_from_rogue_varying_loc(unsigned rogue_loc)
+{
+   switch (rogue_loc) {
+   case 0:
+      return VARYING_SLOT_POS;
+
+   case 1:
+      return VARYING_SLOT_PNTC;
+
+   default:
+      assert(rogue_loc >= ROGUE_MAX_SYSVAL_VARYINGS &&
+             rogue_loc <= ROGUE_MAX_IO_VARYING_VARS);
+      return (rogue_loc - ROGUE_MAX_SYSVAL_VARYINGS) + VARYING_SLOT_VAR0;
+   }
+
+   unreachable("Invalid rogue_loc.");
+}
 
 /**
  * \brief UBO data.

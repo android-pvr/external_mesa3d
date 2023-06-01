@@ -2156,25 +2156,26 @@ static void pvr_graphics_pipeline_alloc_vertex_special_vars(
  * \param[in] components The number of components in the varying.
  */
 static void pvr_reserve_iterator(struct rogue_iterator_args *args,
-                                 unsigned idx,
+                                 unsigned rogue_location,
+                                 unsigned base_component,
                                  enum glsl_interp_mode type,
                                  bool f16,
                                  unsigned components)
 {
-   unsigned location = idx / 4;
-   unsigned base = idx % 4;
-
    assert(components >= 1 && components <= 4);
 
-   /* The first iterator (W) *must* be INTERP_MODE_NOPERSPECTIVE. */
-   assert(idx > 0 || type == INTERP_MODE_NOPERSPECTIVE);
+   /* W and Z *must* be INTERP_MODE_NOPERSPECTIVE. */
+   assert(rogue_location > 0 || type == INTERP_MODE_NOPERSPECTIVE);
 
    for (int c = 0; c < components; c++) {
-      args->coeff_to_location[args->num_coeff_varyings].location = location;
-      args->coeff_to_location[args->num_coeff_varyings].component = base + c;
+      args->coeff_to_location[args->num_coeff_varyings].location =
+         rogue_location;
+      args->coeff_to_location[args->num_coeff_varyings].component =
+         base_component + c;
 
-      args->coeff_indices[location][base + c] = args->num_coeff_varyings;
-      args->interp_modes[location][base + c] = type;
+      args->coeff_indices[rogue_location][base_component + c] =
+         args->num_coeff_varyings;
+      args->interp_modes[rogue_location][base_component + c] = type;
 
       args->num_coeff_varyings++;
    }
@@ -2225,23 +2226,25 @@ static void pvr_collect_io_data_fs(struct rogue_common_build_data *common_data,
        * the W component.
        */
       pvr_reserve_iterator(&fs_data->iterator_args,
+                           rogue_from_gl_varying_loc(VARYING_SLOT_POS),
                            3,
                            INTERP_MODE_NOPERSPECTIVE,
                            false,
                            1);
 
       nir_foreach_shader_in_variable (var, nir) {
-         const unsigned idx = (var->data.location - VARYING_SLOT_VAR0) + 1;
          const unsigned components = glsl_get_components(var->type);
-         const enum glsl_interp_mode interp = var->data.interpolation;
          const struct glsl_type *type = glsl_without_array_or_matrix(var->type);
          const bool f16 = glsl_type_is_16bit(type);
+         enum glsl_interp_mode interp = var->data.interpolation;
+         unsigned rogue_loc;
 
          if (var->data.location == VARYING_SLOT_POS) {
             unsigned base = var->data.location_frac;
             /* Includes .z */
             if (base <= 2 && (base + components) > 2) {
                pvr_reserve_iterator(&fs_data->iterator_args,
+                                    rogue_from_gl_varying_loc(VARYING_SLOT_POS),
                                     2,
                                     INTERP_MODE_NOPERSPECTIVE,
                                     false,
@@ -2251,12 +2254,16 @@ static void pvr_collect_io_data_fs(struct rogue_common_build_data *common_data,
             continue;
          }
 
-         /* Check input location. */
-         assert(var->data.location >= VARYING_SLOT_VAR0 &&
-                var->data.location <= VARYING_SLOT_VAR31);
+         if (var->data.location == VARYING_SLOT_PNTC) {
+            interp = INTERP_MODE_NOPERSPECTIVE;
+            assert(components == 2 && var->data.location_frac == 0);
+         }
+
+         rogue_loc = rogue_from_gl_varying_loc(var->data.location);
 
          pvr_reserve_iterator(&fs_data->iterator_args,
-                              idx * 4 + var->data.location_frac,
+                              rogue_loc,
+                              var->data.location_frac,
                               interp,
                               f16,
                               components);
@@ -2391,7 +2398,7 @@ static void pvr_collect_io_data_vs(struct rogue_common_build_data *common_data,
                  (var->data.location <= VARYING_SLOT_VAR31)) {
          for (int c = 0; c < components; c++) {
             struct pvr_output_reg reg = {
-               .location = var->data.location - VARYING_SLOT_VAR0 + 1,
+               .location = rogue_from_gl_varying_loc(var->data.location),
                .component = var->data.location_frac + c,
                .f16 = glsl_type_is_16bit(type),
                .mode = INTERP_MODE_SMOOTH
@@ -2553,14 +2560,6 @@ static void pvr_collect_io_data(struct rogue_build_ctx *ctx, nir_shader *nir)
    }
 }
 
-static gl_varying_slot pvr_slot_for_coeff_location(unsigned location)
-{
-   if (location == VARYING_SLOT_POS)
-      return VARYING_SLOT_POS;
-   assert(location < ROGUE_MAX_IO_VARYING_VARS);
-   return location + VARYING_SLOT_VAR0 - 1;
-}
-
 /**
  * \brief Setup PDS douti iterator commands.
  *
@@ -2594,37 +2593,56 @@ static void pvr_generate_iterator_commands(struct rogue_build_ctx *ctx)
                     douti_src) {
          int start = coeff;
 
-         gl_varying_slot start_location = pvr_slot_for_coeff_location(
-            args->coeff_to_location[coeff].location);
+         unsigned rogue_loc = args->coeff_to_location[coeff].location;
+         gl_varying_slot start_location = gl_from_rogue_varying_loc(rogue_loc);
          unsigned start_component = args->coeff_to_location[coeff].component;
          enum glsl_interp_mode start_mode =
             rogue_interp_mode_fs(args, start_location, start_component);
-         unsigned start_vs_index =
-            rogue_output_index_vs(outputs, start_location, start_component);
-         bool start_f16 =
-            outputs->is_f16[args->coeff_to_location[coeff].location]
-                           [start_component];
+         unsigned start_vs_index = 0;
+         bool start_f16 = false;
 
-         /* W and Z are special, the rest come after these 2 */
-         if (start_location == VARYING_SLOT_POS) {
-            assert((start_component == 2 && args->iterates_depth) ||
-                   start_component == 3);
-            start_vs_index = (start_component == 3) ? 0 : 1;
+         /* Sysvals are special */
+         if (rogue_loc < ROGUE_MAX_SYSVAL_VARYINGS) {
+            /* W and Z are special, the rest come after these 2 */
+            switch (start_location) {
+            case VARYING_SLOT_POS:
+               assert((start_component == 2 && args->iterates_depth) ||
+                      start_component == 3);
+               start_vs_index = (start_component == 3) ? 0 : 1;
+               break;
+
+            case VARYING_SLOT_PNTC:
+               /* This must be a contiguous vec2 */
+               assert(start_component == 0 || start_component == 1);
+               if (start_component == 1)
+                  continue;
+               coeff++;
+               assert(args->coeff_to_location[coeff].location == rogue_loc);
+               assert(args->coeff_to_location[coeff].component == 1);
+               douti_src.pointsprite = true;
+               break;
+
+            default:
+               unreachable("Unsupported gl_varying_slot");
+            }
          } else {
+            start_vs_index =
+               rogue_output_index_vs(outputs, start_location, start_component);
+            start_f16 = outputs->is_f16[rogue_loc][start_component];
+
             /* Vectorise the iterators */
             for (; coeff < MIN2(start + 3, args->num_coeff_varyings - 1);
                  coeff++) {
-               gl_varying_slot next_location = pvr_slot_for_coeff_location(
-                  args->coeff_to_location[coeff + 1].location);
+               unsigned rogue_loc = args->coeff_to_location[coeff + 1].location;
+               gl_varying_slot next_location =
+                  gl_from_rogue_varying_loc(rogue_loc);
                unsigned next_component =
                   args->coeff_to_location[coeff + 1].component;
                enum glsl_interp_mode next_mode =
                   rogue_interp_mode_fs(args, next_location, next_component);
                unsigned next_vs_index =
                   rogue_output_index_vs(outputs, next_location, next_component);
-               bool next_f16 =
-                  outputs->is_f16[args->coeff_to_location[coeff + 1].location]
-                                 [next_component];
+               bool next_f16 = outputs->is_f16[rogue_loc][next_component];
                if (start_f16 != next_f16)
                   break;
                if (start_mode != next_mode)
