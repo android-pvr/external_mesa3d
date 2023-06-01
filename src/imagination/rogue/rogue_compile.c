@@ -254,7 +254,7 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
                                             rogue_none(),
                                             rogue_ref_val(channels));
 
-   rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_SLCWRITEBACK);
+   /* rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_SLCWRITEBACK); */
    rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_FCNORM);
 }
 

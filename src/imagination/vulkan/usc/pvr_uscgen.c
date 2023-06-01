@@ -211,7 +211,7 @@ void pvr_uscgen_idfwdf(struct util_dynarray *binary,
                  rogue_ref_val(1),
                  smp_coords.ref64,
                  rogue_none());
-   rogue_set_backend_op_mod(be, ROGUE_BACKEND_OP_MOD_SLCWRITEBACK);
+   /* rogue_set_backend_op_mod(be, ROGUE_BACKEND_OP_MOD_SLCWRITEBACK); */
    rogue_set_backend_op_mod(be, ROGUE_BACKEND_OP_MOD_WRITETHROUGH);
    rogue_set_backend_op_mod(be, ROGUE_BACKEND_OP_MOD_NOWDF);
 
@@ -234,7 +234,7 @@ void pvr_uscgen_idfwdf(struct util_dynarray *binary,
                           rogue_ref_regarray(shared_lod),
                           rogue_ref_val(1));
 
-         rogue_set_backend_op_mod(be, ROGUE_BACKEND_OP_MOD_SLCWRITEBACK);
+         /* rogue_set_backend_op_mod(be, ROGUE_BACKEND_OP_MOD_SLCWRITEBACK); */
          rogue_set_backend_op_mod(be, ROGUE_BACKEND_OP_MOD_FCNORM);
          rogue_set_backend_op_mod(be, ROGUE_BACKEND_OP_MOD_REPLACE);
          rogue_add_instr_commentf(&be->instr, "Sample %u,%u", x, y);

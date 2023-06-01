@@ -167,7 +167,7 @@ void pvr_uscgen_tq_frag(const struct pvr_tq_shader_properties *shader_props,
                           rogue_ref_regarray(smp_state),
                           rogue_none(),
                           rogue_ref_val(channels));
-      rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_SLCWRITEBACK);
+      /* rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_SLCWRITEBACK); */
       rogue_add_instr_comment(&smp2d->instr, "pack/blend");
 
       if (!shader_props->iterated)
