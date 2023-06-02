@@ -171,6 +171,7 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
 #endif
 
    const struct nir_lower_sysvals_to_varyings_options sysvals_to_varyings = {
+      .point_coord = true,
       .frag_coord = true,
    };
    NIR_PASS_V(nir, nir_lower_sysvals_to_varyings, &sysvals_to_varyings);
