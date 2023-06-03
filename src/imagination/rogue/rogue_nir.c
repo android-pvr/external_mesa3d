@@ -298,9 +298,10 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
               spirv_options.ssbo_addr_format);
    NIR_PASS_V(nir, nir_lower_io_to_scalar, nir_var_mem_ssbo);
 
-   nir_lower_compute_system_values_options compute_sysval_options = {};
    if (nir->info.stage == MESA_SHADER_COMPUTE)
-      NIR_PASS_V(nir, nir_lower_compute_system_values, &compute_sysval_options);
+      NIR_PASS_V(nir, nir_lower_compute_system_values, &(nir_lower_compute_system_values_options) {
+      .lower_local_invocation_index = true,
+   });
 
    NIR_PASS_V(nir, rogue_nir_lower_io, ctx, false);
 
