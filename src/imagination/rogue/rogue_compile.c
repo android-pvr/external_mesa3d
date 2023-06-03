@@ -791,7 +791,7 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
 
       case nir_texop_txb:
          assert(ddx_src == ROGUE_REG_UNUSED);
-         rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_REPLACE);
+         rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_BIAS);
          break;
 
       default:
