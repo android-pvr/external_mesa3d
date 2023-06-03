@@ -45,6 +45,7 @@ static void get_tex_deref_layout(nir_builder *b,
                                  nir_ssa_def **index_ssa)
 {
    uint32_t imm_index = 0;
+   uint32_t sh_imm_index = 0;
    *index_ssa = NULL;
 
    if (deref->deref_type == nir_deref_type_array) {
@@ -96,29 +97,35 @@ static void get_tex_deref_layout(nir_builder *b,
    }
 
    if (primary) {
-      *sh_base_index =
-         pvr_get_required_descriptor_primary_sh_reg(pipeline_layout,
-                                                    pvr_stage,
-                                                    desc_set,
-                                                    binding_layout);
+      sh_imm_index = pvr_get_required_descriptor_primary_sh_reg(pipeline_layout,
+                                                                pvr_stage,
+                                                                desc_set,
+                                                                binding_layout);
    } else {
-      *sh_base_index =
+      sh_imm_index =
          pvr_get_sampler_descriptor_secondary_sh_reg(pipeline_layout,
                                                      pvr_stage,
                                                      desc_set,
                                                      binding_layout);
    }
 
-   *sh_base_index += imm_index * desc_size;
+   sh_imm_index += imm_index * desc_size;
 
    /* First comes image state and then the sampler in the driver layout */
    if (binding_layout->type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER &&
        sampler) {
-      *sh_base_index += PVR_IMAGE_DESCRIPTOR_SIZE;
+      sh_imm_index += PVR_IMAGE_DESCRIPTOR_SIZE;
    }
 
    if (*index_ssa)
       *index_ssa = nir_imul_imm(b, *index_ssa, desc_size);
+
+   if (!sh_base_index && *index_ssa)
+      *index_ssa = nir_iadd_imm(b, *index_ssa, sh_imm_index);
+   else if (!sh_base_index)
+      *index_ssa = nir_imm_int(b, sh_imm_index);
+   else
+      *sh_base_index = sh_imm_index;
 }
 
 static bool lower_tex_instr_img(nir_builder *b,
@@ -178,6 +185,21 @@ lower_tex_instr_tex(nir_builder *b, nir_tex_instr *tex, rogue_build_ctx *ctx)
                                nir_tex_src_texture_offset,
                                nir_src_for_ssa(index_ssa));
       }
+
+      if (tex->is_array || tex->op == nir_texop_txs) {
+         nir_ssa_def *secondary_index;
+         get_tex_deref_layout(b,
+                              deref,
+                              ctx,
+                              false,
+                              false,
+                              NULL,
+                              &secondary_index);
+         nir_tex_instr_add_src(tex,
+                               nir_tex_src_backend1,
+                               nir_src_for_ssa(secondary_index));
+      }
+
       progress = true;
    }
 
