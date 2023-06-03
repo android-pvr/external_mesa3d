@@ -1141,6 +1141,8 @@ static void rogue_encode_backend_instr(const rogue_backend_instr *backend,
 
          instr_encoding->backend.dma.smp.array =
             rogue_backend_op_mod_is_set(backend, OM(ARRAY));
+         instr_encoding->backend.dma.smp.integer =
+            rogue_backend_op_mod_is_set(backend, OM(INTEGER));
       }
 
       break;

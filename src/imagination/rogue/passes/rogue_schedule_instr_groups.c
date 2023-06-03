@@ -967,7 +967,8 @@ static void rogue_calc_backend_instrs_size(rogue_instr_group *group,
    case ROGUE_BACKEND_OP_SMP3D:
       group->size.instrs[phase] = 2;
 
-      if (rogue_backend_op_mod_is_set(backend, OM(ARRAY))) {
+      if (rogue_backend_op_mod_is_set(backend, OM(ARRAY)) ||
+          rogue_backend_op_mod_is_set(backend, OM(INTEGER))) {
          group->size.instrs[phase] = 5;
       } else if (rogue_backend_op_mod_is_set(backend, OM(WRT)) ||
                  rogue_backend_op_mod_is_set(backend, OM(SCHEDSWAP)) ||

@@ -1101,7 +1101,8 @@ typedef struct rogue_backend_dma_smp_encoding {
    /* Byte 4 */
    struct {
       unsigned array : 1;
-      unsigned : 7;
+      unsigned integer : 1;
+      unsigned : 6;
    } PACKED;
 } PACKED rogue_backend_dma_smp_encoding;
 static_assert(sizeof(rogue_backend_dma_smp_encoding) == 5,
