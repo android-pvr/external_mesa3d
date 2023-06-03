@@ -516,6 +516,59 @@ static rogue_ref64 nir_ssa_intr_dst64(rogue_shader *shader,
    return rogue_ssa_ref64(shader, intr->dest.ssa.index);
 }
 
+static rogue_ref
+nir_shared_reg_indexed(rogue_builder *b, nir_src index, unsigned offset)
+{
+   if (nir_src_is_const(index))
+      return rogue_ref_reg(
+         rogue_shared_reg(b->shader, nir_src_as_uint(index) + offset));
+
+   rogue_reg *index_reg = index.is_ssa
+                             ? rogue_ssa_reg(b->shader, index.ssa->index)
+                             : rogue_temp_reg(b->shader, index.reg.reg->index);
+
+   rogue_MOV(b,
+             rogue_ref_reg(rogue_index_reg(b->shader, 0)),
+             rogue_ref_reg(index_reg));
+
+   rogue_reg *dst_val =
+      rogue_ssa_vec_reg(b->shader, b->shader->ctx->next_ssa_idx++, 0);
+
+   rogue_MOV(b,
+             rogue_ref_reg(dst_val),
+             rogue_ref_reg_indexed(rogue_shared_reg(b->shader, offset), 0));
+
+   return rogue_ref_reg(dst_val);
+}
+
+static rogue_ref64
+nir_shared_reg_indexed64(rogue_builder *b, nir_src index, unsigned offset)
+{
+   if (nir_src_is_const(index))
+      return rogue_shared_ref64(b->shader, nir_src_as_uint(index) + offset);
+
+   rogue_reg *index_reg = index.is_ssa
+                             ? rogue_ssa_reg(b->shader, index.ssa->index)
+                             : rogue_temp_reg(b->shader, index.reg.reg->index);
+
+   rogue_MOV(b,
+             rogue_ref_reg(rogue_index_reg(b->shader, 0)),
+             rogue_ref_reg(index_reg));
+
+   rogue_ref64 dst_val =
+      rogue_ssa_ref64(b->shader, b->shader->ctx->next_ssa_idx++);
+
+   rogue_MOV(b,
+             dst_val.lo32,
+             rogue_ref_reg_indexed(rogue_shared_reg(b->shader, offset), 0));
+
+   rogue_MOV(b,
+             dst_val.hi32,
+             rogue_ref_reg_indexed(rogue_shared_reg(b->shader, offset + 1), 0));
+
+   return dst_val;
+}
+
 static void
 trans_nir_jump_break_cont(rogue_builder *b, nir_jump_instr *jump, bool cont)
 {
@@ -554,6 +607,8 @@ static void trans_nir_jump(rogue_builder *b, nir_jump_instr *jump)
 
 static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
 {
+   const struct pvr_device_info *dev_info = b->shader->ctx->compiler->dev_info;
+
    unsigned channels = nir_dest_num_components(tex->dest);
    unsigned coord_components = tex->coord_components;
 
@@ -565,6 +620,7 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
    unsigned ddy_src = ROGUE_REG_UNUSED;
    unsigned ms_idx_src = ROGUE_REG_UNUSED;
    unsigned offset_src = ROGUE_REG_UNUSED;
+   unsigned secondary_index = ROGUE_REG_UNUSED;
 
    unsigned texture_offset_src = ROGUE_REG_UNUSED;
    unsigned sampler_offset_src = ROGUE_REG_UNUSED;
@@ -575,16 +631,13 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
    assert(!pack_f16);
 
    assert(channels <= 4);
-   assert(coord_components == 2);
+   assert(coord_components == 2 || coord_components == 3);
    assert(tex->sampler_dim == GLSL_SAMPLER_DIM_2D);
-   assert(!tex->is_array);
    assert(!tex->is_shadow);
    assert(!tex->is_new_style_shadow);
    assert(!tex->is_sparse);
    assert(!tex->texture_non_uniform);
    assert(!tex->sampler_non_uniform);
-
-   /* TODO NEXT: process tex->texture_index and tex->sampler_index */
 
    unsigned smp_data_components = 0;
 
@@ -639,6 +692,11 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
          sampler_offset_src = u;
          continue;
 
+      case nir_tex_src_backend1:
+         assert(secondary_index == ROGUE_REG_UNUSED);
+         secondary_index = u;
+         continue;
+
       default:
          unreachable("Unsupported NIR tex source type.");
       }
@@ -646,15 +704,18 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
       smp_data_components += src_components;
    }
 
-   if (tex->is_array)
+   if (tex->is_array && (!PVR_HAS_FEATURE(dev_info, tpu_array_textures) ||
+                         proj_src != ROGUE_REG_UNUSED)) {
       coord_components--;
+
+      if (!PVR_HAS_FEATURE(dev_info, tpu_array_textures))
+         smp_data_components++;
+   }
 
    assert(coords_src != ROGUE_REG_UNUSED);
 
    /* Move all the data into contiguous temp regs */
    if (smp_data_components > coord_components) {
-      /* TODO: SSA arrays with 4+ size */
-      assert(smp_data_components <= 4);
       unsigned data_base_idx = b->shader->ctx->next_ssa_idx;
       ++b->shader->ctx->next_ssa_idx;
       rogue_regarray *smp_data = rogue_ssa_vec_regarray(b->shader,
@@ -694,7 +755,59 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
          }
       }
 
-      assert(!tex->is_array);
+      if (tex->is_array && !PVR_HAS_FEATURE(dev_info, tpu_array_textures)) {
+         assert(secondary_index != ROGUE_REG_UNUSED);
+
+         rogue_ref layer_src = nir_tex_src32_component(b->shader,
+                                                       tex,
+                                                       coords_src,
+                                                       coord_components);
+         rogue_ref layer_max = rogue_ref_reg(
+            rogue_ssa_vec_reg(b->shader, b->shader->ctx->next_ssa_idx++, 0));
+         rogue_alu_instr *max =
+            rogue_MAX(b, layer_max, layer_src, rogue_ref_imm(0));
+         rogue_set_alu_op_mod(max, ROGUE_ALU_OP_MOD_S32);
+
+         rogue_ref layer = rogue_ref_reg(
+            rogue_ssa_vec_reg(b->shader, b->shader->ctx->next_ssa_idx++, 0));
+         rogue_ref layer_maxindex = nir_shared_reg_indexed(
+            b,
+            tex->src[secondary_index].src,
+            PVR_DESC_IMAGE_SECONDARY_OFFSET_ARRAYMAXINDEX(dev_info));
+         rogue_alu_instr *min = rogue_MIN(b, layer, layer_max, layer_maxindex);
+         rogue_set_alu_op_mod(min, ROGUE_ALU_OP_MOD_S32);
+
+         rogue_ref64 addr_base =
+            nir_shared_reg_indexed64(b,
+                                     tex->src[secondary_index].src,
+                                     PVR_DESC_IMAGE_SECONDARY_OFFSET_ARRAYBASE);
+         rogue_ref addr_stride =
+            nir_shared_reg_indexed(b,
+                                   tex->src[secondary_index].src,
+                                   PVR_DESC_IMAGE_SECONDARY_OFFSET_ARRAYSTRIDE);
+         rogue_ref64 addr_override =
+            rogue_ssa_ref64(b->shader, b->shader->ctx->next_ssa_idx++);
+
+         rogue_MADD64(b,
+                      addr_override.lo32,
+                      addr_override.hi32,
+                      addr_stride,
+                      layer,
+                      addr_base.lo32,
+                      addr_base.hi32,
+                      rogue_none());
+
+         rogue_MOV(
+            b,
+            rogue_ref_regarray(
+               rogue_ssa_vec_regarray(b->shader, 1, data_base_idx, data_idx++)),
+            addr_override.lo32);
+         rogue_MOV(
+            b,
+            rogue_ref_regarray(
+               rogue_ssa_vec_regarray(b->shader, 1, data_base_idx, data_idx++)),
+            addr_override.hi32);
+      }
 
 #define ADD_SMP_OPT(src_idx, comp, bits, shift)                             \
    do {                                                                     \
@@ -806,6 +919,9 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
          unreachable("Invalid tex op");
       }
    }
+
+   if (tex->is_array && !PVR_HAS_FEATURE(dev_info, tpu_array_textures))
+      rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_TAO);
 
    if (ddx_src != ROGUE_REG_UNUSED)
       rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_GRADIENT);
