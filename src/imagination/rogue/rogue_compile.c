@@ -789,9 +789,8 @@ static void trans_nir_load_push_consts_base_addr_img(rogue_builder *b,
 }
 
 static void
-trans_nir_intrinsic_load_local_invocation_id_img(rogue_builder *b,
-                                                 nir_intrinsic_instr *intr,
-                                                 bool yz)
+trans_nir_intrinsic_load_local_invocation_index(rogue_builder *b,
+                                                nir_intrinsic_instr *intr)
 {
    const struct rogue_cs_build_data *cs_data = &b->shader->ctx->stage_data.cs;
 
@@ -799,13 +798,11 @@ trans_nir_intrinsic_load_local_invocation_id_img(rogue_builder *b,
    rogue_ref dst = nir_intr_dst32(b->shader, intr, &load_size);
    assert(load_size == 1);
 
-   assert(cs_data->local_id_regs[yz] != ROGUE_REG_UNUSED);
-   rogue_reg *src = rogue_vtxin_reg(b->shader, cs_data->local_id_regs[yz]);
+   assert(cs_data->local_id_regs[0] != ROGUE_REG_UNUSED);
+   rogue_reg *src = rogue_vtxin_reg(b->shader, cs_data->local_id_regs[0]);
    rogue_alu_instr *mov = rogue_MOV(b, dst, rogue_ref_reg(src));
 
-   rogue_add_instr_commentf(&mov->instr,
-                            "load_local_invocation_id.%s",
-                            yz ? "yz" : "x");
+   rogue_add_instr_comment(&mov->instr, "load_local_invocation_index");
 }
 
 static void trans_nir_intrinsic_load_workgroup_id_img(rogue_builder *b,
@@ -897,11 +894,8 @@ static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
    case nir_intrinsic_load_push_consts_base_addr_img:
       return trans_nir_load_push_consts_base_addr_img(b, intr);
 
-   case nir_intrinsic_load_local_invocation_id_x_img:
-      return trans_nir_intrinsic_load_local_invocation_id_img(b, intr, false);
-
-   case nir_intrinsic_load_local_invocation_id_yz_img:
-      return trans_nir_intrinsic_load_local_invocation_id_img(b, intr, true);
+   case nir_intrinsic_load_local_invocation_index:
+      return trans_nir_intrinsic_load_local_invocation_index(b, intr);
 
    case nir_intrinsic_load_workgroup_id_x_img:
       return trans_nir_intrinsic_load_workgroup_id_img(b, intr, 0);

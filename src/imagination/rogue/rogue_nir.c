@@ -181,6 +181,9 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
       NIR_PASS_V(nir, nir_lower_clamp_color_outputs);
 #endif
 
+   if (nir->info.stage == MESA_SHADER_COMPUTE)
+      NIR_PASS_V(nir, rogue_nir_compute_instance_check);
+
    const struct nir_lower_sysvals_to_varyings_options sysvals_to_varyings = {
       .point_coord = true,
       .frag_coord = true,
@@ -299,9 +302,11 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
    NIR_PASS_V(nir, nir_lower_io_to_scalar, nir_var_mem_ssbo);
 
    if (nir->info.stage == MESA_SHADER_COMPUTE)
-      NIR_PASS_V(nir, nir_lower_compute_system_values, &(nir_lower_compute_system_values_options) {
-      .lower_local_invocation_index = true,
-   });
+      NIR_PASS_V(nir,
+                 nir_lower_compute_system_values,
+                 &(nir_lower_compute_system_values_options){
+                    .lower_cs_local_id_to_index = true,
+                 });
 
    NIR_PASS_V(nir, rogue_nir_lower_io, ctx, false);
 
@@ -439,12 +444,8 @@ static void rogue_collect_early_cs_build_data(rogue_build_ctx *ctx,
             switch (instr->type) {
             case nir_instr_type_intrinsic:
                switch (nir_instr_as_intrinsic(instr)->intrinsic) {
-               case nir_intrinsic_load_local_invocation_id_x_img:
+               case nir_intrinsic_load_local_invocation_index:
                   cs_data->has.location_id_x = true;
-                  break;
-
-               case nir_intrinsic_load_local_invocation_id_yz_img:
-                  cs_data->has.location_id_y_or_z = true;
                   break;
 
                case nir_intrinsic_load_workgroup_id_x_img:

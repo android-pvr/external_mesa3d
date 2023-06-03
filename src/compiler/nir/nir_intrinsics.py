@@ -1894,10 +1894,6 @@ intrinsic("load_point_coord_maybe_flipped", dest_comp=2, bit_sizes=[32])
 # Most compute system vars can be supplied as their individual components, allowing
 # us to skip setting up unused ones.
 
-# Local invocation ID has a 32-bit x component and packed 2x16-bit y and z components.
-intrinsic("load_local_invocation_id_x_img", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER], bit_sizes=[32])
-intrinsic("load_local_invocation_id_yz_img", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER], bit_sizes=[32])
-
 # Workgroup IDs (all 32-bit components).
 intrinsic("load_workgroup_id_x_img", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER], bit_sizes=[32])
 intrinsic("load_workgroup_id_y_img", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER], bit_sizes=[32])
