@@ -755,7 +755,15 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
    }
 
    rogue_ref smp_state;
-   if (sampler_offset_src != ROGUE_REG_UNUSED) {
+   if (tex->op == nir_texop_txf || tex->op == nir_texop_txf_ms) {
+      enum pvr_stage_allocation pvr_stage = mesa_stage_to_pvr(b->shader->stage);
+      const struct pvr_pipeline_layout *pipeline_layout =
+         b->shader->ctx->pipeline_layout;
+      smp_state = rogue_ref_regarray(rogue_shared_regarray(
+         b->shader,
+         4,
+         pipeline_layout->point_sampler_in_dwords_per_stage[pvr_stage]));
+   } else if (sampler_offset_src != ROGUE_REG_UNUSED) {
       rogue_MOV(b,
                 rogue_ref_reg(rogue_index_reg(b->shader, 1)),
                 nir_tex_src32(b->shader, tex, sampler_offset_src, NULL));
@@ -807,6 +815,9 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
 
    if (offset_src != ROGUE_REG_UNUSED)
       rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_SOO);
+
+   if (tex->op == nir_texop_txf || tex->op == nir_texop_txf_ms)
+      rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_INTEGER);
 
    if (nir_alu_type_get_base_type(tex->dest_type) == nir_type_float)
       rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_FCNORM);

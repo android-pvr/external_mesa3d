@@ -1734,8 +1734,11 @@ err_release_lock:
    return result;
 }
 
-static void pvr_device_init_default_sampler_state(struct pvr_device *device)
+static VkResult pvr_device_init_default_sampler_state(struct pvr_device *device)
 {
+   VkResult result;
+   uint64_t *point_sampler_map;
+
    pvr_csb_pack (&device->input_attachment_sampler, TEXSTATE_SAMPLER, sampler) {
       sampler.addrmode_u = PVRX(TEXSTATE_ADDRMODE_CLAMP_TO_EDGE);
       sampler.addrmode_v = PVRX(TEXSTATE_ADDRMODE_CLAMP_TO_EDGE);
@@ -1746,6 +1749,29 @@ static void pvr_device_init_default_sampler_state(struct pvr_device *device)
       sampler.anisoctl = PVRX(TEXSTATE_ANISOCTL_DISABLED);
       sampler.non_normalized_coords = true;
    }
+
+   result = pvr_bo_alloc(device,
+                         device->heaps.general_heap,
+                         PVR_DW_TO_BYTES(PVR_SAMPLER_DESCRIPTOR_SIZE),
+                         ROGUE_REG_SIZE_BYTES,
+                         PVR_BO_ALLOC_FLAG_CPU_MAPPED,
+                         &device->point_sampler);
+   if (result != VK_SUCCESS)
+      return result;
+
+   point_sampler_map = device->point_sampler->bo->map;
+
+   pvr_csb_pack (point_sampler_map, TEXSTATE_SAMPLER, sampler) {
+      sampler.addrmode_u = PVRX(TEXSTATE_ADDRMODE_CLAMP_TO_BORDER);
+      sampler.addrmode_v = PVRX(TEXSTATE_ADDRMODE_CLAMP_TO_BORDER);
+      sampler.addrmode_w = PVRX(TEXSTATE_ADDRMODE_CLAMP_TO_BORDER);
+      sampler.dadjust = PVRX(TEXSTATE_DADJUST_ZERO_UINT);
+      sampler.magfilter = PVRX(TEXSTATE_FILTER_POINT);
+      sampler.minfilter = PVRX(TEXSTATE_FILTER_POINT);
+      sampler.anisoctl = PVRX(TEXSTATE_ANISOCTL_DISABLED);
+   }
+
+   return VK_SUCCESS;
 }
 
 VkResult pvr_CreateDevice(VkPhysicalDevice physicalDevice,
@@ -1885,7 +1911,9 @@ VkResult pvr_CreateDevice(VkPhysicalDevice physicalDevice,
    if (result != VK_SUCCESS)
       goto err_pvr_finish_tile_buffer_state;
 
-   pvr_device_init_default_sampler_state(device);
+   result = pvr_device_init_default_sampler_state(device);
+   if (result != VK_SUCCESS)
+      goto err_pvr_queues_destroy;
 
    pvr_spm_init_scratch_buffer_store(device);
 
@@ -1917,7 +1945,9 @@ err_pvr_robustness_buffer_finish:
 
 err_pvr_spm_finish_scratch_buffer_store:
    pvr_spm_finish_scratch_buffer_store(device);
+   pvr_bo_free(device, device->point_sampler);
 
+err_pvr_queues_destroy:
    pvr_queues_destroy(device);
 
 err_pvr_finish_tile_buffer_state:
@@ -1981,6 +2011,7 @@ void pvr_DestroyDevice(VkDevice _device,
    pvr_border_color_table_finish(&device->border_color_table, device);
    pvr_robustness_buffer_finish(device);
    pvr_spm_finish_scratch_buffer_store(device);
+   pvr_bo_free(device, device->point_sampler);
    pvr_queues_destroy(device);
    pvr_device_finish_tile_buffer_state(device);
    pvr_device_finish_spm_load_state(device);

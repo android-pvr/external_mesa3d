@@ -1743,6 +1743,17 @@ void pvr_pds_generate_descriptor_upload_program(
          constant_buffer_entry->size_in_dwords = buffer->size_in_dwords;
          break;
       }
+      case PVR_BUFFER_TYPE_POINT_SAMPLER: {
+         struct pvr_const_map_entry_special_buffer *special_buffer_entry;
+
+         special_buffer_entry =
+            pvr_prepare_next_pds_const_map_entry(&entry_write_state,
+                                                 sizeof(*special_buffer_entry));
+         special_buffer_entry->type =
+            PVR_PDS_CONST_MAP_ENTRY_TYPE_SPECIAL_BUFFER;
+         special_buffer_entry->buffer_type = PVR_BUFFER_TYPE_POINT_SAMPLER;
+         break;
+      }
       }
 
       entry_write_state.entry->const_offset = next_const64 * 2;

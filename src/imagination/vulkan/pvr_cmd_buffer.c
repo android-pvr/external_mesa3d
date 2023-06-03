@@ -4161,6 +4161,30 @@ static VkResult pvr_setup_descriptor_mappings_new(
          break;
       }
 
+      case PVR_PDS_CONST_MAP_ENTRY_TYPE_SPECIAL_BUFFER: {
+         const struct pvr_const_map_entry_special_buffer *special_buff_entry =
+            (struct pvr_const_map_entry_special_buffer *)entries;
+
+         switch (special_buff_entry->buffer_type) {
+         case PVR_BUFFER_TYPE_POINT_SAMPLER: {
+            uint64_t addr =
+               cmd_buffer->device->point_sampler->vma->dev_addr.addr;
+
+            PVR_WRITE(qword_buffer,
+                      addr,
+                      special_buff_entry->const_offset,
+                      pds_info->data_size_in_dwords);
+            break;
+         }
+
+         default:
+            unreachable("Unsupported special buffer type.");
+         }
+
+         entries += sizeof(*special_buff_entry);
+         break;
+      }
+
       case PVR_PDS_CONST_MAP_ENTRY_TYPE_ADDR_LITERAL_BUFFER: {
          const struct pvr_pds_const_map_entry_addr_literal_buffer
             *const addr_literal_buffer_entry =

@@ -798,6 +798,17 @@ static VkResult pvr_pds_descriptor_program_create_and_upload(
 
          program.descriptor_set_count++;
 
+         /* Point sampler (for now a buffer DOUTD) */
+         if (layout->point_sampler_in_dwords_per_stage[stage] !=
+             ROGUE_REG_UNUSED) {
+            program.buffers[program.buffer_count] = (struct pvr_pds_buffer){
+               .type = PVR_BUFFER_TYPE_POINT_SAMPLER,
+               .size_in_dwords = PVR_SAMPLER_DESCRIPTOR_SIZE,
+               .destination = layout->point_sampler_in_dwords_per_stage[stage],
+            };
+            program.buffer_count++;
+         }
+
          if (reg_layout->secondary_size == 0)
             continue;
 

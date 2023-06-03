@@ -185,6 +185,8 @@ struct pvr_device {
 
    uint64_t input_attachment_sampler;
 
+   struct pvr_bo *point_sampler;
+
    struct pvr_pds_upload pds_compute_fence_program;
    struct pvr_pds_upload pds_compute_empty_program;
 

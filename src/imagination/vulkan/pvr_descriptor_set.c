@@ -979,6 +979,17 @@ pvr_setup_required_in_register_layout(struct pvr_pipeline_layout *layout)
          next_free_reg += reg_layout->primary_size;
       }
 
+      /* If there were any image/sampler descriptors in the stage, then
+       * texelFetch / imageRead is possible.
+       */
+      if (next_free_reg) {
+         next_free_reg = ALIGN_POT(next_free_reg, 4);
+         layout->point_sampler_in_dwords_per_stage[stage] = next_free_reg;
+         next_free_reg += PVR_SAMPLER_DESCRIPTOR_SIZE;
+      } else {
+         layout->point_sampler_in_dwords_per_stage[stage] = ROGUE_REG_UNUSED;
+      }
+
       u_foreach_bit (set_num, layout->per_stage_descriptor_masks[stage]) {
          const struct pvr_descriptor_set_layout *set_layout =
             layout->set_layout[set_num];
