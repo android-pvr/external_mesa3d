@@ -564,6 +564,7 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
    unsigned ddx_src = ROGUE_REG_UNUSED;
    unsigned ddy_src = ROGUE_REG_UNUSED;
    unsigned ms_idx_src = ROGUE_REG_UNUSED;
+   unsigned offset_src = ROGUE_REG_UNUSED;
 
    unsigned texture_offset_src = ROGUE_REG_UNUSED;
    unsigned sampler_offset_src = ROGUE_REG_UNUSED;
@@ -616,6 +617,11 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
       case nir_tex_src_ddy:
          assert(ddy_src == ROGUE_REG_UNUSED);
          ddy_src = u;
+         break;
+
+      case nir_tex_src_offset:
+         assert(offset_src == ROGUE_REG_UNUSED);
+         offset_src = u;
          break;
 
       case nir_tex_src_ms_index:
@@ -690,19 +696,42 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
 
       assert(!tex->is_array);
 
-      if (ms_idx_src != ROGUE_REG_UNUSED) {
-         rogue_reg *data =
-            rogue_ssa_vec_reg(b->shader, data_base_idx, data_idx);
-         rogue_reg *src = rogue_ssa_vec_reg(b->shader,
-                                            tex->src[ms_idx_src].src.ssa->index,
-                                            0);
-         rogue_ISHL(b,
-                    rogue_ref_reg(data),
-                    rogue_ref_reg(src),
-                    rogue_ref_imm(16));
+#define ADD_SMP_OPT(src_idx, comp, bits, shift)                             \
+   do {                                                                     \
+      rogue_ref temp_and = rogue_ref_reg(                                   \
+         rogue_ssa_vec_reg(b->shader, b->shader->ctx->next_ssa_idx++, 0));  \
+      rogue_ref temp_shl = rogue_ref_reg(                                   \
+         rogue_ssa_vec_reg(b->shader, b->shader->ctx->next_ssa_idx++, 0));  \
+      rogue_ref next_smp_opts = rogue_ref_reg(                              \
+         rogue_ssa_vec_reg(b->shader, b->shader->ctx->next_ssa_idx++, 0));  \
+      rogue_IAND(b,                                                         \
+                 temp_and,                                                  \
+                 nir_tex_src32_component(b->shader, tex, offset_src, comp), \
+                 rogue_ref_imm((1 << bits) - 1));                           \
+      rogue_ISHL(b, temp_shl, temp_and, rogue_ref_imm(shift));              \
+      rogue_IOR(b, next_smp_opts, smp_opts, temp_shl);                      \
+      smp_opts = next_smp_opts;                                             \
+   } while (0)
+
+      if (ms_idx_src != ROGUE_REG_UNUSED || offset_src != ROGUE_REG_UNUSED) {
+         rogue_ref smp_opts = rogue_ref_imm(0);
+         if (offset_src != ROGUE_REG_UNUSED) {
+            for (unsigned i = 0; i < coord_components; i++)
+               ADD_SMP_OPT(offset_src, i, 5, 5 * i);
+         }
+
+         if (ms_idx_src != ROGUE_REG_UNUSED)
+            ADD_SMP_OPT(ms_idx_src, 0, 2, 16);
+
+         rogue_MOV(
+            b,
+            rogue_ref_regarray(
+               rogue_ssa_vec_regarray(b->shader, 1, data_base_idx, data_idx)),
+            smp_opts);
          ++data_idx;
       }
 
+#undef ADD_SMP_OPT
 #undef ADD_SMP_DATA
 
       assert(data_idx == smp_data_components);
@@ -775,6 +804,9 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
 
    if (ms_idx_src != ROGUE_REG_UNUSED)
       rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_SNO);
+
+   if (offset_src != ROGUE_REG_UNUSED)
+      rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_SOO);
 
    if (nir_alu_type_get_base_type(tex->dest_type) == nir_type_float)
       rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_FCNORM);
