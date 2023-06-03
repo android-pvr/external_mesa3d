@@ -1871,12 +1871,12 @@ static void pvr_descriptor_update_sampler_texture(
             j,
             write_set->dstArrayElement + i);
 
-         secondary_offset =
-            pvr_get_descriptor_secondary_offset(device,
-                                                set->layout,
-                                                binding,
-                                                j,
-                                                write_set->dstArrayElement + i);
+         secondary_offset = pvr_get_required_descriptor_secondary_offset(
+            device,
+            set->layout,
+            binding,
+            j,
+            write_set->dstArrayElement + i);
 
          pvr_write_image_descriptor_primaries(dev_info,
                                               iview,
@@ -1973,12 +1973,12 @@ static void pvr_descriptor_update_texture(
             j,
             write_set->dstArrayElement + i);
 
-         secondary_offset =
-            pvr_get_descriptor_secondary_offset(device,
-                                                set->layout,
-                                                binding,
-                                                j,
-                                                write_set->dstArrayElement + i);
+         secondary_offset = pvr_get_required_descriptor_secondary_offset(
+            device,
+            set->layout,
+            binding,
+            j,
+            write_set->dstArrayElement + i);
 
          pvr_write_image_descriptor_primaries(dev_info,
                                               iview,
