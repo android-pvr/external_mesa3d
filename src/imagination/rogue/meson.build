@@ -57,11 +57,22 @@ libpowervr_rogue_files = files(
   'passes/rogue_trim.c',
 )
 
+rogue_nir_algebraic_c = custom_target(
+  'rogue_nir_algebraic.c',
+  input : 'nir/rogue_nir_algebraic.py',
+  output : 'rogue_nir_algebraic.c',
+  command : [
+    prog_python, '@INPUT@', '-p', dir_compiler_nir,
+  ],
+  capture : true,
+  depend_files : nir_algebraic_depends,
+)
+
 # FIXME: Remove idep_vulkan_runtime once
 # the compiler/driver interface is finalised.
 libpowervr_rogue = shared_library(
   'powervr_rogue',
-  libpowervr_rogue_files,
+  [libpowervr_rogue_files, rogue_nir_algebraic_c],
   include_directories : [
     inc_imagination,
     inc_include,

@@ -360,6 +360,10 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
       NIR_PASS_V(nir, nir_opt_cse);
    } while (progress);
 
+   NIR_PASS_V(nir, rogue_nir_algebraic_late);
+   NIR_PASS_V(nir, nir_opt_constant_folding);
+   NIR_PASS_V(nir, nir_opt_combine_barriers, NULL, NULL);
+
    NIR_PASS_V(nir, nir_lower_load_const_to_scalar);
 
    /* Remove unused constant registers. */
