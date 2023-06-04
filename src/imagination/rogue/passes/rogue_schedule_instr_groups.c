@@ -843,6 +843,11 @@ static void rogue_calc_alu_instrs_size(rogue_instr_group *group,
       group->size.instrs[phase] = 2;
       break;
 
+   case ROGUE_ALU_OP_UPCK_U8888:
+   case ROGUE_ALU_OP_UPCK_S8888:
+   case ROGUE_ALU_OP_UPCK_U1616:
+   case ROGUE_ALU_OP_UPCK_S1616:
+   case ROGUE_ALU_OP_UPCK_F16F16:
    case ROGUE_ALU_OP_UPCK_S32:
    case ROGUE_ALU_OP_UPCK_U32:
       group->size.instrs[phase] = 2;

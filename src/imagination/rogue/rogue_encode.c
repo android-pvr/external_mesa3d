@@ -315,6 +315,53 @@ static unsigned rogue_alu_movc_ft(const rogue_ref *ref)
    unreachable("Invalid source.");
 }
 
+static inline unsigned rogue_pck_fmt(enum rogue_alu_op op)
+{
+   switch (op) {
+   case ROGUE_ALU_OP_PCK_CONST0:
+      return PCK_FMT_ZERO;
+
+   case ROGUE_ALU_OP_PCK_U8888:
+   case ROGUE_ALU_OP_UPCK_U8888:
+      return PCK_FMT_U8888;
+
+   case ROGUE_ALU_OP_PCK_S8888:
+   case ROGUE_ALU_OP_UPCK_S8888:
+      return PCK_FMT_S8888;
+
+   case ROGUE_ALU_OP_PCK_U1616:
+   case ROGUE_ALU_OP_UPCK_U1616:
+      return PCK_FMT_U1616;
+
+   case ROGUE_ALU_OP_PCK_S1616:
+   case ROGUE_ALU_OP_UPCK_S1616:
+      return PCK_FMT_S1616;
+
+   case ROGUE_ALU_OP_PCK_F16F16:
+   case ROGUE_ALU_OP_UPCK_F16F16:
+      return PCK_FMT_F16F16;
+
+   case ROGUE_ALU_OP_PCK_U32:
+   case ROGUE_ALU_OP_UPCK_U32:
+      return PCK_FMT_U32;
+
+   case ROGUE_ALU_OP_PCK_S32:
+   case ROGUE_ALU_OP_UPCK_S32:
+      return PCK_FMT_S32;
+
+   case ROGUE_ALU_OP_PCK_F32:
+      return PCK_FMT_F32;
+
+   case ROGUE_ALU_OP_PCK_2F10F10F10:
+      return PCK_FMT_2F10F10F10;
+
+   default:
+      break;
+   }
+
+   unreachable("Unsupported alu op.");
+}
+
 #define SM(src_mod) ROGUE_ALU_SRC_MOD_##src_mod
 #define DM(dst_mod) ROGUE_ALU_DST_MOD_##dst_mod
 #define OM(op_mod) ROGUE_ALU_OP_MOD_##op_mod
@@ -598,53 +645,14 @@ static void rogue_encode_alu_instr(const rogue_alu_instr *alu,
       instr_encoding->alu.sngl.pck.pck.scale =
          rogue_alu_op_mod_is_set(alu, OM(SCALE));
 
-      switch (alu->op) {
-      case ROGUE_ALU_OP_PCK_CONST0:
-         instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_ZERO;
-         break;
-
-      case ROGUE_ALU_OP_PCK_U8888:
-         instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_U8888;
-         break;
-
-      case ROGUE_ALU_OP_PCK_S8888:
-         instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_S8888;
-         break;
-
-      case ROGUE_ALU_OP_PCK_U1616:
-         instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_U1616;
-         break;
-
-      case ROGUE_ALU_OP_PCK_S1616:
-         instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_S1616;
-         break;
-
-      case ROGUE_ALU_OP_PCK_F16F16:
-         instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_F16F16;
-         break;
-
-      case ROGUE_ALU_OP_PCK_U32:
-         instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_U32;
-         break;
-
-      case ROGUE_ALU_OP_PCK_S32:
-         instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_S32;
-         break;
-
-      case ROGUE_ALU_OP_PCK_F32:
-         instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_F32;
-         break;
-
-      case ROGUE_ALU_OP_PCK_2F10F10F10:
-         instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_2F10F10F10;
-         break;
-
-      default:
-         unreachable("Unsupported alu op.");
-      }
-
+      instr_encoding->alu.sngl.pck.pck.format = rogue_pck_fmt(alu->op);
       break;
 
+   case ROGUE_ALU_OP_UPCK_U8888:
+   case ROGUE_ALU_OP_UPCK_S8888:
+   case ROGUE_ALU_OP_UPCK_U1616:
+   case ROGUE_ALU_OP_UPCK_S1616:
+   case ROGUE_ALU_OP_UPCK_F16F16:
    case ROGUE_ALU_OP_UPCK_S32:
    case ROGUE_ALU_OP_UPCK_U32:
       instr_encoding->alu.op = ALUOP_SNGL;
@@ -665,13 +673,11 @@ static void rogue_encode_alu_instr(const rogue_alu_instr *alu,
       instr_encoding->alu.sngl.pck.upck.scale |=
          rogue_alu_op_mod_is_set(alu, OM(SCALE));
 
+      instr_encoding->alu.sngl.pck.upck.format = rogue_pck_fmt(alu->op);
+      break;
       switch (alu->op) {
-      case ROGUE_ALU_OP_UPCK_S32:
-         instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_S32;
          break;
 
-      case ROGUE_ALU_OP_UPCK_U32:
-         instr_encoding->alu.sngl.pck.pck.format = PCK_FMT_U32;
          break;
 
       default:
