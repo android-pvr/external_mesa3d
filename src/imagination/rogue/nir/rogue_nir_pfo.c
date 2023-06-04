@@ -63,17 +63,23 @@ pbe_accum_to_glsl_type(enum pvr_pbe_accum_format pbe)
 {
    switch (pbe) {
    case PVR_PBE_ACCUM_FORMAT_U8:
+   case PVR_PBE_ACCUM_FORMAT_UINT8:
    case PVR_PBE_ACCUM_FORMAT_U16:
+   case PVR_PBE_ACCUM_FORMAT_UINT16:
+   case PVR_PBE_ACCUM_FORMAT_U1010102:
+   case PVR_PBE_ACCUM_FORMAT_UINT32:
       return glsl_uintN_t_type(32);
 
    case PVR_PBE_ACCUM_FORMAT_S8:
+   case PVR_PBE_ACCUM_FORMAT_SINT8:
    case PVR_PBE_ACCUM_FORMAT_S16:
+   case PVR_PBE_ACCUM_FORMAT_SINT16:
+   case PVR_PBE_ACCUM_FORMAT_SINT32:
       return glsl_intN_t_type(32);
 
-#if 0
+   case PVR_PBE_ACCUM_FORMAT_F16:
    case PVR_PBE_ACCUM_FORMAT_F32:
       return glsl_floatN_t_type(32);
-#endif
 
    default:
       break;
