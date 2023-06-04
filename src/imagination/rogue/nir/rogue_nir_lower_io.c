@@ -195,7 +195,7 @@ static bool lower_load_local_invocation_id(nir_builder *b,
 }
 
 /*
- * Scalarize/convert the load_workgroup_id to our custom intrinsics.
+ * Scalarize/convert load_workgroup_id to our custom intrinsics.
  * Unused components will get DCEd later.
  */
 static bool lower_load_workgroup_id(nir_builder *b, nir_intrinsic_instr *intr)
@@ -212,6 +212,44 @@ static bool lower_load_workgroup_id(nir_builder *b, nir_intrinsic_instr *intr)
 
    nir_ssa_def_rewrite_uses(&intr->dest.ssa,
                             nir_vec3(b, wgid_x, wgid_y, wgid_z));
+   nir_instr_remove(&intr->instr);
+
+   return true;
+}
+
+/*
+ * Scalarize/convert load_num_workgroups to loads.
+ * Unused components will get DCEd later.
+ */
+static bool lower_load_num_workgroups(nir_builder *b, nir_intrinsic_instr *intr)
+{
+   assert(intr->dest.is_ssa);
+   assert(intr->dest.ssa.num_components == 3);
+   assert(intr->dest.ssa.bit_size == 32);
+
+   b->cursor = nir_before_instr(&intr->instr);
+
+   /* This will be handled in rogue_nir_to_rogue, load the base address from
+    * shareds. */
+   nir_ssa_def *num_wgs_base_addr = nir_load_num_workgroups_base_addr_img(b);
+
+   nir_ssa_def *num_wgs[3];
+   unsigned load_align = intr->dest.ssa.bit_size / 8;
+   unsigned num_components = intr->dest.ssa.num_components;
+
+   /* Load each component. */
+   for (unsigned c = 0; c < num_components; ++c) {
+      unsigned offset = c * (intr->dest.ssa.bit_size / 8);
+      num_wgs[c] =
+         nir_load_global_constant(b,
+                                  nir_iadd_imm(b, num_wgs_base_addr, offset),
+                                  load_align,
+                                  1,
+                                  intr->dest.ssa.bit_size);
+   }
+
+   nir_ssa_def_rewrite_uses(&intr->dest.ssa,
+                            nir_vec(b, num_wgs, num_components));
    nir_instr_remove(&intr->instr);
 
    return true;
@@ -380,6 +418,9 @@ static bool lower_intrinsic(nir_builder *b,
       switch (instr->intrinsic) {
       case nir_intrinsic_load_workgroup_id:
          return lower_load_workgroup_id(b, instr);
+
+      case nir_intrinsic_load_num_workgroups:
+         return lower_load_num_workgroups(b, instr);
 
       case nir_intrinsic_load_vulkan_desc_set_table_addr_img:
          return lower_load_vulkan_desc_set_table_addr_img(b, instr, ctx);

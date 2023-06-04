@@ -442,6 +442,10 @@ static void rogue_collect_early_cs_build_data(rogue_build_ctx *ctx,
                   cs_data->has.work_group_id_z = true;
                   break;
 
+               case nir_intrinsic_load_num_workgroups_base_addr_img:
+                  cs_data->has.num_work_groups = true;
+                  break;
+
                default:
                   break;
                }
@@ -453,9 +457,6 @@ static void rogue_collect_early_cs_build_data(rogue_build_ctx *ctx,
          }
       }
    }
-
-   cs_data->has.num_work_groups =
-      BITSET_TEST(info->system_values_read, SYSTEM_VALUE_NUM_WORKGROUPS);
 
    /* TODO */
    assert(!info->uses_control_barrier);

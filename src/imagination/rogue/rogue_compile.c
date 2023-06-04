@@ -768,6 +768,31 @@ static void trans_nir_intrinsic_load_workgroup_id_img(rogue_builder *b,
                             'x' + component);
 }
 
+static void
+trans_nir_intrinsic_load_num_workgroups_base_addr_img(rogue_builder *b,
+                                                      nir_intrinsic_instr *intr)
+{
+   rogue_ref64 dst = nir_ssa_intr_dst64(b->shader, intr);
+
+   /* Fetch shared registers containing num_workgroups base address. */
+   enum pvr_stage_allocation pvr_stage = mesa_stage_to_pvr(b->shader->stage);
+   const struct pvr_pipeline_layout *pipeline_layout =
+      b->shader->ctx->pipeline_layout;
+   assert(pipeline_layout->sh_reg_layout_per_stage[pvr_stage]
+             .num_workgroups.present);
+   unsigned num_wgs_sh_reg =
+      pipeline_layout->sh_reg_layout_per_stage[pvr_stage].num_workgroups.offset;
+
+   rogue_ref64 src = rogue_shared_ref64(b->shader, num_wgs_sh_reg);
+
+   rogue_alu_instr *mov = rogue_MOV(b, dst.lo32, src.lo32);
+   rogue_add_instr_comment(&mov->instr,
+                           "load_num_workgroups_base_addr_img.lo32");
+   mov = rogue_MOV(b, dst.hi32, src.hi32);
+   rogue_add_instr_comment(&mov->instr,
+                           "load_num_workgroups_base_addr_img.hi32");
+}
+
 static void trans_nir_intrinsic_discard(rogue_builder *b,
                                         nir_intrinsic_instr *intr)
 {
@@ -826,6 +851,9 @@ static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
 
    case nir_intrinsic_load_workgroup_id_z_img:
       return trans_nir_intrinsic_load_workgroup_id_img(b, intr, 2);
+
+   case nir_intrinsic_load_num_workgroups_base_addr_img:
+      return trans_nir_intrinsic_load_num_workgroups_base_addr_img(b, intr);
 
    case nir_intrinsic_discard:
       return trans_nir_intrinsic_discard(b, intr);

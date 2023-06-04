@@ -1903,6 +1903,9 @@ intrinsic("load_workgroup_id_x_img", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REOR
 intrinsic("load_workgroup_id_y_img", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER], bit_sizes=[32])
 intrinsic("load_workgroup_id_z_img", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER], bit_sizes=[32])
 
+# Num workgroups base address.
+intrinsic("load_num_workgroups_base_addr_img", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER], bit_sizes=[64])
+
 # load_vulkan_desc_set_table_base_addr_img()
 intrinsic("load_vulkan_desc_set_table_base_addr_img", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER], bit_sizes=[64])
 # load_vulkan_desc_set_table_addr_img(set_num)
