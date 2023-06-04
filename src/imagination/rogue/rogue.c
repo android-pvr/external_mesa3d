@@ -41,6 +41,7 @@
 #define ROGUE_REG_CACHE_NODE_SIZE 512
 #define ROGUE_REGARRAY_CACHE_NODE_SIZE 512
 #define ROGUE_BLOCK_CACHE_NODE_SIZE 128
+#define ROGUE_IMM_ALLOCS_NODE_SIZE 128
 
 /**
  * \brief Sets an existing register to a (new) class and/or index.
@@ -193,6 +194,7 @@ static void rogue_shader_destructor(void *ptr)
 
    util_sparse_array_finish(&shader->regarray_cache);
    util_sparse_array_finish(&shader->block_cache);
+   util_sparse_array_finish(&shader->imm_allocs);
 }
 
 /**
@@ -243,6 +245,10 @@ rogue_shader *rogue_shader_create(void *mem_ctx, gl_shader_stage stage)
       list_inithead(&shader->drc_trxns[u]);
 
    list_inithead(&shader->imm_uses);
+
+   util_sparse_array_init(&shader->imm_allocs,
+                          sizeof(rogue_reg *),
+                          ROGUE_IMM_ALLOCS_NODE_SIZE);
 
    ralloc_set_destructor(shader, rogue_shader_destructor);
 

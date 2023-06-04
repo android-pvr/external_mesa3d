@@ -2365,6 +2365,8 @@ typedef struct rogue_shader {
 
    struct list_head imm_uses; /** List of immediate value uses. */
 
+   struct util_sparse_array imm_allocs;
+
    bool emc_initialised; /** Has the EMC been initialised? */
    /* Number of conditional nesting levels in the innermost loop. */
    unsigned loop_nestings;
