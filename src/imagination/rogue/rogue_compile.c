@@ -405,6 +405,25 @@ static rogue_ref nir_tex_dst32(rogue_shader *shader,
                            : rogue_temp_reg(shader, tex->dest.reg.reg->index));
 }
 
+static rogue_ref
+nir_dst32_component(rogue_shader *shader, nir_dest dest, unsigned comp_num)
+{
+   bool is_ssa = dest.is_ssa;
+   assert(nir_dest_bit_size(dest) == 32 || nir_dest_bit_size(dest) == 16);
+
+   unsigned num_components = nir_dest_num_components(dest);
+
+   /* SSA, so always assigning to the entire vector. */
+   if (num_components > 1) {
+      assert(is_ssa);
+      return rogue_ref_regarray(
+         rogue_ssa_vec_regarray(shader, 1, dest.ssa.index, comp_num));
+   }
+
+   return rogue_ref_reg(is_ssa ? rogue_ssa_reg(shader, dest.ssa.index)
+                               : rogue_temp_reg(shader, dest.reg.reg->index));
+}
+
 static rogue_ref nir_intr_src32(rogue_shader *shader,
                                 const nir_intrinsic_instr *intr,
                                 unsigned src_num,
@@ -968,6 +987,168 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
       rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_FCNORM);
 }
 
+static void rogue_nir_texture_size(rogue_builder *b,
+                                   unsigned coord_components,
+                                   bool is_array,
+                                   nir_src index,
+                                   nir_dest dest)
+{
+   const struct pvr_device_info *dev_info = b->shader->ctx->compiler->dev_info;
+
+   for (int i = 0; i < coord_components; i++) {
+      unsigned offset;
+      switch (i) {
+      case 0:
+         offset = PVR_DESC_IMAGE_SECONDARY_OFFSET_WIDTH(dev_info);
+         break;
+      case 1:
+         offset = PVR_DESC_IMAGE_SECONDARY_OFFSET_HEIGHT(dev_info);
+         break;
+      case 2:
+         offset = PVR_DESC_IMAGE_SECONDARY_OFFSET_DEPTH(dev_info);
+         break;
+      default:
+         unreachable("Invalid coord component count");
+      }
+      rogue_MOV(b,
+                nir_dst32_component(b->shader, dest, i),
+                nir_shared_reg_indexed(b, index, offset));
+   }
+   if (is_array) {
+      unsigned offset = PVR_DESC_IMAGE_SECONDARY_OFFSET_ARRAYMAXINDEX(dev_info);
+      rogue_IADD32(b,
+                   nir_dst32_component(b->shader, dest, coord_components),
+                   nir_shared_reg_indexed(b, index, offset),
+                   rogue_ref_imm(1));
+   }
+}
+
+static void rogue_nir_texture_samples(rogue_builder *b,
+                                      unsigned base_index,
+                                      nir_src *index,
+                                      nir_dest dest)
+{
+   rogue_ref smpcnt = rogue_ref_reg(
+      rogue_ssa_vec_reg(b->shader, b->shader->ctx->next_ssa_idx++, 0));
+
+   rogue_ref img_word0;
+   if (index)
+      img_word0 = nir_shared_reg_indexed(b, *index, base_index + 1);
+   else
+      img_word0 = rogue_ref_reg(rogue_shared_reg(b->shader, base_index + 1));
+
+   /* USHR cannot have shared reg in src0, since s1 cannot encode shared regs */
+   rogue_ref shr_src = rogue_ref_reg(
+      rogue_ssa_vec_reg(b->shader, b->shader->ctx->next_ssa_idx++, 0));
+   rogue_MOV(b, shr_src, img_word0);
+
+   rogue_USHR(b, smpcnt, shr_src, rogue_ref_imm(30));
+   rogue_ISHL(b,
+              nir_dst32_component(b->shader, dest, 0),
+              rogue_ref_imm(1),
+              smpcnt);
+}
+
+static void rogue_nir_texture_levels(rogue_builder *b,
+                                     unsigned base_index,
+                                     nir_src *index,
+                                     nir_dest dest)
+{
+   rogue_ref img_word1;
+   if (index)
+      img_word1 = nir_shared_reg_indexed(b, *index, base_index + 2);
+   else
+      img_word1 = rogue_ref_reg(rogue_shared_reg(b->shader, base_index + 2));
+
+   rogue_IAND(b,
+              nir_dst32_component(b->shader, dest, 0),
+              img_word1,
+              rogue_ref_imm(0xf));
+}
+
+static void trans_nir_texop_query(rogue_builder *b, nir_tex_instr *tex)
+{
+   unsigned coord_components;
+   switch (tex->sampler_dim) {
+   case GLSL_SAMPLER_DIM_1D:
+   case GLSL_SAMPLER_DIM_BUF:
+      coord_components = 1;
+      break;
+   case GLSL_SAMPLER_DIM_2D:
+   case GLSL_SAMPLER_DIM_CUBE:
+   case GLSL_SAMPLER_DIM_MS:
+      coord_components = 2;
+      break;
+   case GLSL_SAMPLER_DIM_3D:
+      coord_components = 3;
+      break;
+   default:
+      unreachable("Unsupported glsl_sampler_dim");
+   }
+
+   unsigned lod_index = ROGUE_REG_UNUSED;
+   unsigned secondary_index = ROGUE_REG_UNUSED;
+   unsigned texture_offset_src = ROGUE_REG_UNUSED;
+
+   bool pack_f16;
+   unsigned dst_components;
+   nir_tex_dst32(b->shader, tex, &dst_components, &pack_f16);
+   assert(!pack_f16);
+
+   assert(!tex->texture_non_uniform);
+
+   for (unsigned u = 0; u < tex->num_srcs; ++u) {
+      unsigned src_components;
+      nir_tex_src32(b->shader, tex, u, &src_components);
+      switch (tex->src[u].src_type) {
+      case nir_tex_src_texture_offset:
+         assert(texture_offset_src == ROGUE_REG_UNUSED);
+         texture_offset_src = u;
+         continue;
+
+      case nir_tex_src_backend1:
+         assert(secondary_index == ROGUE_REG_UNUSED);
+         secondary_index = u;
+         continue;
+
+      case nir_tex_src_lod:
+         assert(lod_index == ROGUE_REG_UNUSED);
+         assert(nir_src_is_const(tex->src[u].src));
+         assert(nir_src_as_uint(tex->src[u].src) == 0);
+         lod_index = u;
+         continue;
+
+      default:
+         unreachable("Unsupported NIR tex source type.");
+      }
+   }
+
+   if (tex->op == nir_texop_txs) {
+      assert(secondary_index != ROGUE_REG_UNUSED);
+      return rogue_nir_texture_size(b,
+                                    coord_components,
+                                    tex->is_array,
+                                    tex->src[secondary_index].src,
+                                    tex->dest);
+   }
+
+   if (tex->op == nir_texop_texture_samples) {
+      return rogue_nir_texture_samples(b,
+                                       tex->texture_index,
+                                       texture_offset_src == ROGUE_REG_UNUSED
+                                          ? NULL
+                                          : &tex->src[texture_offset_src].src,
+                                       tex->dest);
+   }
+
+   return rogue_nir_texture_levels(b,
+                                   tex->texture_index,
+                                   texture_offset_src == ROGUE_REG_UNUSED
+                                      ? NULL
+                                      : &tex->src[texture_offset_src].src,
+                                   tex->dest);
+}
+
 static void trans_nir_tex(rogue_builder *b, nir_tex_instr *tex)
 {
    switch (tex->op) {
@@ -978,6 +1159,11 @@ static void trans_nir_tex(rogue_builder *b, nir_tex_instr *tex)
    case nir_texop_txf:
    case nir_texop_txf_ms:
       return trans_nir_texop_tex(b, tex);
+
+   case nir_texop_txs:
+   case nir_texop_query_levels:
+   case nir_texop_texture_samples:
+      return trans_nir_texop_query(b, tex);
 
    default:
       break;
