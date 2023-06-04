@@ -743,16 +743,17 @@ static void validate_block(rogue_validation_state *state,
    }
 
    if (!block_ends) {
-      /* Special case: if the following block is the last block and contains a
-       * single instruction (which is implied to be an end instruction,
-       * otherwise its own validation check will fail).
+      /* Special case: if the *following* block contains a single instruction,
+       * implied to be a block end instruction, then we allow this block to have
+       * no ends - if our assumption was wrong, then this will be caught by the
+       * next block failing validation.
+       *
+       * TODO: This violates basic blocks, implement properly.
        */
       rogue_block *next_block = list_entry(block->link.next, rogue_block, link);
-      rogue_block *last_block =
-         list_last_entry(&block->shader->blocks, rogue_block, link);
       bool single_instr = list_is_singular(&next_block->instrs);
 
-      if (next_block != last_block || !single_instr) {
+      if (!single_instr) {
          validate_log(state,
                       "Block does not end with a control flow instruction.");
       }

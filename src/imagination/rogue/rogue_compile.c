@@ -2341,9 +2341,9 @@ static void trans_nir_if(rogue_builder *b, nir_if *nif)
       is_ssa ? rogue_ssa_reg(shader, nif->condition.ssa->index)
              : rogue_temp_reg(shader, nif->condition.reg.reg->index);
 
-   const bool has_if = !nir_cf_list_is_empty_block(&nif->then_list);
+   const bool has_then = !nir_cf_list_is_empty_block(&nif->then_list);
    const bool has_else = !nir_cf_list_is_empty_block(&nif->else_list);
-   assert(has_if || has_else);
+   assert(has_then || has_else);
 
    /* Set P0 if the condition is true (not equal to 0). */
    rogue_SETPRED(b, rogue_ref_io(ROGUE_IO_P0), rogue_ref_reg(if_cnd));
@@ -2354,19 +2354,22 @@ static void trans_nir_if(rogue_builder *b, nir_if *nif)
    /* If the if block is empty, flip the condition and just emit the else block.
     */
    rogue_set_ctrl_op_mod(cnd,
-                         has_if ? ROGUE_CTRL_OP_MOD_P0_TRUE
-                                : ROGUE_CTRL_OP_MOD_P0_FALSE);
+                         has_then ? ROGUE_CTRL_OP_MOD_P0_TRUE
+                                  : ROGUE_CTRL_OP_MOD_P0_FALSE);
 
    rogue_set_instr_exec_cond(&cnd->instr, ROGUE_EXEC_COND_PE_ANY);
 
    /* If block. */
-   if (has_if)
-      trans_nir_cf_nodes(b, &nif->then_list);
+   rogue_block *if_then = NULL;
+   if (has_then)
+      if_then = trans_nir_cf_nodes(b, &nif->then_list);
 
+   rogue_block *else_check = NULL;
    /* Else: if masked out due to failing if condition, enable, otherwise if we
     * did the if, mask out the else block, otherwise just leave the mask
     * unchanged. */
-   if (has_if && has_else) {
+   if (has_then && has_else) {
+      else_check = rogue_push_block(b);
       cnd =
          rogue_CNDEF(b, rogue_ref_io(ROGUE_IO_PE), emc, emc, rogue_ref_val(1));
       rogue_set_ctrl_op_mod(cnd, ROGUE_CTRL_OP_MOD_ALWAYS);
@@ -2374,12 +2377,50 @@ static void trans_nir_if(rogue_builder *b, nir_if *nif)
    }
 
    /* Else block. */
+   rogue_block *if_else = NULL;
    if (has_else)
-      trans_nir_cf_nodes(b, &nif->else_list);
+      if_else = trans_nir_cf_nodes(b, &nif->else_list);
+
+   rogue_block *end_if = rogue_push_block(b);
 
    /* Restore the mask to what it was before this if code. */
    cnd = rogue_CNDEND(b, rogue_ref_io(ROGUE_IO_PE), emc, emc, rogue_ref_val(1));
    rogue_set_instr_exec_cond(&cnd->instr, ROGUE_EXEC_COND_PE_ANY);
+
+   /* Whether to skip the contents of the nir_if
+    * if all instances are predicated out.
+    */
+   /* TODO: This condition is fairly arbitrary and has only really
+    * been chosen because we set this flag in rogue_nir_compute_instance_check;
+    * ideally we'd like to set it based on whether the then/else_lists have
+    * a certain threshold of instructions present.
+    *
+    * NEXT: modify trans_nir_cf_nodes to pass back how many instructions
+    * have been translated, and set this based on that?
+    */
+   bool br_skip = (nif->control == nir_selection_control_dont_flatten);
+   if (br_skip) {
+      /* Backup cursor position. */
+      rogue_cursor cursor = b->cursor;
+
+      rogue_ctrl_instr *br_skip;
+      if (has_then) {
+         b->cursor = rogue_cursor_before_block(if_then);
+         rogue_push_block(b);
+         br_skip = rogue_BR(b, has_else ? else_check : end_if);
+         rogue_set_ctrl_op_mod(br_skip, ROGUE_CTRL_OP_MOD_ALLINST);
+      }
+
+      if (has_else) {
+         b->cursor = rogue_cursor_before_block(if_else);
+         rogue_push_block(b);
+         br_skip = rogue_BR(b, end_if);
+         rogue_set_ctrl_op_mod(br_skip, ROGUE_CTRL_OP_MOD_ALLINST);
+      }
+
+      /* Restore cursor position. */
+      b->cursor = cursor;
+   }
 
    --shader->loop_nestings;
 }
