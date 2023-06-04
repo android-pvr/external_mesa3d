@@ -1319,12 +1319,11 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       },
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY) | T(IO), [1] = T(REG) | T(REGARRAY) | T(IO), },
       .supported_src_types = {
-         /* TODO */
          [0] = T(IO),
-         [1] = T(REG) | T(REGARRAY) | T(IO),
-         [2] = T(REG) | T(REGARRAY) | T(IO),
-         [3] = T(REG) | T(REGARRAY) | T(IO),
-         [4] = T(REG) | T(REGARRAY) | T(IO),
+         [1] = T(REG) | T(REGARRAY) | T(IMM) | T(IO),
+         [2] = T(REG) | T(REGARRAY) | T(IMM) | T(IO),
+         [3] = T(REG) | T(REGARRAY) | T(IMM) | T(IO),
+         [4] = T(REG) | T(REGARRAY) | T(IMM) | T(IO),
       },
    },
    [ROGUE_ALU_OP_ADD64] = { .str = "add64", .num_dsts = 3, .num_srcs = 5,

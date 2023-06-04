@@ -54,14 +54,18 @@ static const nir_shader_compiler_options nir_options = {
    .lower_fpow = true,
    .lower_fsat = true,
    .lower_fsqrt = true,
+   .lower_fmod = true,
    .lower_ftrunc = true,
    .lower_bitfield_extract_to_shifts = true,
    .lower_bitfield_insert_to_shifts = true,
+   .lower_insert_byte = true,
+   .lower_insert_word = true,
    .lower_ifind_msb = true,
    .lower_find_lsb = true,
    .lower_uadd_carry = true,
    .lower_usub_borrow = true,
    .lower_isign = true,
+   .lower_fsign = true,
    .lower_ffract = true,
    .lower_rotate = true, /* TODO: add nir option to convert ror to rol then
                             enable this. */
@@ -271,6 +275,7 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
 
    /* Lower ALU operations to scalars. */
    NIR_PASS_V(nir, nir_lower_alu_to_scalar, NULL, NULL);
+   NIR_PASS(progress, nir, nir_lower_load_const_to_scalar);
 
    /* TODO: does always_precise need to be true? */
    NIR_PASS_V(nir, nir_lower_flrp, 16 | 32 | 64, true);
@@ -293,11 +298,11 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
               spirv_options.ssbo_addr_format);
    NIR_PASS_V(nir, nir_lower_io_to_scalar, nir_var_mem_ssbo);
 
-   NIR_PASS_V(nir, rogue_nir_lower_io, ctx, false);
-
    nir_lower_compute_system_values_options compute_sysval_options = {};
    if (nir->info.stage == MESA_SHADER_COMPUTE)
       NIR_PASS_V(nir, nir_lower_compute_system_values, &compute_sysval_options);
+
+   NIR_PASS_V(nir, rogue_nir_lower_io, ctx, false);
 
    /* TODO: should really only need to do this once, and also split up lowering
     * i/o and sysvals (and rewrite to use callback functions) need
@@ -306,6 +311,9 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
     * also need to check if that's actually what vtx0 is...
     */
    NIR_PASS_V(nir, rogue_nir_lower_io, ctx, true);
+
+   /* Scalarise any resulting load/store_globals. */
+   NIR_PASS_V(nir, nir_lower_io_to_scalar, nir_var_mem_global);
 
    NIR_PASS_V(nir, nir_lower_vars_to_ssa);
 
@@ -322,12 +330,13 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
       .allow_fp16 = false,
    };
 
-   bool idiv_progress = false;
-   NIR_PASS(idiv_progress, nir, nir_opt_idiv_const, 32);
-   NIR_PASS(idiv_progress, nir, nir_lower_idiv, &idiv_options);
+   NIR_PASS_V(nir, nir_opt_idiv_const, 32);
+   NIR_PASS_V(nir, nir_lower_idiv, &idiv_options);
+   NIR_PASS_V(nir, nir_lower_frexp);
+   NIR_PASS_V(nir, nir_lower_alu_to_scalar, NULL, NULL);
+   NIR_PASS_V(nir, nir_lower_load_const_to_scalar);
 
-   if (idiv_progress)
-      rogue_nir_opt_loop(ctx, nir);
+   rogue_nir_opt_loop(ctx, nir);
 
    NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_function_temp, NULL);
 

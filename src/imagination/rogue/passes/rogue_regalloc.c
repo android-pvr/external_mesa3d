@@ -391,10 +391,10 @@ bool rogue_regalloc(rogue_shader *shader)
 
       bool used = false;
       for (unsigned r = 0; r < regarray->size; ++r) {
-         used |= rogue_reg_is_used(shader, new_class, hw_base_index + r);
-
-         if (used)
+         if (rogue_reg_is_used(shader, new_class, hw_base_index + r)) {
+            used = true;
             break;
+         }
       }
 
       /* First time using new regarray, modify in place. */
