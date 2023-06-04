@@ -129,11 +129,53 @@ static void get_tex_deref_layout(nir_builder *b,
 }
 
 static bool lower_tex_instr_img(nir_builder *b,
-                                nir_intrinsic_instr *instr,
+                                nir_intrinsic_instr *intr,
                                 rogue_build_ctx *ctx)
 {
-   /* TODO: Implement */
-   return false;
+#define OP_SWAP(OP)                                        \
+   case nir_intrinsic_image_deref_##OP:                    \
+      intr->intrinsic = nir_intrinsic_bindless_image_##OP; \
+      break;
+
+   switch (intr->intrinsic) {
+      OP_SWAP(load)
+      OP_SWAP(store)
+      OP_SWAP(size)
+      OP_SWAP(samples)
+      OP_SWAP(texel_address)
+
+   case nir_intrinsic_image_deref_atomic:
+   case nir_intrinsic_image_deref_atomic_swap:
+      unreachable("Should have been lowered!");
+
+   default:
+      return false;
+   }
+#undef OP_SWAP
+
+   b->cursor = nir_before_instr(&intr->instr);
+
+   nir_ssa_def *index_ssa;
+   nir_deref_instr *deref = nir_src_as_deref(intr->src[0]);
+   bool size_query = intr->intrinsic == nir_intrinsic_bindless_image_size;
+   get_tex_deref_layout(b, deref, ctx, false, !size_query, NULL, &index_ssa);
+
+   if (!size_query && nir_intrinsic_image_array(intr)) {
+      nir_ssa_def *indices[2];
+      indices[0] = index_ssa;
+      get_tex_deref_layout(b, deref, ctx, false, false, NULL, &indices[1]);
+      index_ssa = nir_vec(b, indices, 2);
+   }
+
+   nir_instr_rewrite_src(&intr->instr,
+                         &intr->src[0],
+                         nir_src_for_ssa(index_ssa));
+
+   nir_variable *var = nir_deref_instr_get_variable(deref);
+   nir_intrinsic_set_format(intr, var->data.image.format);
+   nir_intrinsic_set_access(intr, var->data.access);
+
+   return true;
 }
 
 static bool
