@@ -2447,7 +2447,7 @@ static void trans_nir_loop(rogue_builder *b, nir_loop *nloop)
    rogue_set_instr_exec_cond(&cnd->instr, ROGUE_EXEC_COND_PE_ANY);
    rogue_add_instr_comment(&cnd->instr, "loop_init");
 
-   rogue_ctrl_instr *loop_start = cnd;
+   rogue_ctrl_instr *loop_start_instr = cnd;
 
    /* Start of loop block. */
    rogue_block *loop_body = rogue_push_block_labelled(b, "loop_body");
@@ -2473,7 +2473,7 @@ static void trans_nir_loop(rogue_builder *b, nir_loop *nloop)
    rogue_set_ctrl_op_mod(cnd, ROGUE_CTRL_OP_MOD_ALWAYS);
    rogue_set_instr_exec_cond(&cnd->instr, ROGUE_EXEC_COND_PE_ANY);
 
-   rogue_push_block(b);
+   rogue_block *loop_end = rogue_push_block(b);
 
    /* Unconditional loop test, since NIR loops are infinite loops. If any
     * instances (including this one) are still running, P0 will be set to 1 and
@@ -2494,11 +2494,27 @@ static void trans_nir_loop(rogue_builder *b, nir_loop *nloop)
    rogue_ctrl_instr *br = rogue_BR(b, loop_body);
    rogue_set_instr_exec_cond(&br->instr, ROGUE_EXEC_COND_P0_TRUE);
 
-   rogue_ctrl_instr *loop_end = br;
+   rogue_ctrl_instr *loop_end_instr = br;
 
-   loop_start->loop_start = true;
-   loop_start->loop_link = &loop_end->instr;
-   loop_end->loop_link = &loop_start->instr;
+   loop_start_instr->loop_start = true;
+   loop_start_instr->loop_link = &loop_end_instr->instr;
+   loop_end_instr->loop_link = &loop_start_instr->instr;
+
+   /* TODO: Don't do this for short loops. */
+   bool br_skip = true;
+   if (br_skip) {
+      /* Backup cursor position. */
+      rogue_cursor cursor = b->cursor;
+
+      b->cursor = rogue_cursor_before_block(loop_body);
+      rogue_push_block(b);
+
+      rogue_ctrl_instr *br_skip = rogue_BR(b, loop_end);
+      rogue_set_ctrl_op_mod(br_skip, ROGUE_CTRL_OP_MOD_ALLINST);
+
+      /* Restore cursor position. */
+      b->cursor = cursor;
+   }
 
    /* Pop loop nestings. */
    assert(shader->loop_nestings == 0);
@@ -2599,9 +2615,6 @@ static inline void rogue_trim_empty_blocks(rogue_shader *shader)
 
       /* If the final block is empty we're in trouble. */
       assert(block != final_block);
-
-      /* There shouldn't be any empty NIR blocks - these can't be deleted! */
-      assert(block->nir_index == ~0U);
 
       if (!list_is_empty(&block->uses)) {
          rogue_block *next_block =
