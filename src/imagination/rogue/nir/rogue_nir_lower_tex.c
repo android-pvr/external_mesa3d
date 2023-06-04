@@ -229,6 +229,15 @@ bool rogue_nir_lower_tex(nir_shader *shader, rogue_build_ctx *ctx)
 {
    bool progress = false;
 
+   NIR_PASS(progress,
+            shader,
+            nir_lower_tex,
+            &(nir_lower_tex_options){
+               .lower_txs_lod = true,
+            });
+
+   NIR_PASS(progress, shader, nir_lower_image_atomics_to_global);
+
    progress = nir_shader_instructions_pass(shader,
                                            lower_tex_instr,
                                            nir_metadata_dominance,
