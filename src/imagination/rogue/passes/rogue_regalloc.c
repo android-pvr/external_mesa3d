@@ -63,6 +63,7 @@ static void rogue_regarray_liveness(rogue_regarray *regarray,
       rogue_regarray_write *write =
          list_first_entry(&regarray->writes, rogue_regarray_write, link);
       live_range->start = MIN2(live_range->start, write->instr->index);
+      live_range->end = MAX2(live_range->end, live_range->start);
    }
 
    rogue_foreach_regarray_use (use, regarray) {
@@ -78,6 +79,7 @@ static void rogue_reg_liveness(rogue_reg *reg, rogue_live_range *live_range)
       rogue_reg_write *write =
          list_first_entry(&reg->writes, rogue_reg_write, link);
       live_range->start = MIN2(live_range->start, write->instr->index);
+      live_range->end = MAX2(live_range->end, live_range->start);
    }
 
    rogue_foreach_reg_use (use, reg) {
