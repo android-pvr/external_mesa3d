@@ -23,6 +23,7 @@
 
 #include "nir/nir.h"
 #include "nir/nir_builder.h"
+#include "nir/nir_format_convert.h"
 #include "rogue.h"
 #include "util/macros.h"
 
@@ -128,6 +129,79 @@ static void get_tex_deref_layout(nir_builder *b,
       *sh_base_index = sh_imm_index;
 }
 
+static bool rogue_nir_lower_image_store(nir_builder *b,
+                                        nir_intrinsic_instr *intr)
+{
+   enum pipe_format format = nir_intrinsic_format(intr);
+   assert(format != PIPE_FORMAT_NONE);
+   const struct util_format_description *desc = util_format_description(format);
+   const struct util_format_channel_description *r_chan = &desc->channel[0];
+   unsigned num_components = util_format_get_nr_components(format);
+
+   /* HW will the take the first n-bits, and out of band
+    * value writes to images are UB in SPIR-V
+    */
+   if (r_chan->pure_integer || r_chan->size == 32)
+      return false;
+
+   b->cursor = nir_before_instr(&intr->instr);
+
+   nir_ssa_def *color = nir_ssa_for_src(b, intr->src[3], num_components);
+   nir_ssa_def *formatted = NULL;
+
+   const unsigned bits_16[] = { 16, 16, 16, 16 };
+   const unsigned bits_8[] = { 8, 8, 8, 8 };
+   const unsigned bits_10[] = { 10, 10, 10, 2 };
+   const unsigned *bits;
+   switch (r_chan->size) {
+   case 11:
+      assert(format == PIPE_FORMAT_R11G11B10_FLOAT);
+      /* 10 and 11-bit floats are unsigned.  Clamp to non-negative */
+      color = nir_fmax(b, color, nir_imm_float(b, 0));
+      bits = bits_16;
+      break;
+
+   case 16:
+      bits = bits_16;
+      break;
+   case 10:
+      bits = bits_10;
+      break;
+   case 8:
+      bits = bits_8;
+      break;
+   default:
+      unreachable("Unsupported image format");
+   }
+
+   if (r_chan->normalized) {
+      assert(r_chan->type == UTIL_FORMAT_TYPE_SIGNED ||
+             r_chan->type == UTIL_FORMAT_TYPE_UNSIGNED);
+      if (r_chan->type == UTIL_FORMAT_TYPE_SIGNED)
+         formatted = nir_format_float_to_snorm(b, color, bits);
+      else
+         formatted = nir_format_float_to_unorm(b, color, bits);
+   } else {
+      assert(r_chan->type == UTIL_FORMAT_TYPE_FLOAT);
+      formatted = nir_format_float_to_half(b, color);
+      if (format == PIPE_FORMAT_R11G11B10_FLOAT) {
+         nir_ssa_def *comps[3] = {
+            nir_mask_shift(b, nir_channel(b, formatted, 0), 0x00007ff0, -4),
+            nir_mask_shift(b, nir_channel(b, formatted, 1), 0x00007ff0, -4),
+            nir_mask_shift(b, nir_channel(b, formatted, 2), 0x00007fe0, -5),
+         };
+         formatted = nir_vec(b, comps, 3);
+      }
+   }
+
+   nir_instr_rewrite_src(&intr->instr,
+                         &intr->src[3],
+                         nir_src_for_ssa(formatted));
+   intr->num_components = formatted->num_components;
+
+   return true;
+}
+
 static bool lower_tex_instr_img(nir_builder *b,
                                 nir_intrinsic_instr *intr,
                                 rogue_build_ctx *ctx)
@@ -174,6 +248,9 @@ static bool lower_tex_instr_img(nir_builder *b,
    nir_variable *var = nir_deref_instr_get_variable(deref);
    nir_intrinsic_set_format(intr, var->data.image.format);
    nir_intrinsic_set_access(intr, var->data.access);
+
+   if (intr->intrinsic == nir_intrinsic_bindless_image_store)
+      rogue_nir_lower_image_store(b, intr);
 
    return true;
 }
