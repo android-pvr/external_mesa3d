@@ -1559,7 +1559,7 @@ static void trans_nir_alu_inot(rogue_builder *b, nir_alu_instr *alu)
 
    rogue_ref src = nir_alu_src32(b->shader, alu, 0, NULL);
 
-   rogue_NOT(b, dst, src);
+   rogue_INOT(b, dst, src);
 }
 
 static void trans_nir_ishr(rogue_builder *b, nir_alu_instr *alu)
@@ -1596,6 +1596,39 @@ static void trans_nir_ushr(rogue_builder *b, nir_alu_instr *alu)
    rogue_ref src1 = nir_alu_src32(b->shader, alu, 1, NULL);
 
    rogue_USHR(b, dst, src0, src1);
+}
+
+static void trans_nir_bitfield_reverse(rogue_builder *b, nir_alu_instr *alu)
+{
+   unsigned dst_components;
+   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   rogue_ref src = nir_alu_src32(b->shader, alu, 0, NULL);
+
+   rogue_IREV(b, dst, src);
+}
+
+static void trans_nir_bit_count(rogue_builder *b, nir_alu_instr *alu)
+{
+   unsigned dst_components;
+   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   rogue_ref src = nir_alu_src32(b->shader, alu, 0, NULL);
+
+   rogue_ICBS(b, dst, src);
+}
+
+static void trans_nir_ufind_msb(rogue_builder *b, nir_alu_instr *alu)
+{
+   unsigned dst_components;
+   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   rogue_ref src = nir_alu_src32(b->shader, alu, 0, NULL);
+
+   rogue_IFTB(b, dst, src);
 }
 
 static void
@@ -1821,6 +1854,15 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
 
    case nir_op_ushr:
       return trans_nir_ushr(b, alu);
+
+   case nir_op_bitfield_reverse:
+      return trans_nir_bitfield_reverse(b, alu);
+
+   case nir_op_bit_count:
+      return trans_nir_bit_count(b, alu);
+
+   case nir_op_ufind_msb:
+      return trans_nir_ufind_msb(b, alu);
 
    case nir_op_unpack_64_2x32_split_x:
       return trans_nir_unpack_64_2x32_split(b, alu, false);

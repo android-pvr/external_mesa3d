@@ -245,9 +245,10 @@ static inline bool rogue_alloc_io_sel(rogue_instr_group *group,
                   if (io == ROGUE_IO_FT4)
                      io = rogue_route_io(map, io, ROGUE_IO_FT5);
 
-                  /* TODO: We only support the FT5 = W0 output for now. */
                   if (io == ROGUE_IO_FT5)
                      dst_io = ROGUE_IO_W0;
+                  else if (io == ROGUE_IO_FT3)
+                     dst_io = ROGUE_IO_W1;
                   else
                      unreachable("Unsupported bitwise I/O.");
 
@@ -1025,6 +1026,9 @@ static void rogue_calc_bitwise_instrs_size(rogue_instr_group *group,
    case ROGUE_BITWISE_OP_AND:
    case ROGUE_BITWISE_OP_OR:
    case ROGUE_BITWISE_OP_XOR:
+   case ROGUE_BITWISE_OP_REV:
+   case ROGUE_BITWISE_OP_CBS:
+   case ROGUE_BITWISE_OP_FTB:
    case ROGUE_BITWISE_OP_TZ:
    case ROGUE_BITWISE_OP_TNZ:
       group->size.instrs[phase] = 1;

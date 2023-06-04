@@ -1261,6 +1261,11 @@ static void rogue_encode_bitwise_instr(const rogue_bitwise_instr *bitwise,
       }
       break;
 
+   case ROGUE_BITWISE_OP_REV:
+      instr_encoding->bitwise.phase0 = 1;
+      instr_encoding->bitwise.ph0.shft = SHFT1_REV;
+      break;
+
    case ROGUE_BITWISE_OP_BYP0B: {
       instr_encoding->bitwise.phase0 = 1;
       instr_encoding->bitwise.ph0.shft = SHFT1_BYP;
@@ -1285,9 +1290,35 @@ static void rogue_encode_bitwise_instr(const rogue_bitwise_instr *bitwise,
    }
 
    case ROGUE_BITWISE_OP_BYP0C:
+   case ROGUE_BITWISE_OP_CBS:
+   case ROGUE_BITWISE_OP_FTB:
       instr_encoding->bitwise.phase0 = 1;
-      instr_encoding->bitwise.ph0.cnt_byp = 1;
-      instr_encoding->bitwise.ph0.csrc = CNT_S2;
+
+      switch (bitwise->op) {
+      case ROGUE_BITWISE_OP_BYP0C:
+         instr_encoding->bitwise.ph0.cnt_byp = 1;
+         break;
+
+      case ROGUE_BITWISE_OP_CBS:
+         instr_encoding->bitwise.ph0.cnt_byp = 0;
+         instr_encoding->bitwise.ph0.cnt = CNT_CBS;
+         break;
+
+      case ROGUE_BITWISE_OP_FTB:
+         instr_encoding->bitwise.ph0.cnt_byp = 0;
+         instr_encoding->bitwise.ph0.cnt = CNT_FTB;
+         break;
+
+      default:
+         unreachable("Unsupported bitwise op.");
+      }
+
+      assert(rogue_ref_get_io(&bitwise->src[0].ref) == ROGUE_IO_S2 ||
+             rogue_ref_get_io(&bitwise->src[0].ref) == ROGUE_IO_FT2);
+
+      instr_encoding->bitwise.ph0.csrc =
+         (rogue_ref_get_io(&bitwise->src[0].ref) == ROGUE_IO_S2) ? CNT_S2
+                                                                 : CNT_FT2;
       break;
 
    case ROGUE_BITWISE_OP_BYP0S:

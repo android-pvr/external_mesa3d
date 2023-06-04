@@ -141,7 +141,7 @@ static inline bool rogue_lower_CMP(rogue_builder *b, rogue_alu_instr *alu)
               alu->dst[0].ref,
               rogue_none(),
               rogue_ref_io(ROGUE_IO_FTT),
-              rogue_ref_reg(rogue_const_reg(b->shader, 1)),
+              rogue_ref_imm(~0),
               rogue_ref_io(ROGUE_IO_FT2),
               rogue_none(),
               rogue_none());
@@ -235,48 +235,6 @@ static inline bool rogue_lower_GETPRED(rogue_builder *b,
 
    rogue_merge_instr_comment(&add64_32->instr, &getpred->instr, "getpred");
    rogue_instr_delete(&getpred->instr);
-
-   return true;
-}
-
-static inline bool rogue_lower_NOT(rogue_builder *b, rogue_alu_instr * not )
-{
-   /* Source 0. */
-   rogue_alu_instr *mbyp0 =
-      rogue_MBYP0(b, rogue_ref_io(ROGUE_IO_FT0), not ->src[0].ref);
-   rogue_set_instr_group_next(&mbyp0->instr, true);
-   rogue_merge_instr_comment(&mbyp0->instr, &not ->instr, "not (src)");
-
-   rogue_alu_instr *mbyp1 =
-      rogue_MBYP1(b, rogue_ref_io(ROGUE_IO_FT1), rogue_ref_imm(1));
-   rogue_set_instr_group_next(&mbyp1->instr, true);
-   rogue_merge_instr_comment(&mbyp1->instr, &not ->instr, "not (0x1 src)");
-
-   rogue_alu_instr *pck_const0 =
-      rogue_PCK_CONST0(b, rogue_ref_io(ROGUE_IO_FT2));
-   rogue_set_instr_group_next(&pck_const0->instr, true);
-
-   /* Test > 0. */
-   rogue_alu_instr *tst1 = rogue_TST1(b,
-                                      rogue_ref_io(ROGUE_IO_FTT),
-                                      rogue_none(),
-                                      rogue_ref_io(ROGUE_IO_FT0));
-   rogue_set_alu_op_mod(tst1, ROGUE_ALU_OP_MOD_GZ);
-   rogue_set_alu_op_mod(tst1, ROGUE_ALU_OP_MOD_U32);
-   rogue_set_instr_group_next(&tst1->instr, true);
-   rogue_merge_instr_comment(&tst1->instr, &not ->instr, "not (test)");
-
-   rogue_alu_instr *movc = rogue_MOVC(b,
-                                      not ->dst[0].ref,
-                                      rogue_none(),
-                                      rogue_ref_io(ROGUE_IO_FTT),
-                                      rogue_ref_io(ROGUE_IO_FT2),
-                                      rogue_ref_io(ROGUE_IO_FT1),
-                                      rogue_none(),
-                                      rogue_none());
-   rogue_merge_instr_comment(&movc->instr, &not ->instr, "not (set)");
-
-   rogue_instr_delete(&not ->instr);
 
    return true;
 }
@@ -540,9 +498,6 @@ static inline bool rogue_lower_alu_instr(rogue_builder *b, rogue_alu_instr *alu)
    case ROGUE_ALU_OP_GETPRED:
       return rogue_lower_GETPRED(b, alu);
 
-   case ROGUE_ALU_OP_NOT:
-      return rogue_lower_NOT(b, alu);
-
    case ROGUE_ALU_OP_FABS:
       return rogue_lower_FNEGABS(b, alu, false, true);
 
@@ -803,6 +758,68 @@ static inline bool rogue_lower_IXOR(rogue_builder *b, rogue_bitwise_instr *ixor)
    return true;
 }
 
+static inline bool rogue_lower_INOT(rogue_builder *b, rogue_bitwise_instr *inot)
+{
+   rogue_instr *byp0s =
+      &rogue_BYP0S(b, rogue_ref_io(ROGUE_IO_FT2), inot->src[0].ref)->instr;
+   rogue_set_instr_group_next(byp0s, true);
+   rogue_bitwise_instr * xor = rogue_XOR(b,
+                                         inot->dst[0].ref,
+                                         rogue_none(),
+                                         rogue_ref_io(ROGUE_IO_FT2),
+                                         rogue_none(),
+                                         rogue_ref_imm(~0));
+
+   rogue_merge_instr_comment(&xor->instr, &inot->instr, "inot");
+   rogue_instr_delete(&inot->instr);
+
+   return true;
+}
+
+static inline bool rogue_lower_IREV(rogue_builder *b, rogue_bitwise_instr *irev)
+{
+   rogue_bitwise_instr *rev =
+      rogue_REV(b, rogue_ref_io(ROGUE_IO_FT2), irev->src[0].ref);
+   rogue_set_instr_group_next(&rev->instr, true);
+
+   /* TODO: encode same-phase bitwise ops properly then we can use byp0c. */
+#if 0
+   rogue_BYP0C(b, irev->dst[0].ref, rogue_ref_io(ROGUE_IO_FT2));
+#else
+   rogue_OR(b,
+            irev->dst[0].ref,
+            rogue_none(),
+            rogue_ref_io(ROGUE_IO_FT2),
+            rogue_none(),
+            rogue_ref_imm(0));
+#endif
+
+   rogue_merge_instr_comment(&rev->instr, &irev->instr, "irev");
+   rogue_instr_delete(&irev->instr);
+
+   return true;
+}
+
+static inline bool rogue_lower_ICBS(rogue_builder *b, rogue_bitwise_instr *icbs)
+{
+   rogue_bitwise_instr *cbs = rogue_CBS(b, icbs->dst[0].ref, icbs->src[0].ref);
+
+   rogue_merge_instr_comment(&cbs->instr, &icbs->instr, "icbs");
+   rogue_instr_delete(&icbs->instr);
+
+   return true;
+}
+
+static inline bool rogue_lower_IFTB(rogue_builder *b, rogue_bitwise_instr *iftb)
+{
+   rogue_bitwise_instr *ftb = rogue_FTB(b, iftb->dst[0].ref, iftb->src[0].ref);
+
+   rogue_merge_instr_comment(&ftb->instr, &iftb->instr, "iftb");
+   rogue_instr_delete(&iftb->instr);
+
+   return true;
+}
+
 static inline bool rogue_lower_bitwise_instr(rogue_builder *b,
                                              rogue_bitwise_instr *bitwise)
 {
@@ -828,6 +845,18 @@ static inline bool rogue_lower_bitwise_instr(rogue_builder *b,
 
    case ROGUE_BITWISE_OP_IXOR:
       return rogue_lower_IXOR(b, bitwise);
+
+   case ROGUE_BITWISE_OP_INOT:
+      return rogue_lower_INOT(b, bitwise);
+
+   case ROGUE_BITWISE_OP_IREV:
+      return rogue_lower_IREV(b, bitwise);
+
+   case ROGUE_BITWISE_OP_ICBS:
+      return rogue_lower_ICBS(b, bitwise);
+
+   case ROGUE_BITWISE_OP_IFTB:
+      return rogue_lower_IFTB(b, bitwise);
 
    default:
       break;
