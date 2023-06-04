@@ -631,8 +631,6 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
    assert(!pack_f16);
 
    assert(channels <= 4);
-   assert(coord_components == 2 || coord_components == 3);
-   assert(tex->sampler_dim == GLSL_SAMPLER_DIM_2D);
    assert(!tex->is_shadow);
    assert(!tex->is_new_style_shadow);
    assert(!tex->is_sparse);
@@ -889,30 +887,61 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
          rogue_shared_regarray(b->shader, 4, tex->sampler_index));
    }
 
-   rogue_backend_instr *smp2d = rogue_SMP2D(b,
-                                            dst,
-                                            rogue_ref_drc(0),
-                                            image_state,
-                                            smp_data_ref,
-                                            smp_state,
-                                            rogue_none(),
-                                            rogue_ref_val(channels));
+   rogue_backend_instr *smp;
+
+   switch (tex->sampler_dim) {
+   case GLSL_SAMPLER_DIM_1D:
+   case GLSL_SAMPLER_DIM_BUF:
+      smp = rogue_SMP1D(b,
+                        dst,
+                        rogue_ref_drc(0),
+                        image_state,
+                        smp_data_ref,
+                        smp_state,
+                        rogue_none(),
+                        rogue_ref_val(channels));
+      break;
+   case GLSL_SAMPLER_DIM_2D:
+   case GLSL_SAMPLER_DIM_MS:
+   case GLSL_SAMPLER_DIM_CUBE:
+      smp = rogue_SMP2D(b,
+                        dst,
+                        rogue_ref_drc(0),
+                        image_state,
+                        smp_data_ref,
+                        smp_state,
+                        rogue_none(),
+                        rogue_ref_val(channels));
+      break;
+   case GLSL_SAMPLER_DIM_3D:
+      smp = rogue_SMP3D(b,
+                        dst,
+                        rogue_ref_drc(0),
+                        image_state,
+                        smp_data_ref,
+                        smp_state,
+                        rogue_none(),
+                        rogue_ref_val(channels));
+      break;
+   default:
+      unreachable("Unsupported glsl_sampler_dim");
+   }
 
    if (proj_src != ROGUE_REG_UNUSED)
-      rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_PROJ);
+      rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_PROJ);
 
    if (lod_src != ROGUE_REG_UNUSED) {
-      rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_PPLOD);
+      rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_PPLOD);
       switch (tex->op) {
       case nir_texop_txf:
       case nir_texop_txl:
          assert(ddx_src == ROGUE_REG_UNUSED);
-         rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_REPLACE);
+         rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_REPLACE);
          break;
 
       case nir_texop_txb:
          assert(ddx_src == ROGUE_REG_UNUSED);
-         rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_BIAS);
+         rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_BIAS);
          break;
 
       default:
@@ -921,22 +950,22 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
    }
 
    if (tex->is_array && !PVR_HAS_FEATURE(dev_info, tpu_array_textures))
-      rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_TAO);
+      rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_TAO);
 
    if (ddx_src != ROGUE_REG_UNUSED)
-      rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_GRADIENT);
+      rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_GRADIENT);
 
    if (ms_idx_src != ROGUE_REG_UNUSED)
-      rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_SNO);
+      rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_SNO);
 
    if (offset_src != ROGUE_REG_UNUSED)
-      rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_SOO);
+      rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_SOO);
 
    if (tex->op == nir_texop_txf || tex->op == nir_texop_txf_ms)
-      rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_INTEGER);
+      rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_INTEGER);
 
    if (nir_alu_type_get_base_type(tex->dest_type) == nir_type_float)
-      rogue_set_backend_op_mod(smp2d, ROGUE_BACKEND_OP_MOD_FCNORM);
+      rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_FCNORM);
 }
 
 static void trans_nir_tex(rogue_builder *b, nir_tex_instr *tex)
