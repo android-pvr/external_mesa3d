@@ -24,6 +24,7 @@
 #include "nir/nir.h"
 #include "nir/nir_builder.h"
 #include "nir/nir_search_helpers.h"
+#include "nir/nir_format_convert.h"
 #include "rogue.h"
 #include "util/macros.h"
 #include "vulkan/vk_format.h"
@@ -37,6 +38,10 @@
 static inline nir_ssa_def *
 do_pack(nir_builder *b, enum pvr_pbe_accum_format pbe, nir_ssa_def *chans)
 {
+   const unsigned bits_2101010[] = { 10, 10, 10, 2 };
+   const unsigned bits_8888[] = { 8, 8, 8, 8 };
+   const unsigned bits_1616[] = { 16, 16 };
+
    switch (pbe) {
    case PVR_PBE_ACCUM_FORMAT_U8:
       return nir_pack_unorm_4x8(b, chans);
@@ -49,6 +54,25 @@ do_pack(nir_builder *b, enum pvr_pbe_accum_format pbe, nir_ssa_def *chans)
 
    case PVR_PBE_ACCUM_FORMAT_S16:
       return nir_pack_snorm_2x16(b, chans);
+
+   case PVR_PBE_ACCUM_FORMAT_F16:
+      return nir_pack_half_2x16(b, chans);
+
+   case PVR_PBE_ACCUM_FORMAT_F32:
+   case PVR_PBE_ACCUM_FORMAT_SINT32:
+   case PVR_PBE_ACCUM_FORMAT_UINT32:
+      return chans;
+
+   case PVR_PBE_ACCUM_FORMAT_U1010102:
+      return nir_format_pack_uint(b, chans, bits_2101010, chans->num_components);
+
+   case PVR_PBE_ACCUM_FORMAT_UINT8:
+   case PVR_PBE_ACCUM_FORMAT_SINT8:
+      return nir_format_pack_uint(b, chans, bits_8888, chans->num_components);
+
+   case PVR_PBE_ACCUM_FORMAT_UINT16:
+   case PVR_PBE_ACCUM_FORMAT_SINT16:
+      return nir_format_pack_uint(b, chans, bits_1616, chans->num_components);
 
    default:
       break;
