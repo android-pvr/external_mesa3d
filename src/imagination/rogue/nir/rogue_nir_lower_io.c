@@ -88,15 +88,15 @@ static bool lower_load_global_constant_to_scalar(nir_builder *b,
    if (intr->num_components == 1)
       return false;
 
+   unsigned bit_size = intr->dest.ssa.bit_size;
+   unsigned byte_size = bit_size / 8;
+
    nir_ssa_def *loads[NIR_MAX_VEC_COMPONENTS];
 
    for (uint8_t i = 0; i < intr->num_components; i++) {
       nir_intrinsic_instr *chan_intr =
          nir_intrinsic_instr_create(b->shader, intr->intrinsic);
-      nir_ssa_dest_init(&chan_intr->instr,
-                        &chan_intr->dest,
-                        1,
-                        intr->dest.ssa.bit_size);
+      nir_ssa_dest_init(&chan_intr->instr, &chan_intr->dest, 1, bit_size);
       chan_intr->num_components = 1;
 
       nir_intrinsic_set_access(chan_intr, nir_intrinsic_access(intr));
@@ -106,7 +106,7 @@ static bool lower_load_global_constant_to_scalar(nir_builder *b,
 
       /* Address. */
       chan_intr->src[0] =
-         nir_src_for_ssa(nir_iadd_imm(b, intr->src[0].ssa, i * 4));
+         nir_src_for_ssa(nir_iadd_imm(b, intr->src[0].ssa, i * byte_size));
 
       nir_builder_instr_insert(b, &chan_intr->instr);
 
@@ -133,26 +133,27 @@ static bool lower_load_push_constant_to_scalar(nir_builder *b,
    if (intr->num_components == 1)
       return false;
 
+   unsigned bit_size = intr->dest.ssa.bit_size;
+   unsigned byte_size = bit_size / 8;
+
    nir_ssa_def *loads[NIR_MAX_VEC_COMPONENTS];
 
    for (uint8_t i = 0; i < intr->num_components; i++) {
       nir_intrinsic_instr *chan_intr =
          nir_intrinsic_instr_create(b->shader, intr->intrinsic);
-      nir_ssa_dest_init(&chan_intr->instr,
-                        &chan_intr->dest,
-                        1,
-                        intr->dest.ssa.bit_size);
+      nir_ssa_dest_init(&chan_intr->instr, &chan_intr->dest, 1, bit_size);
       chan_intr->num_components = 1;
 
       nir_intrinsic_set_base(chan_intr, nir_intrinsic_base(intr));
       nir_intrinsic_set_range(chan_intr, nir_intrinsic_range(intr));
       nir_intrinsic_set_align_mul(chan_intr, nir_intrinsic_align_mul(intr));
       nir_intrinsic_set_align_offset(chan_intr,
-                                     nir_intrinsic_align_offset(intr) + i * 4);
+                                     nir_intrinsic_align_offset(intr) +
+                                        i * byte_size);
 
       /* Offset. */
       chan_intr->src[0] =
-         nir_src_for_ssa(nir_iadd_imm(b, intr->src[0].ssa, i * 4));
+         nir_src_for_ssa(nir_iadd_imm(b, intr->src[0].ssa, i * byte_size));
 
       nir_builder_instr_insert(b, &chan_intr->instr);
 
