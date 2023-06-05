@@ -352,16 +352,6 @@ bool rogue_nir_lower_tex(nir_shader *shader, rogue_build_ctx *ctx)
             shader,
             nir_lower_tex,
             &(nir_lower_tex_options){
-               .lower_txs_cube_array = true,
-            });
-
-   /* There is overlap between lower_txs_cube_array
-    * and lower_txs_lod
-    */
-   NIR_PASS(progress,
-            shader,
-            nir_lower_tex,
-            &(nir_lower_tex_options){
                .lower_txs_lod = true,
             });
 

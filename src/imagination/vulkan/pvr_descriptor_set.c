@@ -1746,9 +1746,8 @@ pvr_write_image_descriptor_secondaries(const struct pvr_device_info *dev_info,
                                        VkDescriptorType descriptorType,
                                        uint32_t *secondary)
 {
-   const bool cube_array_adjust =
-      descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE &&
-      iview->vk.view_type == VK_IMAGE_VIEW_TYPE_CUBE_ARRAY;
+   const bool cube_array_adjust = iview->vk.view_type ==
+                                  VK_IMAGE_VIEW_TYPE_CUBE_ARRAY;
 
    if (!PVR_HAS_FEATURE(dev_info, tpu_array_textures)) {
       const struct pvr_image *image = pvr_image_view_get_image(iview);
@@ -1760,7 +1759,7 @@ pvr_write_image_descriptor_secondaries(const struct pvr_device_info *dev_info,
          (uint32_t)(addr >> 32U);
 
       secondary[PVR_DESC_IMAGE_SECONDARY_OFFSET_ARRAYSTRIDE] =
-         cube_array_adjust ? image->layer_size * 6 : image->layer_size;
+         image->layer_size;
    }
 
    if (cube_array_adjust) {

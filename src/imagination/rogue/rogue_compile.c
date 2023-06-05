@@ -667,6 +667,7 @@ struct rogue_nir_tex_smp_info {
    bool pack_f16 : 1;
    bool fcnorm : 1;
    bool is_array : 1;
+   bool layer_is_cube_idx : 1;
    bool int_coord : 1;
    bool nn_coord : 1;
    bool point_sampler : 1;
@@ -781,10 +782,20 @@ rogue_nir_emit_texture_sample(rogue_builder *b,
 
       if (info->is_array && !PVR_HAS_FEATURE(dev_info, tpu_array_textures)) {
          assert(info->secondary_idx);
+         bool cube_array = info->is_array &&
+                           (info->dim == GLSL_SAMPLER_DIM_CUBE);
 
          rogue_ref layer_src = rogue_nir_src32_component(b->shader,
                                                          *info->coords,
                                                          coord_components);
+
+         if (!info->int_coord) {
+            rogue_ref layer_src_float = layer_src;
+            layer_src = rogue_ref_reg(
+               rogue_ssa_vec_reg(b->shader, b->shader->ctx->next_ssa_idx++, 0));
+            rogue_PCK_U32(b, layer_src, layer_src_float);
+         }
+
          rogue_ref layer_max = rogue_ref_reg(
             rogue_ssa_vec_reg(b->shader, b->shader->ctx->next_ssa_idx++, 0));
          rogue_alu_instr *max =
@@ -793,12 +804,39 @@ rogue_nir_emit_texture_sample(rogue_builder *b,
 
          rogue_ref layer = rogue_ref_reg(
             rogue_ssa_vec_reg(b->shader, b->shader->ctx->next_ssa_idx++, 0));
-         rogue_ref layer_maxindex = nir_shared_reg_indexed(
+         rogue_ref max_layer_index = nir_shared_reg_indexed(
             b,
             *info->secondary_idx,
             PVR_DESC_IMAGE_SECONDARY_OFFSET_ARRAYMAXINDEX(dev_info));
-         rogue_alu_instr *min = rogue_MIN(b, layer, layer_max, layer_maxindex);
+
+         if (cube_array && !info->layer_is_cube_idx) {
+            /* max_cube_idx = view_max_layer_index / 6 - 1
+             * =>
+             * max_layer_index = 6 * (max_cube_idx + 1) - 1
+             * =>
+             * max_layer_index = 6 * max_cube_idx + 5
+             */
+            rogue_ref max_cube_idx = max_layer_index;
+            max_layer_index = rogue_ref_reg(
+               rogue_ssa_vec_reg(b->shader, b->shader->ctx->next_ssa_idx++, 0));
+            rogue_MADD32(b,
+                         max_layer_index,
+                         rogue_none(),
+                         max_cube_idx,
+                         rogue_ref_imm(6),
+                         rogue_ref_imm(5),
+                         rogue_none());
+         }
+
+         rogue_alu_instr *min = rogue_MIN(b, layer, layer_max, max_layer_index);
          rogue_set_alu_op_mod(min, ROGUE_ALU_OP_MOD_S32);
+
+         if (cube_array && info->layer_is_cube_idx) {
+            rogue_ref cube_idx = layer;
+            layer = rogue_ref_reg(
+               rogue_ssa_vec_reg(b->shader, b->shader->ctx->next_ssa_idx++, 0));
+            rogue_IMUL32(b, layer, cube_idx, rogue_ref_imm(6));
+         }
 
          rogue_ref64 addr_base =
             nir_shared_reg_indexed64(b,
@@ -1008,6 +1046,7 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
    info.pack_f16 = pack_f16;
    info.image_base = tex->texture_index;
    info.sampler_base = tex->sampler_index;
+   info.layer_is_cube_idx = true;
    if (tex->op == nir_texop_txb)
       info.lod_bias = true;
    if (nir_alu_type_get_base_type(tex->dest_type) == nir_type_float)
