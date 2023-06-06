@@ -264,8 +264,8 @@ typedef struct rogue_reg {
 #define rogue_foreach_reg_safe(reg, shader, class) \
    list_for_each_entry_safe (rogue_reg, reg, &(shader)->regs[class], link)
 
-#define REG_CACHE_KEY_COMPONENT_BITS 3
-#define REG_CACHE_KEY_INDEX_BITS 28
+#define REG_CACHE_KEY_COMPONENT_BITS 4
+#define REG_CACHE_KEY_INDEX_BITS 27
 #define REG_CACHE_KEY_VEC_BITS 1
 
 struct rogue_reg_cache_key {
