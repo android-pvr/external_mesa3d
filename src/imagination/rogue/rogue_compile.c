@@ -1632,7 +1632,8 @@ static void trans_nir_intrinsic_load_input(rogue_builder *b,
 static void trans_nir_intrinsic_store_output_fs(rogue_builder *b,
                                                 nir_intrinsic_instr *intr)
 {
-   rogue_reg *dst = rogue_pixout_reg(b->shader, nir_src_as_uint(intr->src[1]));
+   unsigned reg_idx = nir_intrinsic_base(intr) + nir_src_as_uint(intr->src[1]);
+   rogue_reg *dst = rogue_pixout_reg(b->shader, reg_idx);
 
    unsigned store_size;
    rogue_ref src = nir_intr_src32(b->shader, intr, 0, &store_size);

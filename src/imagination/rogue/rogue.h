@@ -3840,11 +3840,23 @@ typedef struct rogue_build_data {
       bool discard;
       bool side_effects;
 
+      /* If >=0 then copy the depth into this pixel output for all fragment
+       * programs in the subpass.
+       */
+      int32_t z_replicate;
+
+      unsigned num_outputs;
       struct {
-         VkFormat vk;
-         enum pvr_pbe_accum_format pbe;
-         unsigned pbe_bytes;
-      } format;
+         unsigned num_components;
+         enum pvr_pbe_accum_format accum_format;
+         const struct usc_mrt_resource *mrt_resource;
+      } * outputs;
+
+      unsigned num_inputs;
+      struct {
+         enum pvr_renderpass_hwsetup_input_access type;
+         uint32_t on_chip_rt;
+      } * inputs;
    } fs;
    struct rogue_vs_build_data {
       /* TODO: Should these be removed since the driver allocates the vertex

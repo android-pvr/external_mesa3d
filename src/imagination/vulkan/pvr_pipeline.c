@@ -2716,22 +2716,39 @@ static void pvr_generate_iterator_commands(struct rogue_build_ctx *ctx)
 /** @} */
 /* End of \defgroup Graphics pipeline register allocation. */
 
-/* Passes the format information to the fragment shader for PFO. */
-static inline void
-pvr_graphics_pipeline_assign_pfo_fmts(struct rogue_fs_build_data *fs_data,
-                                      const struct pvr_render_pass *pass,
-                                      const struct pvr_render_subpass *subpass)
+/* Passes the I/O information to the fragment shader. */
+static inline void pvr_graphics_pipeline_assign_fs_io(
+   rogue_build_ctx *ctx,
+   struct rogue_fs_build_data *fs_data,
+   const struct pvr_render_pass *pass,
+   const struct pvr_render_subpass *subpass,
+   const struct pvr_renderpass_hwsetup_subpass *hw_subpass)
 {
-   /* TODO: Investigate and remove this assert. */
-   assert(subpass->color_count == 1);
+   fs_data->num_outputs = subpass->color_count;
+   fs_data->outputs =
+      ralloc_array_size(ctx, sizeof(*fs_data->outputs), subpass->color_count);
+
    for (unsigned u = 0; u < subpass->color_count; ++u) {
       unsigned idx = subpass->color_attachments[u];
       VkFormat vk_format = pass->attachments[idx].vk_format;
+      const struct usc_mrt_resource *mrt_resource =
+         &hw_subpass->setup.mrt_resources[idx];
 
-      fs_data->format.vk = vk_format;
-      fs_data->format.pbe = pvr_get_pbe_accum_format(vk_format);
-      fs_data->format.pbe_bytes =
-         pvr_get_pbe_accum_format_size_in_bytes(vk_format);
+      fs_data->outputs[u].accum_format = pvr_get_pbe_accum_format(vk_format);
+      fs_data->outputs[u].num_components =
+         vk_format_get_nr_components(vk_format);
+      fs_data->outputs[u].mrt_resource = mrt_resource;
+   }
+
+   fs_data->z_replicate = hw_subpass->z_replicate;
+
+   fs_data->num_inputs = subpass->input_count;
+   fs_data->inputs =
+      ralloc_array_size(ctx, sizeof(*fs_data->inputs), subpass->input_count);
+
+   for (unsigned u = 0; u < subpass->input_count; ++u) {
+      fs_data->inputs[u].type = hw_subpass->input_access[u].type;
+      fs_data->inputs[u].on_chip_rt = hw_subpass->input_access[u].on_chip_rt;
    }
 }
 
@@ -2780,12 +2797,22 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
    const struct pvr_render_subpass *const subpass =
       &pass->subpasses[pCreateInfo->subpass];
 
+   const struct pvr_renderpass_hw_map *subpass_map =
+      &pass->hw_setup->subpass_map[pCreateInfo->subpass];
+   const struct pvr_renderpass_hwsetup_subpass *hw_subpass =
+      &pass->hw_setup->renders[subpass_map->render]
+          .subpasses[subpass_map->subpass];
+
    /* Setup shared build context. */
    ctx = rogue_build_context_create(compiler, layout);
    if (!ctx)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   pvr_graphics_pipeline_assign_pfo_fmts(&ctx->stage_data.fs, pass, subpass);
+   pvr_graphics_pipeline_assign_fs_io(ctx,
+                                      &ctx->stage_data.fs,
+                                      pass,
+                                      subpass,
+                                      hw_subpass);
 
    /* TODO: Fix this by having multiple variants of iterator PDS programs for
     * VK_EXT_extended_dynamic_state */

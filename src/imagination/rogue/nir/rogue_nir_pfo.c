@@ -118,17 +118,6 @@ static nir_ssa_def *
 lower_store_output(nir_builder *b, nir_instr *instr, void *cb_data)
 {
    struct rogue_fs_build_data *fs_data = (struct rogue_fs_build_data *)cb_data;
-   /* VkFormat vk = fs_data->format.vk; */
-   enum pvr_pbe_accum_format pbe = fs_data->format.pbe;
-   unsigned pbe_bytes = fs_data->format.pbe_bytes;
-
-   /* bool is_norm = vk_format_is_normalized(vk); */
-   unsigned pbe_dwords = DIV_ROUND_UP(pbe_bytes, sizeof(uint32_t));
-
-   const struct glsl_type *glsl_type = pbe_accum_to_glsl_type(pbe);
-   nir_alu_type nir_type = nir_get_nir_type_for_glsl_type(glsl_type);
-
-   /* Rewrite the old store and perform the pack/conversion if needed. */
 
    nir_intrinsic_instr *old_store = nir_instr_as_intrinsic(instr);
    nir_src *output_src = &old_store->src[0];
@@ -140,6 +129,23 @@ lower_store_output(nir_builder *b, nir_instr *instr, void *cb_data)
       nir_find_variable_with_location(b->shader,
                                       nir_var_shader_out,
                                       sem.location);
+   unsigned location = sem.location - FRAG_RESULT_DATA0;
+   unsigned mrt_idx = location + nir_src_as_uint(old_store->src[1]) +
+                      nir_intrinsic_base(old_store);
+   const struct usc_mrt_resource *mrt_resource =
+      fs_data->outputs[mrt_idx].mrt_resource;
+
+   assert(mrt_resource->type == USC_MRT_RESOURCE_TYPE_OUTPUT_REG);
+   assert(mrt_resource->reg.offset == 0);
+
+   enum pvr_pbe_accum_format pbe = fs_data->outputs[mrt_idx].accum_format;
+
+   unsigned pbe_dwords = mrt_resource->intermediate_size;
+
+   const struct glsl_type *glsl_type = pbe_accum_to_glsl_type(pbe);
+   nir_alu_type nir_type = nir_get_nir_type_for_glsl_type(glsl_type);
+
+   /* Rewrite the old store and perform the pack/conversion if needed. */
 
    b->cursor = nir_before_instr(instr);
 
@@ -154,8 +160,8 @@ lower_store_output(nir_builder *b, nir_instr *instr, void *cb_data)
       pack = do_pack(b, pbe, chans);
       nir_store_output(b,
                        pack,
-                       nir_iadd_imm(b, old_store->src[1].ssa, out),
-                       .base = nir_intrinsic_base(old_store),
+                       nir_imm_zero(b, 1, 32),
+                       .base = mrt_resource->reg.output_reg + out,
                        .src_type = nir_type,
                        .write_mask = 1,
                        .io_semantics = nir_intrinsic_io_semantics(old_store));
@@ -173,7 +179,12 @@ static bool is_store_output(const nir_instr *instr, UNUSED const void *cb_data)
       return false;
 
    nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
-   return intr->intrinsic == nir_intrinsic_store_output;
+   if (intr->intrinsic != nir_intrinsic_store_output)
+      return false;
+
+   nir_io_semantics sem = nir_intrinsic_io_semantics(intr);
+   assert(sem.dual_source_blend_index == 0 && "Should have been lowered");
+   return (sem.location >= FRAG_RESULT_DATA0);
 }
 
 PUBLIC
