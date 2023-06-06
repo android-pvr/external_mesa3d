@@ -281,7 +281,7 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
 
    /* Apply PFO code to the fragment shader output. */
    if (nir->info.stage == MESA_SHADER_FRAGMENT)
-      NIR_PASS_V(nir, rogue_nir_pfo, &ctx->stage_data.fs);
+      NIR_PASS_V(nir, rogue_nir_pfo, ctx);
 
    /* Load outputs to scalars (single registers later). */
    NIR_PASS_V(nir, nir_lower_io_to_scalar, nir_var_shader_out);

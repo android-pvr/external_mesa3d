@@ -2722,7 +2722,8 @@ static inline void pvr_graphics_pipeline_assign_fs_io(
    struct rogue_fs_build_data *fs_data,
    const struct pvr_render_pass *pass,
    const struct pvr_render_subpass *subpass,
-   const struct pvr_renderpass_hwsetup_subpass *hw_subpass)
+   const struct pvr_renderpass_hwsetup_subpass *hw_subpass,
+   const struct vk_color_blend_state *cb_state)
 {
    fs_data->num_outputs = subpass->color_count;
    fs_data->outputs =
@@ -2735,8 +2736,7 @@ static inline void pvr_graphics_pipeline_assign_fs_io(
          &hw_subpass->setup.mrt_resources[idx];
 
       fs_data->outputs[u].accum_format = pvr_get_pbe_accum_format(vk_format);
-      fs_data->outputs[u].num_components =
-         vk_format_get_nr_components(vk_format);
+      fs_data->outputs[u].format = vk_format_to_pipe_format(vk_format);
       fs_data->outputs[u].mrt_resource = mrt_resource;
    }
 
@@ -2750,6 +2750,8 @@ static inline void pvr_graphics_pipeline_assign_fs_io(
       fs_data->inputs[u].type = hw_subpass->input_access[u].type;
       fs_data->inputs[u].on_chip_rt = hw_subpass->input_access[u].on_chip_rt;
    }
+
+   fs_data->cb_state = cb_state;
 }
 
 /* Compiles and uploads shaders and PDS programs. */
@@ -2758,7 +2760,8 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
                               struct pvr_pipeline_cache *pipeline_cache,
                               const VkGraphicsPipelineCreateInfo *pCreateInfo,
                               const VkAllocationCallbacks *const allocator,
-                              struct pvr_graphics_pipeline *const gfx_pipeline)
+                              struct pvr_graphics_pipeline *const gfx_pipeline,
+                              const struct vk_graphics_pipeline_state *state)
 {
    /* FIXME: Remove this hard coding. */
    struct pvr_explicit_constant_usage vert_explicit_const_usage = {
@@ -2812,7 +2815,8 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
                                       &ctx->stage_data.fs,
                                       pass,
                                       subpass,
-                                      hw_subpass);
+                                      hw_subpass,
+                                      state->cb);
 
    /* TODO: Fix this by having multiple variants of iterator PDS programs for
     * VK_EXT_extended_dynamic_state */
@@ -3236,7 +3240,8 @@ pvr_graphics_pipeline_init(struct pvr_device *device,
                                           pipeline_cache,
                                           pCreateInfo,
                                           allocator,
-                                          gfx_pipeline);
+                                          gfx_pipeline,
+                                          &state);
    if (result != VK_SUCCESS)
       goto err_pipeline_finish;
 

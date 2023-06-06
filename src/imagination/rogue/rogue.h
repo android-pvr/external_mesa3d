@@ -3839,6 +3839,9 @@ typedef struct rogue_build_data {
       bool phas; /* Indicates the presence of PHAS instruction. */
       bool discard;
       bool side_effects;
+      bool translucent;
+
+      const struct vk_color_blend_state *cb_state;
 
       /* If >=0 then copy the depth into this pixel output for all fragment
        * programs in the subpass.
@@ -3847,7 +3850,7 @@ typedef struct rogue_build_data {
 
       unsigned num_outputs;
       struct {
-         unsigned num_components;
+         enum pipe_format format;
          enum pvr_pbe_accum_format accum_format;
          const struct usc_mrt_resource *mrt_resource;
       } * outputs;
@@ -3974,7 +3977,7 @@ bool rogue_nir_compute_instance_check(nir_shader *shader);
 
 bool rogue_nir_expand_swizzles_to_vec(nir_shader *shader);
 
-bool rogue_nir_pfo(nir_shader *shader, struct rogue_fs_build_data *fs_data);
+bool rogue_nir_pfo(nir_shader *shader, rogue_build_ctx *ctx);
 
 bool rogue_nir_lower_alu_conversion_to_intrinsic(nir_shader *shader);
 
