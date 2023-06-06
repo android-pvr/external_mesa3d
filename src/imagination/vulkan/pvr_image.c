@@ -413,9 +413,9 @@ VkResult pvr_CreateBufferView(VkDevice _device,
    info.base_level = 0U;
    info.mip_levels = 1U;
    info.mipmaps_present = false;
-   info.extent.width = 8192U;
-   info.extent.height = bview->range / vk_format_get_blocksize(bview->format);
-   info.extent.height = DIV_ROUND_UP(info.extent.height, info.extent.width);
+   /* TODO: Convert to 2D to support more than 16k maxTexelBufferElements */
+   info.extent.width = bview->range / vk_format_get_blocksize(bview->format);
+   info.extent.height = 1;
    info.extent.depth = 0U;
    info.sample_count = 1U;
    info.stride = info.extent.width;
@@ -423,7 +423,7 @@ VkResult pvr_CreateBufferView(VkDevice _device,
    info.addr = PVR_DEV_ADDR_OFFSET(buffer->dev_addr, pCreateInfo->offset);
    info.mem_layout = PVR_MEMLAYOUT_LINEAR;
    info.is_cube = false;
-   info.type = VK_IMAGE_VIEW_TYPE_2D;
+   info.type = VK_IMAGE_VIEW_TYPE_1D;
    info.tex_state_type = PVR_TEXTURE_STATE_SAMPLE;
    info.format = bview->format;
    info.flags = PVR_TEXFLAGS_INDEX_LOOKUP;
