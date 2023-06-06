@@ -236,7 +236,9 @@ static bool lower_tex_instr_img(nir_builder *b,
    bool size_query = intr->intrinsic == nir_intrinsic_bindless_image_size;
    get_tex_deref_layout(b, deref, ctx, false, !size_query, NULL, &index_ssa);
 
-   if (!size_query && nir_intrinsic_image_array(intr)) {
+   if (!size_query &&
+       (nir_intrinsic_image_array(intr) ||
+        nir_intrinsic_image_dim(intr) == GLSL_SAMPLER_DIM_CUBE)) {
       nir_ssa_def *indices[2];
       indices[0] = index_ssa;
       get_tex_deref_layout(b, deref, ctx, false, false, NULL, &indices[1]);

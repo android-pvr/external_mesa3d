@@ -706,6 +706,13 @@ rogue_nir_emit_texture_sample(rogue_builder *b,
       coord_components = 2;
       break;
    case GLSL_SAMPLER_DIM_CUBE:
+      if (info->int_coord) {
+         coord_components = 2;
+         info->is_array = true;
+      } else {
+         coord_components = 3;
+      }
+      break;
    case GLSL_SAMPLER_DIM_3D:
       coord_components = 3;
       break;
