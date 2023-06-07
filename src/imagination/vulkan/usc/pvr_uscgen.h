@@ -29,6 +29,7 @@
 
 #include "pvr_common.h"
 #include "pvr_formats.h"
+#include "pvr_private.h"
 #include "rogue/rogue.h"
 #include "util/u_dynarray.h"
 
@@ -164,7 +165,8 @@ void pvr_uscgen_eot(const char *name,
 
 void pvr_uscgen_passthrough_vtx(struct util_dynarray *binary, bool rta);
 
-void pvr_uscgen_load_op(struct util_dynarray *binary,
+void pvr_uscgen_load_op(struct pvr_device *device,
+                        struct util_dynarray *binary,
                         struct pvr_uscgen_properties *load_op_properties,
                         const struct pvr_load_op *load_op);
 

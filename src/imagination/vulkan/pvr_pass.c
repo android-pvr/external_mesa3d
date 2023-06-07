@@ -305,7 +305,7 @@ pvr_generate_load_op_shader(struct pvr_device *device,
 
    struct util_dynarray load_op_bin;
    struct pvr_uscgen_properties load_op_properties;
-   pvr_uscgen_load_op(&load_op_bin, &load_op_properties, load_op);
+   pvr_uscgen_load_op(device, &load_op_bin, &load_op_properties, load_op);
 
    VkResult result = pvr_gpu_upload_usc(device,
                                         util_dynarray_begin(&load_op_bin),

@@ -21,6 +21,9 @@
  * SOFTWARE.
  */
 
+#include "nir/nir.h"
+#include "nir/nir_builder.h"
+#include "pvr_debug.h"
 #include "pvr_job_transfer.h"
 #include "pvr_private.h"
 #include "pvr_uscgen.h"
@@ -432,10 +435,157 @@ static void pvr_uscgen_load_op_loads(rogue_builder *b,
    }
 }
 
-void pvr_uscgen_load_op(struct util_dynarray *binary,
+static enum pipe_format clear_format_for_size(unsigned dwords)
+{
+   switch (dwords) {
+   case 1:
+      return PIPE_FORMAT_R32_UINT;
+   case 2:
+      return PIPE_FORMAT_R32G32_UINT;
+   case 3:
+      return PIPE_FORMAT_R32G32B32_UINT;
+   case 4:
+      return PIPE_FORMAT_R32G32B32A32_UINT;
+   default:
+      unreachable("Invalid accum format size");
+   }
+   return PIPE_FORMAT_NONE;
+}
+
+static void
+pvr_uscgen_load_op_clears_nir(nir_builder *b,
+                              struct pvr_uscgen_load_op_context *ctx,
+                              struct rogue_build_ctx *rogue_ctx)
+{
+   struct rogue_fs_build_data *fs_data = &rogue_ctx->stage_data.fs;
+
+   const struct usc_mrt_setup *mrt_setup =
+      ctx->load_op->clears_loads_state.mrt_setup;
+
+   u_foreach_bit (rt_idx, ctx->load_op->clears_loads_state.rt_clear_mask) {
+      VkFormat fmt = pvr_uscgen_format_for_accum(
+         ctx->load_op->clears_loads_state.dest_vk_format[rt_idx]);
+      uint32_t accum_size_dwords =
+         DIV_ROUND_UP(pvr_get_pbe_accum_format_size_in_bytes(fmt),
+                      sizeof(uint32_t));
+
+      struct usc_mrt_resource *mrt_resource = &mrt_setup->mrt_resources[rt_idx];
+      nir_ssa_def *chans[4];
+
+      assert(accum_size_dwords ==
+             DIV_ROUND_UP(mrt_resource->intermediate_size, sizeof(uint32_t)));
+
+      /* Use uint32 to disable packing as color values are pre-packed. */
+      fs_data->outputs[rt_idx].accum_format = PVR_PBE_ACCUM_FORMAT_UINT32;
+      fs_data->outputs[rt_idx].mrt_resource = mrt_resource;
+      fs_data->outputs[rt_idx].format =
+         clear_format_for_size(accum_size_dwords);
+
+      for (int i = 0; i < accum_size_dwords; i++)
+         chans[i] = nir_load_preamble(b, 1, 32, .base = ctx->next_sh_reg++);
+
+      nir_store_output(b,
+                       nir_vec(b, chans, accum_size_dwords),
+                       nir_imm_int(b, 0),
+                       .base = 0,
+                       .src_type = nir_type_uint32,
+                       .write_mask = BITFIELD_MASK(accum_size_dwords),
+                       .io_semantics.location = FRAG_RESULT_DATA0 + rt_idx,
+                       .io_semantics.num_slots = 1);
+
+      b->shader->info.outputs_written |=
+         BITFIELD64_BIT(FRAG_RESULT_DATA0 + rt_idx);
+   }
+
+   if (ctx->load_op->clears_loads_state.depth_clear_to_reg !=
+       PVR_NO_DEPTH_CLEAR_TO_REG) {
+      int32_t depth_idx = ctx->load_op->clears_loads_state.depth_clear_to_reg;
+      struct usc_mrt_resource *mrt_resource =
+         &mrt_setup->mrt_resources[depth_idx];
+
+      fs_data->outputs[depth_idx].accum_format = PVR_PBE_ACCUM_FORMAT_F32;
+      fs_data->outputs[depth_idx].mrt_resource = mrt_resource;
+      fs_data->outputs[depth_idx].format = PIPE_FORMAT_R32_FLOAT;
+
+      /* Replicated depth is a single F32 value */
+      nir_store_output(b,
+                       nir_load_preamble(b, 1, 32, .base = depth_idx),
+                       nir_imm_int(b, 0),
+                       .base = 0,
+                       .src_type = nir_type_float32,
+                       .write_mask = 1,
+                       .io_semantics.location = FRAG_RESULT_DATA0 + depth_idx,
+                       .io_semantics.num_slots = 1);
+
+      b->shader->info.outputs_written |=
+         BITFIELD64_BIT(FRAG_RESULT_DATA0 + depth_idx);
+   }
+}
+
+static void
+pvr_uscgen_load_op_nir(struct pvr_device *device,
+                       struct util_dynarray *binary,
+                       struct pvr_uscgen_properties *load_op_properties,
+                       const struct pvr_load_op *load_op)
+{
+   struct pvr_pipeline_layout pipeline_layout = { 0 };
+   struct rogue_build_ctx *rogue_ctx =
+      rogue_build_context_create(device->pdevice->compiler, &pipeline_layout);
+
+   struct rogue_fs_build_data *fs_data = &rogue_ctx->stage_data.fs;
+   struct pvr_uscgen_load_op_context loadop_ctx = {
+      .load_op = load_op,
+      .next_sh_reg = 0,
+      .next_temp_reg = 0,
+      .load_op_properties = load_op_properties,
+   };
+   unsigned rt_mask = load_op->clears_loads_state.rt_clear_mask |
+                      load_op->clears_loads_state.rt_load_mask;
+   bool depth_to_reg = load_op->clears_loads_state.depth_clear_to_reg !=
+                       PVR_NO_DEPTH_CLEAR_TO_REG;
+
+   nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_FRAGMENT,
+                                                  rogue_nir_options(),
+                                                  "pvr_load_op");
+
+   fs_data->num_outputs = util_bitcount(rt_mask) + !!depth_to_reg;
+   if (fs_data->num_outputs) {
+      fs_data->outputs = rzalloc_array_size(rogue_ctx,
+                                            sizeof(*fs_data->outputs),
+                                            fs_data->num_outputs);
+   }
+
+   load_op_properties->shareds_dest_offset = loadop_ctx.next_sh_reg;
+   load_op_properties->msaa_mode = ROGUE_MSAA_MODE_PIXEL;
+
+   if (load_op->clears_loads_state.rt_clear_mask || depth_to_reg)
+      pvr_uscgen_load_op_clears_nir(&b, &loadop_ctx, rogue_ctx);
+
+   assert(!load_op->clears_loads_state.rt_load_mask);
+
+   rogue_shader *shader = rogue_nir_compile(rogue_ctx, b.shader);
+   rogue_set_shader_name(shader, "NIR load_op");
+
+   rogue_encode_shader(NULL, shader, binary);
+
+   load_op_properties->const_shareds_count = loadop_ctx.next_sh_reg;
+   load_op_properties->temps_count =
+      rogue_count_used_regs(shader, ROGUE_REG_CLASS_TEMP);
+
+   ralloc_free(b.shader);
+   ralloc_free(rogue_ctx);
+}
+
+void pvr_uscgen_load_op(struct pvr_device *device,
+                        struct util_dynarray *binary,
                         struct pvr_uscgen_properties *load_op_properties,
                         const struct pvr_load_op *load_op)
 {
+   if (PVR_IS_DEBUG_SET(LOADOP_NIR)) {
+      pvr_uscgen_load_op_nir(device, binary, load_op_properties, load_op);
+      return;
+   }
+
    struct pvr_uscgen_load_op_context ctx;
 
    rogue_builder b;
