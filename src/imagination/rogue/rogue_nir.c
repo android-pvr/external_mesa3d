@@ -188,12 +188,6 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
 
    nir_validate_shader(nir, "after spirv_to_nir");
 
-   /* TODO: Clamp outputs when necessary. */
-#if 0
-   if (nir->info.stage == MESA_SHADER_FRAGMENT)
-      NIR_PASS_V(nir, nir_lower_clamp_color_outputs);
-#endif
-
    if (nir->info.stage == MESA_SHADER_COMPUTE)
       NIR_PASS_V(nir, rogue_nir_compute_instance_check);
 

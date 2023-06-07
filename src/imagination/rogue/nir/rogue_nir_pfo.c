@@ -38,8 +38,29 @@
  * \brief Contains the rogue_nir_pfo pass.
  */
 
-static inline nir_ssa_def *
-do_pack(nir_builder *b, enum pvr_pbe_accum_format pbe, nir_ssa_def *chans)
+static nir_ssa_def *nir_fsat_signed(nir_builder *b, nir_ssa_def *x)
+{
+   return nir_fclamp(b,
+                     x,
+                     nir_imm_floatN_t(b, -1.0, x->bit_size),
+                     nir_imm_floatN_t(b, +1.0, x->bit_size));
+}
+
+static nir_ssa_def *
+nir_fsat_to_format(nir_builder *b, nir_ssa_def *x, enum pipe_format format)
+{
+   if (util_format_is_unorm(format))
+      return nir_fsat(b, x);
+   else if (util_format_is_snorm(format))
+      return nir_fsat_signed(b, x);
+   else
+      return x;
+}
+
+static inline nir_ssa_def *do_pack(nir_builder *b,
+                                   enum pvr_pbe_accum_format pbe,
+                                   nir_ssa_def *chans,
+                                   enum pipe_format format)
 {
    const unsigned bits_2101010[] = { 10, 10, 10, 2 };
    const unsigned bits_8888[] = { 8, 8, 8, 8 };
@@ -59,7 +80,7 @@ do_pack(nir_builder *b, enum pvr_pbe_accum_format pbe, nir_ssa_def *chans)
       return nir_pack_snorm_2x16(b, chans);
 
    case PVR_PBE_ACCUM_FORMAT_F16:
-      return nir_pack_half_2x16(b, chans);
+      return nir_pack_half_2x16(b, nir_fsat_to_format(b, chans, format));
 
    case PVR_PBE_ACCUM_FORMAT_F32:
    case PVR_PBE_ACCUM_FORMAT_SINT32:
@@ -220,7 +241,8 @@ lower_output_io(nir_builder *b, nir_instr *instr, void *cb_data)
          chans = nir_resize_vector(b, chans, size);
 
          /* TODO: Make the pack optional. */
-         nir_ssa_def *pack = do_pack(b, pbe, chans);
+         nir_ssa_def *pack = do_pack(b, pbe, chans, format);
+
          nir_store_output(b,
                           pack,
                           nir_imm_int(b, 0),
@@ -378,6 +400,8 @@ static void rogue_lower_blend(nir_shader *shader, rogue_build_ctx *ctx)
    }
 
    NIR_PASS_V(shader, nir_lower_blend, &opts);
+
+   NIR_PASS_V(shader, nir_opt_dce);
 
    nir_shader_instructions_pass(shader,
                                 lower_blend_consts,
