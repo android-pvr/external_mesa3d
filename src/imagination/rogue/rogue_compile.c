@@ -37,6 +37,163 @@
  */
 
 /* Helpers. */
+static rogue_ref alu_src(rogue_shader *shader,
+                         const nir_alu_instr *alu,
+                         unsigned src_num,
+                         unsigned *src_components,
+                         unsigned bits)
+{
+   bool is_ssa = alu->src[src_num].src.is_ssa;
+   assert(nir_src_bit_size(alu->src[src_num].src) == bits);
+   assert(util_is_power_of_two_nonzero(bits));
+   assert(bits >= 8 && bits <= 64);
+
+   unsigned num_components = nir_src_num_components(alu->src[src_num].src);
+
+   /* No 64-bit vectors. */
+   assert(bits != 64 || num_components == 1);
+
+   if (src_components)
+      *src_components = num_components;
+
+   unsigned index = is_ssa ? alu->src[src_num].src.ssa->index
+                           : alu->src[src_num].src.reg.reg->index;
+
+   /* Special case for 64-bit - just return the whole regarray;
+    * use rogue_ssa_ref64 if the components are needed.
+    */
+   if (bits == 64) {
+      return rogue_ref_regarray(rogue_ssa_vec_regarray(shader, 2, index, 0));
+   }
+
+   /* SSA, so always assigning to the entire vector. */
+   if (num_components > 1) {
+      assert(is_ssa);
+      return rogue_ref_regarray(
+         rogue_ssa_vec_regarray(shader, num_components, index, 0));
+   }
+
+   return rogue_ref_reg(is_ssa ? rogue_ssa_reg(shader, index)
+                               : rogue_temp_reg(shader, index));
+}
+
+static rogue_ref alu_dst(rogue_shader *shader,
+                         const nir_alu_instr *alu,
+                         unsigned *dst_components,
+                         ASSERTED unsigned bits)
+{
+   bool is_ssa = alu->dest.dest.is_ssa;
+   assert(nir_dest_bit_size(alu->dest.dest) == bits);
+   assert(util_is_power_of_two_nonzero(bits));
+   assert(bits >= 8 && bits <= 64);
+
+   unsigned num_components = nir_dest_num_components(alu->dest.dest);
+
+   /* No 64-bit vectors. */
+   assert(bits != 64 || num_components == 1);
+
+   if (dst_components)
+      *dst_components = num_components;
+
+   unsigned index = is_ssa ? alu->dest.dest.ssa.index
+                           : alu->dest.dest.reg.reg->index;
+
+   /* Special case for 64-bit - just return the whole regarray;
+    * use rogue_ssa_ref64 if the components are needed.
+    */
+   if (bits == 64) {
+      return rogue_ref_regarray(rogue_ssa_vec_regarray(shader, 2, index, 0));
+   }
+
+   /* SSA, so always assigning to the entire vector. */
+   if (num_components > 1) {
+      assert(is_ssa);
+      return rogue_ref_regarray(
+         rogue_ssa_vec_regarray(shader, num_components, index, 0));
+   }
+
+   return rogue_ref_reg(is_ssa ? rogue_ssa_reg(shader, index)
+                               : rogue_temp_reg(shader, index));
+}
+
+static rogue_ref intr_src(rogue_shader *shader,
+                          const nir_intrinsic_instr *intr,
+                          unsigned src_num,
+                          unsigned *src_components,
+                          unsigned bits)
+{
+   bool is_ssa = intr->src[src_num].is_ssa;
+   assert(nir_src_bit_size(intr->src[src_num]) == bits);
+   assert(util_is_power_of_two_nonzero(bits));
+   assert(bits >= 8 && bits <= 64);
+
+   unsigned num_components = nir_src_num_components(intr->src[src_num]);
+
+   /* No 64-bit vectors. */
+   assert(bits != 64 || num_components == 1);
+
+   if (src_components)
+      *src_components = num_components;
+
+   unsigned index = is_ssa ? intr->src[src_num].ssa->index
+                           : intr->src[src_num].reg.reg->index;
+
+   /* Special case for 64-bit - just return the whole regarray;
+    * use rogue_ssa_ref64 if the components are needed.
+    */
+   if (bits == 64) {
+      return rogue_ref_regarray(rogue_ssa_vec_regarray(shader, 2, index, 0));
+   }
+
+   /* SSA, so always assigning to the entire vector. */
+   if (num_components > 1) {
+      assert(is_ssa);
+      return rogue_ref_regarray(
+         rogue_ssa_vec_regarray(shader, num_components, index, 0));
+   }
+
+   return rogue_ref_reg(is_ssa ? rogue_ssa_reg(shader, index)
+                               : rogue_temp_reg(shader, index));
+}
+
+static rogue_ref intr_dst(rogue_shader *shader,
+                          const nir_intrinsic_instr *intr,
+                          unsigned *dst_components,
+                          ASSERTED unsigned bits)
+{
+   bool is_ssa = intr->dest.is_ssa;
+   assert(nir_dest_bit_size(intr->dest) == bits);
+   assert(util_is_power_of_two_nonzero(bits));
+   assert(bits >= 8 && bits <= 64);
+
+   unsigned num_components = nir_dest_num_components(intr->dest);
+
+   /* No 64-bit vectors. */
+   assert(bits != 64 || num_components == 1);
+
+   if (dst_components)
+      *dst_components = num_components;
+
+   unsigned index = is_ssa ? intr->dest.ssa.index : intr->dest.reg.reg->index;
+
+   /* Special case for 64-bit - just return the whole regarray;
+    * use rogue_ssa_ref64 if the components are needed.
+    */
+   if (bits == 64) {
+      return rogue_ref_regarray(rogue_ssa_vec_regarray(shader, 2, index, 0));
+   }
+
+   /* SSA, so always assigning to the entire vector. */
+   if (num_components > 1) {
+      assert(is_ssa);
+      return rogue_ref_regarray(
+         rogue_ssa_vec_regarray(shader, num_components, index, 0));
+   }
+
+   return rogue_ref_reg(is_ssa ? rogue_ssa_reg(shader, index)
+                               : rogue_temp_reg(shader, index));
+}
+
 static rogue_ref nir_alu_src16(rogue_shader *shader,
                                const nir_alu_instr *alu,
                                unsigned src_num,
