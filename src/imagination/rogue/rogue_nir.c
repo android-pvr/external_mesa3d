@@ -59,6 +59,8 @@ static const nir_shader_compiler_options nir_options = {
    .lower_bitfield_insert_to_shifts = true,
    .lower_ifind_msb = true,
    .lower_find_lsb = true,
+   .lower_uadd_carry = true,
+   .lower_usub_borrow = true,
    .lower_isign = true,
    .lower_ffract = true,
    .lower_rotate = true, /* TODO: add nir option to convert ror to rol then
@@ -109,6 +111,7 @@ static void rogue_nir_opt_loop(struct rogue_build_ctx *ctx, nir_shader *nir)
 
       NIR_PASS(progress, nir, nir_lower_int64);
       NIR_PASS(progress, nir, nir_lower_alu);
+      NIR_PASS(progress, nir, nir_lower_pack);
 
       NIR_PASS(progress, nir, nir_opt_algebraic);
       NIR_PASS(progress, nir, nir_opt_constant_folding);

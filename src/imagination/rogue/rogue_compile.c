@@ -37,6 +37,40 @@
  */
 
 /* Helpers. */
+static rogue_ref nir_alu_src16(rogue_shader *shader,
+                               const nir_alu_instr *alu,
+                               unsigned src_num,
+                               unsigned *src_components)
+{
+   bool is_ssa = alu->src[src_num].src.is_ssa;
+   assert(nir_src_bit_size(alu->src[src_num].src) == 16);
+
+   unsigned num_components = nir_src_num_components(alu->src[src_num].src);
+   unsigned components_required =
+      nir_ssa_alu_instr_src_components(alu, src_num);
+
+   assert(components_required == 1 || num_components == components_required);
+
+   if (src_components)
+      *src_components = components_required;
+
+   if (num_components > 1) {
+      assert(is_ssa);
+      /* Select the component. */
+      unsigned read_mask = nir_alu_instr_src_read_mask(alu, src_num);
+      unsigned component = ffs(read_mask) - 1;
+      return rogue_ref_regarray(
+         rogue_ssa_vec_regarray(shader,
+                                components_required,
+                                alu->src[src_num].src.ssa->index,
+                                component));
+   }
+
+   return rogue_ref_reg(
+      is_ssa ? rogue_ssa_reg(shader, alu->src[src_num].src.ssa->index)
+             : rogue_temp_reg(shader, alu->src[src_num].src.reg.reg->index));
+}
+
 static rogue_ref nir_alu_src32(rogue_shader *shader,
                                const nir_alu_instr *alu,
                                unsigned src_num,
@@ -69,6 +103,32 @@ static rogue_ref nir_alu_src32(rogue_shader *shader,
    return rogue_ref_reg(
       is_ssa ? rogue_ssa_reg(shader, alu->src[src_num].src.ssa->index)
              : rogue_temp_reg(shader, alu->src[src_num].src.reg.reg->index));
+}
+
+static rogue_ref nir_alu_dst16(rogue_shader *shader,
+                               const nir_alu_instr *alu,
+                               unsigned *dst_components)
+{
+   bool is_ssa = alu->dest.dest.is_ssa;
+   assert(nir_dest_bit_size(alu->dest.dest) == 16);
+
+   unsigned num_components = nir_dest_num_components(alu->dest.dest);
+
+   if (dst_components)
+      *dst_components = num_components;
+
+   /* SSA, so always assigning to the entire vector. */
+   if (num_components > 1) {
+      assert(is_ssa);
+      return rogue_ref_regarray(rogue_ssa_vec_regarray(shader,
+                                                       num_components,
+                                                       alu->dest.dest.ssa.index,
+                                                       0));
+   }
+
+   return rogue_ref_reg(
+      is_ssa ? rogue_ssa_reg(shader, alu->dest.dest.ssa.index)
+             : rogue_temp_reg(shader, alu->dest.dest.reg.reg->index));
 }
 
 static rogue_ref nir_alu_dst32(rogue_shader *shader,
@@ -1340,6 +1400,20 @@ static void trans_nir_alu_vecN(rogue_builder *b, nir_alu_instr *alu, unsigned n)
    }
 }
 
+static void trans_nir_alu_iadd16(rogue_builder *b, nir_alu_instr *alu)
+{
+   unsigned dst_components;
+   rogue_ref dst = nir_alu_dst16(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   rogue_ref src0 = nir_alu_src16(b->shader, alu, 0, NULL);
+   rogue_ref src1 = nir_alu_src16(b->shader, alu, 1, NULL);
+
+   rogue_alu_instr *iadd16 = rogue_IADD16(b, dst, src0, src1);
+   rogue_set_alu_op_mod(iadd16, ROGUE_ALU_OP_MOD_S);
+   rogue_apply_alu_src_mods(iadd16, alu, false);
+}
+
 static void trans_nir_alu_iadd32(rogue_builder *b, nir_alu_instr *alu)
 {
    unsigned dst_components;
@@ -1370,6 +1444,9 @@ static void trans_nir_alu_iadd(rogue_builder *b, nir_alu_instr *alu)
    unsigned bit_size = nir_dest_bit_size(alu->dest.dest);
 
    switch (bit_size) {
+   case 16:
+      return trans_nir_alu_iadd16(b, alu);
+
    case 32:
       return trans_nir_alu_iadd32(b, alu);
 
@@ -1381,6 +1458,20 @@ static void trans_nir_alu_iadd(rogue_builder *b, nir_alu_instr *alu)
    }
 
    unreachable("Unsupported iadd bit size.");
+}
+
+static void trans_nir_alu_imul16(rogue_builder *b, nir_alu_instr *alu)
+{
+   unsigned dst_components;
+   rogue_ref dst = nir_alu_dst16(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   rogue_ref src0 = nir_alu_src16(b->shader, alu, 0, NULL);
+   rogue_ref src1 = nir_alu_src16(b->shader, alu, 1, NULL);
+
+   rogue_alu_instr *imul16 = rogue_IMUL16(b, dst, src0, src1);
+   rogue_set_alu_op_mod(imul16, ROGUE_ALU_OP_MOD_S);
+   rogue_apply_alu_src_mods(imul16, alu, false);
 }
 
 static void trans_nir_alu_imul32(rogue_builder *b, nir_alu_instr *alu)
@@ -1413,6 +1504,9 @@ static void trans_nir_alu_imul(rogue_builder *b, nir_alu_instr *alu)
    unsigned bit_size = nir_dest_bit_size(alu->dest.dest);
 
    switch (bit_size) {
+   case 16:
+      return trans_nir_alu_imul16(b, alu);
+
    case 32:
       return trans_nir_alu_imul32(b, alu);
 
@@ -1527,17 +1621,66 @@ static void trans_nir_alu_iabs(rogue_builder *b, nir_alu_instr *iabs)
       break;
    }
 
-   unreachable("Unsupported ineg bit size.");
+   unreachable("Unsupported iabs bit size.");
 }
 
-static void trans_nir_alu_i2i64(rogue_builder *b, nir_alu_instr *alu)
+static void trans_nir_alu_i16_to_i32(rogue_builder *b, nir_alu_instr *alu)
+{
+   unsigned src_components;
+   rogue_ref src = nir_alu_src16(b->shader, alu, 0, &src_components);
+   assert(src_components == 1);
+
+   unsigned dst_components;
+   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   /* Sign-extension. */
+   rogue_bitwise_instr *isxt =
+      rogue_ISXT(b, dst, src, rogue_ref_imm(15), rogue_ref_imm(0));
+   rogue_add_instr_comment(&isxt->instr, "i16_to_i32 (sxt)");
+}
+
+static void trans_nir_alu_i2i32(rogue_builder *b, nir_alu_instr *alu)
+{
+   unsigned bit_size = nir_src_bit_size(alu->src[0].src);
+   switch (bit_size) {
+   case 16:
+      return trans_nir_alu_i16_to_i32(b, alu);
+
+   default:
+      break;
+   }
+
+   unreachable("Unsupported i2i32 bit size.");
+}
+
+static void trans_nir_alu_i32_to_i64(rogue_builder *b, nir_alu_instr *alu)
 {
    rogue_ref src = nir_alu_src32(b->shader, alu, 0, NULL);
 
    rogue_ref64 dst = nir_ssa_alu_dst64(b->shader, alu);
 
-   rogue_MOV(b, dst.lo32, src);
-   rogue_MOV(b, dst.hi32, rogue_ref_imm(0));
+   rogue_alu_instr *mov = rogue_MOV(b, dst.lo32, src);
+   rogue_add_instr_comment(&mov->instr, "i32_to_i64 (lower bits)");
+
+   /* Sign-extension for upper bits. */
+   rogue_bitwise_instr *isxt =
+      rogue_ISXT(b, src, dst.hi32, rogue_ref_imm(31), rogue_ref_imm(31));
+   rogue_add_instr_comment(&isxt->instr, "i32_to_i64 (sxt upper bits)");
+}
+
+static void trans_nir_alu_i2i64(rogue_builder *b, nir_alu_instr *alu)
+{
+   unsigned bit_size = nir_src_bit_size(alu->src[0].src);
+   switch (bit_size) {
+   case 32:
+      return trans_nir_alu_i32_to_i64(b, alu);
+
+   default:
+      break;
+   }
+
+   unreachable("Unsupported i2i64 bit size.");
 }
 
 /* Conditionally sets the output to 1 or 0 depending on whether the comparison
@@ -1775,6 +1918,23 @@ static void trans_nir_pack_64_2x32_split(rogue_builder *b, nir_alu_instr *alu)
    rogue_MOV(b, dst.hi32, src1);
 }
 
+static void
+trans_nir_unpack_32_2x16_split(rogue_builder *b, nir_alu_instr *alu, bool hi32)
+{
+   unsigned dst_components;
+   rogue_ref dst = nir_alu_dst16(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   unsigned src_components;
+   rogue_ref src = nir_alu_src32(b->shader, alu, 0, &src_components);
+   assert(src_components == 1);
+
+   if (hi32)
+      rogue_USHR(b, dst, src, rogue_ref_imm(16));
+   else
+      rogue_IAND(b, dst, src, rogue_ref_imm(0x0000ffff));
+}
+
 #define OM(op_mod) ROGUE_ALU_OP_MOD_##op_mod
 static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
 {
@@ -1910,6 +2070,9 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
    case nir_op_iabs:
       return trans_nir_alu_iabs(b, alu);
 
+   case nir_op_i2i32:
+      return trans_nir_alu_i2i32(b, alu);
+
    case nir_op_i2i64:
       return trans_nir_alu_i2i64(b, alu);
 
@@ -2017,6 +2180,12 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
 
    case nir_op_pack_64_2x32_split:
       return trans_nir_pack_64_2x32_split(b, alu);
+
+   case nir_op_unpack_32_2x16_split_x:
+      return trans_nir_unpack_32_2x16_split(b, alu, false);
+
+   case nir_op_unpack_32_2x16_split_y:
+      return trans_nir_unpack_32_2x16_split(b, alu, true);
 
    default:
       break;

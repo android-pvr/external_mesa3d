@@ -284,6 +284,80 @@ static inline bool rogue_lower_MOV(rogue_builder *b, rogue_alu_instr *mov)
    return true;
 }
 
+static inline bool rogue_lower_IADD16(rogue_builder *b, rogue_alu_instr *iadd16)
+{
+   rogue_alu_instr *add16 = rogue_ADD16(b,
+                                        rogue_ref_io(ROGUE_IO_FT0),
+                                        iadd16->src[0].ref,
+                                        iadd16->src[1].ref);
+
+   /* Propagate op/source mods. */
+   add16->mod = iadd16->mod;
+   add16->src[0].mod = iadd16->src[0].mod;
+   add16->src[1].mod = iadd16->src[1].mod;
+
+   /* Operate on lower 16 bits by default. */
+   rogue_set_alu_src_mod(add16, 0, ROGUE_ALU_SRC_MOD_E0);
+   rogue_set_alu_src_mod(add16, 1, ROGUE_ALU_SRC_MOD_E0);
+
+   rogue_set_instr_group_next(&add16->instr, true);
+   rogue_merge_instr_comment(&add16->instr, &iadd16->instr, "iadd16");
+
+   /* Copy over lower 16 bits of result, set upper 16 bits to zero. */
+   rogue_alu_instr *movc = rogue_MOVC(b,
+                                      iadd16->dst[0].ref,
+                                      rogue_none(),
+                                      rogue_none(),
+                                      rogue_ref_io(ROGUE_IO_FT0),
+                                      rogue_ref_imm(0),
+                                      rogue_none(),
+                                      rogue_none());
+   rogue_set_alu_dst_mod(movc, 0, ROGUE_ALU_DST_MOD_E0);
+   rogue_set_alu_dst_mod(movc, 0, ROGUE_ALU_DST_MOD_E1);
+   rogue_add_instr_comment(&movc->instr, "iadd16 (mask)");
+
+   rogue_instr_delete(&iadd16->instr);
+
+   return true;
+}
+
+static inline bool rogue_lower_IMUL16(rogue_builder *b, rogue_alu_instr *imul16)
+{
+   rogue_alu_instr *mul16 = rogue_MUL16(b,
+                                        rogue_ref_io(ROGUE_IO_FT0),
+                                        imul16->src[0].ref,
+                                        imul16->src[1].ref);
+
+   /* Propagate op/source mods. */
+   mul16->mod = imul16->mod;
+   mul16->src[0].mod = imul16->src[0].mod;
+   mul16->src[1].mod = imul16->src[1].mod;
+
+   /* Operate on lower 16 bits by default. */
+   rogue_set_alu_src_mod(mul16, 0, ROGUE_ALU_SRC_MOD_E0);
+   rogue_set_alu_src_mod(mul16, 1, ROGUE_ALU_SRC_MOD_E0);
+
+   rogue_set_instr_group_next(&mul16->instr, true);
+   rogue_merge_instr_comment(&mul16->instr, &imul16->instr, "imul16");
+
+   /* Copy over lower 16 bits of result, set upper 16 bits to zero. */
+   rogue_alu_instr *movc = rogue_MOVC(b,
+                                      imul16->dst[0].ref,
+                                      rogue_none(),
+                                      rogue_none(),
+                                      rogue_ref_io(ROGUE_IO_FT0),
+                                      rogue_ref_imm(0),
+                                      rogue_none(),
+                                      rogue_none());
+   rogue_set_alu_dst_mod(movc, 0, ROGUE_ALU_DST_MOD_E0);
+   rogue_set_alu_dst_mod(movc, 0, ROGUE_ALU_DST_MOD_E1);
+   rogue_add_instr_comment(&movc->instr, "imul16 (mask)");
+
+   rogue_instr_delete(&imul16->instr);
+
+   return true;
+}
+
 static inline bool rogue_lower_IADD32(rogue_builder *b, rogue_alu_instr *iadd32)
 {
    rogue_alu_instr *add64_32 = rogue_ADD64_32(b,
@@ -415,6 +489,53 @@ static inline bool rogue_lower_MUL_HILO(rogue_builder *b,
    return true;
 }
 
+static inline bool rogue_lower_INEGABS16(rogue_builder *b,
+                                         rogue_alu_instr *alu,
+                                         bool neg,
+                                         bool abs)
+{
+   assert(neg || abs);
+
+   rogue_alu_instr *add16 = rogue_ADD16(b,
+                                        rogue_ref_io(ROGUE_IO_FT0),
+                                        alu->src[0].ref,
+                                        rogue_ref_imm(0));
+
+   rogue_set_alu_op_mod(add16, ROGUE_ALU_OP_MOD_S);
+
+   /* Operate on lower 16 bits by default. */
+   rogue_set_alu_src_mod(add16, 0, ROGUE_ALU_SRC_MOD_E0);
+   rogue_set_alu_src_mod(add16, 1, ROGUE_ALU_SRC_MOD_E0);
+
+   if (neg)
+      rogue_set_alu_src_mod(add16, 0, ROGUE_ALU_SRC_MOD_NEG);
+
+   if (abs)
+      rogue_set_alu_src_mod(add16, 0, ROGUE_ALU_SRC_MOD_ABS);
+
+   rogue_set_instr_group_next(&add16->instr, true);
+   rogue_merge_instr_commentf(&add16->instr,
+                              &alu->instr,
+                              "i%s16",
+                              rogue_neg_abs_str(neg, abs));
+
+   /* Copy over lower 16 bits of result, set upper 16 bits to zero. */
+   rogue_alu_instr *movc = rogue_MOVC(b,
+                                      alu->dst[0].ref,
+                                      rogue_none(),
+                                      rogue_none(),
+                                      rogue_ref_io(ROGUE_IO_FT0),
+                                      rogue_ref_imm(0),
+                                      rogue_none(),
+                                      rogue_none());
+   rogue_set_alu_dst_mod(movc, 0, ROGUE_ALU_DST_MOD_E0);
+   rogue_set_alu_dst_mod(movc, 0, ROGUE_ALU_DST_MOD_E1);
+
+   rogue_instr_delete(&alu->instr);
+
+   return true;
+}
+
 static inline bool rogue_lower_INEGABS32(rogue_builder *b,
                                          rogue_alu_instr *alu,
                                          bool neg,
@@ -510,11 +631,17 @@ static inline bool rogue_lower_alu_instr(rogue_builder *b, rogue_alu_instr *alu)
    case ROGUE_ALU_OP_FFLR:
       return rogue_lower_FFLR(b, alu);
 
+   case ROGUE_ALU_OP_IADD16:
+      return rogue_lower_IADD16(b, alu);
+
    case ROGUE_ALU_OP_IADD32:
       return rogue_lower_IADD32(b, alu);
 
    case ROGUE_ALU_OP_IADD64:
       return rogue_lower_IADD64(b, alu);
+
+   case ROGUE_ALU_OP_IMUL16:
+      return rogue_lower_IMUL16(b, alu);
 
    case ROGUE_ALU_OP_IMUL32:
       return rogue_lower_IMUL32(b, alu);
@@ -534,11 +661,17 @@ static inline bool rogue_lower_alu_instr(rogue_builder *b, rogue_alu_instr *alu)
    case ROGUE_ALU_OP_IMUL_LOW:
       return rogue_lower_MUL_HILO(b, alu, false, true);
 
+   case ROGUE_ALU_OP_INEG16:
+      return rogue_lower_INEGABS16(b, alu, true, false);
+
    case ROGUE_ALU_OP_INEG32:
       return rogue_lower_INEGABS32(b, alu, true, false);
 
    case ROGUE_ALU_OP_INEG64:
       return rogue_lower_INEGABS64(b, alu, true, false);
+
+   case ROGUE_ALU_OP_IABS16:
+      return rogue_lower_INEGABS16(b, alu, false, true);
 
    case ROGUE_ALU_OP_IABS32:
       return rogue_lower_INEGABS32(b, alu, false, true);
@@ -820,6 +953,28 @@ static inline bool rogue_lower_IFTB(rogue_builder *b, rogue_bitwise_instr *iftb)
    return true;
 }
 
+static inline bool rogue_lower_ISXT(rogue_builder *b, rogue_bitwise_instr *isxt)
+{
+   rogue_bitwise_instr *byp0b = rogue_BYP0B(b,
+                                            rogue_ref_io(ROGUE_IO_FT0),
+                                            rogue_ref_io(ROGUE_IO_FT1),
+                                            isxt->src[1].ref, /* Sign bit
+                                                                 position. */
+                                            isxt->src[0].ref); /* Source. */
+   rogue_set_instr_group_next(&byp0b->instr, true);
+
+   rogue_bitwise_instr *asr = rogue_ASR(b,
+                                        isxt->dst[0].ref,
+                                        rogue_ref_io(ROGUE_IO_FT4),
+                                        isxt->src[2].ref); /* Shift amount. */
+   rogue_set_bitwise_op_mod(asr, ROGUE_BITWISE_OP_MOD_MTB);
+   rogue_merge_instr_comment(&asr->instr, &isxt->instr, "isxt");
+
+   rogue_instr_delete(&isxt->instr);
+
+   return true;
+}
+
 static inline bool rogue_lower_bitwise_instr(rogue_builder *b,
                                              rogue_bitwise_instr *bitwise)
 {
@@ -857,6 +1012,9 @@ static inline bool rogue_lower_bitwise_instr(rogue_builder *b,
 
    case ROGUE_BITWISE_OP_IFTB:
       return rogue_lower_IFTB(b, bitwise);
+
+   case ROGUE_BITWISE_OP_ISXT:
+      return rogue_lower_ISXT(b, bitwise);
 
    default:
       break;

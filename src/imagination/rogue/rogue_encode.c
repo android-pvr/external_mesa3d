@@ -675,13 +675,79 @@ static void rogue_encode_alu_instr(const rogue_alu_instr *alu,
 
       instr_encoding->alu.sngl.pck.upck.format = rogue_pck_fmt(alu->op);
       break;
-      switch (alu->op) {
-         break;
 
+   case ROGUE_ALU_OP_ADD16:
+   case ROGUE_ALU_OP_MUL16:
+      instr_encoding->alu.op = ALUOP_INT8_16;
+
+      switch (alu->op) {
+      case ROGUE_ALU_OP_ADD16:
+      case ROGUE_ALU_OP_MUL16:
+         instr_encoding->alu.int8_16.f = F_16_BIT;
          break;
 
       default:
          unreachable("Unsupported alu op.");
+      }
+
+      instr_encoding->alu.int8_16.s = rogue_alu_op_mod_is_set(alu, OM(S));
+
+      switch (alu->op) {
+      case ROGUE_ALU_OP_ADD16:
+         instr_encoding->alu.int8_16.int8_16_op = INT8_16_OP_ADD;
+         break;
+
+      case ROGUE_ALU_OP_MUL16:
+         instr_encoding->alu.int8_16.int8_16_op = INT8_16_OP_MUL;
+         break;
+
+      default:
+         unreachable("Unsupported alu op.");
+      }
+
+      if (instr_size > 1) {
+         instr_encoding->alu.int8_16.ext = 1;
+
+         instr_encoding->alu.int8_16.sat =
+            rogue_alu_op_mod_is_set(alu, OM(SAT));
+
+         instr_encoding->alu.int8_16.s0abs =
+            rogue_alu_src_mod_is_set(alu, 0, SM(ABS));
+         instr_encoding->alu.int8_16.s0neg =
+            rogue_alu_src_mod_is_set(alu, 0, SM(NEG));
+         instr_encoding->alu.int8_16.s1abs =
+            rogue_alu_src_mod_is_set(alu, 1, SM(ABS));
+         instr_encoding->alu.int8_16.s2abs =
+            rogue_alu_src_mod_is_set(alu, 2, SM(ABS));
+         instr_encoding->alu.int8_16.s2neg =
+            rogue_alu_src_mod_is_set(alu, 2, SM(NEG));
+
+         /* TODO */
+         /* instr_encoding->alu.int8_16.s2ch = ; */
+
+         if (instr_size > 2) {
+            if (rogue_alu_src_mod_is_set(alu, 0, SM(E0)))
+               instr_encoding->alu.int8_16.s0ch = S0CH_E0;
+            else if (rogue_alu_src_mod_is_set(alu, 0, SM(E1)))
+               instr_encoding->alu.int8_16.s0ch = S0CH_E1;
+            else if (rogue_alu_src_mod_is_set(alu, 0, SM(E2)))
+               instr_encoding->alu.int8_16.s0ch = S0CH_E2;
+            else if (rogue_alu_src_mod_is_set(alu, 0, SM(E3)))
+               instr_encoding->alu.int8_16.s0ch = S0CH_E3;
+            else
+               unreachable("No S0 channel selectors set.");
+
+            if (rogue_alu_src_mod_is_set(alu, 1, SM(E0)))
+               instr_encoding->alu.int8_16.s1ch = S0CH_E0;
+            else if (rogue_alu_src_mod_is_set(alu, 1, SM(E1)))
+               instr_encoding->alu.int8_16.s1ch = S0CH_E1;
+            else if (rogue_alu_src_mod_is_set(alu, 1, SM(E2)))
+               instr_encoding->alu.int8_16.s1ch = S0CH_E2;
+            else if (rogue_alu_src_mod_is_set(alu, 1, SM(E3)))
+               instr_encoding->alu.int8_16.s1ch = S0CH_E3;
+            else
+               unreachable("No S1 channel selectors set.");
+         }
       }
 
       break;

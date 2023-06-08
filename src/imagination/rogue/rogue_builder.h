@@ -294,6 +294,13 @@ static inline rogue_block *rogue_push_nir_block(rogue_builder *b,
                                    rogue_ref src0,   \
                                    rogue_ref src1);
 
+#define ROGUE_BUILDER_DEFINE_BITWISE13(op)           \
+   rogue_bitwise_instr *rogue_##op(rogue_builder *b, \
+                                   rogue_ref dst0,   \
+                                   rogue_ref src0,   \
+                                   rogue_ref src1,   \
+                                   rogue_ref src2);
+
 #define ROGUE_BUILDER_DEFINE_BITWISE14(op)           \
    rogue_bitwise_instr *rogue_##op(rogue_builder *b, \
                                    rogue_ref dst0,   \

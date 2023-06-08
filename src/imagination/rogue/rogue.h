@@ -1376,6 +1376,9 @@ enum rogue_alu_op {
    ROGUE_ALU_OP_FMUL,
    ROGUE_ALU_OP_FMAD,
 
+   ROGUE_ALU_OP_ADD16,
+   ROGUE_ALU_OP_MUL16,
+
    ROGUE_ALU_OP_ADD64,
 
    ROGUE_ALU_OP_ADD64_32,
@@ -1425,6 +1428,9 @@ enum rogue_alu_op {
    ROGUE_ALU_OP_FNABS,
    ROGUE_ALU_OP_FFLR,
 
+   ROGUE_ALU_OP_IADD16,
+   ROGUE_ALU_OP_IMUL16,
+
    ROGUE_ALU_OP_IADD32,
    ROGUE_ALU_OP_IADD64,
 
@@ -1437,9 +1443,11 @@ enum rogue_alu_op {
    ROGUE_ALU_OP_IMUL_HIGH,
    ROGUE_ALU_OP_IMUL_LOW,
 
+   ROGUE_ALU_OP_INEG16,
    ROGUE_ALU_OP_INEG32,
    ROGUE_ALU_OP_INEG64,
 
+   ROGUE_ALU_OP_IABS16,
    ROGUE_ALU_OP_IABS32,
    ROGUE_ALU_OP_IABS64,
 
@@ -2029,6 +2037,12 @@ enum rogue_bitwise_op {
    ROGUE_BITWISE_OP_IREV,
    ROGUE_BITWISE_OP_ICBS,
    ROGUE_BITWISE_OP_IFTB,
+
+   /* Sign extension
+    * out = ISXT in, sb, shift
+    * out = (signed)(val << (31 - sb)) >> (31 + shift - sb)
+    */
+   ROGUE_BITWISE_OP_ISXT,
 
    ROGUE_BITWISE_OP_COUNT,
 };

@@ -766,6 +766,65 @@ enum int32_64_op {
    INT32_64_OP_MADD32 = 0b10,
    INT32_64_OP_MADD64 = 0b11,
 };
+
+typedef struct rogue_alu_int8_16_encoding {
+   /* Byte 0 */
+   struct {
+      unsigned f : 1;
+      unsigned s : 1;
+      unsigned int8_16_op : 2;
+      unsigned ext : 1;
+      unsigned : 3;
+   } PACKED;
+
+   /* Byte 1 */
+   struct {
+      unsigned sat : 1;
+      unsigned s0abs : 1;
+      unsigned s0neg : 1;
+      unsigned s1abs : 1;
+      unsigned s2abs : 1;
+      unsigned s2neg : 1;
+      unsigned : 1;
+      unsigned s2ch : 1;
+   } PACKED;
+
+   /* Byte 2 */
+   struct {
+      unsigned s0ch : 2;
+      unsigned s1ch : 2;
+      unsigned : 4;
+   } PACKED;
+} PACKED rogue_alu_int8_16_encoding;
+static_assert(sizeof(rogue_alu_int8_16_encoding) == 3,
+              "sizeof(rogue_alu_int8_16_encoding) != 3");
+
+enum f {
+   F_8_BIT = 0b0,
+   F_16_BIT = 0b1,
+};
+
+enum int8_16_op {
+   INT8_16_OP_ADD = 0b00,
+   INT8_16_OP_MUL = 0b01,
+   INT8_16_OP_MAD_0_1 = 0b10,
+   INT8_16_OP_MAD_2_3 = 0b11,
+};
+
+enum s0ch {
+   S0CH_E0 = 0b00,
+   S0CH_E1 = 0b01,
+   S0CH_E2 = 0b10,
+   S0CH_E3 = 0b11,
+};
+
+enum s1ch {
+   S1CH_E0 = 0b00,
+   S1CH_E1 = 0b01,
+   S1CH_E2 = 0b10,
+   S1CH_E3 = 0b11,
+};
+
 typedef struct rogue_alu_instr_encoding {
    union {
       /* Byte 0 */
@@ -781,10 +840,11 @@ typedef struct rogue_alu_instr_encoding {
       rogue_alu_tst_encoding tst;
       rogue_alu_movc_encoding movc;
       rogue_alu_int32_64_encoding int32_64;
+      rogue_alu_int8_16_encoding int8_16;
    } PACKED;
 } PACKED rogue_alu_instr_encoding;
-static_assert(sizeof(rogue_alu_instr_encoding) == 2,
-              "sizeof(rogue_alu_instr_encoding) != 2");
+static_assert(sizeof(rogue_alu_instr_encoding) == 3,
+              "sizeof(rogue_alu_instr_encoding) != 3");
 
 enum aluop {
    ALUOP_FADD = 0b000, /** Phase 0, 1. */
