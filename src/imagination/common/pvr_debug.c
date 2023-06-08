@@ -38,6 +38,8 @@ static const struct debug_named_value debug_control[] = {
      "Zero all buffer objects at allocation to make them deterministic." },
    { "vk_desc", PVR_DEBUG_VK_DUMP_DESCRIPTOR_SET_LAYOUT,
      "Dump descriptor set and pipeline layouts." },
+   { "loadop_nir", PVR_DEBUG_LOADOP_NIR,
+	 "Use NIR generated load op shaders instead of directly using Rogue IR." },
    DEBUG_NAMED_VALUE_END
 };
 /* clang-format on */
