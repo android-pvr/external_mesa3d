@@ -1355,7 +1355,6 @@ static void rogue_encode_bitwise_instr(const rogue_bitwise_instr *bitwise,
 
    case ROGUE_BITWISE_OP_BYP0B: {
       instr_encoding->bitwise.phase0 = 1;
-      instr_encoding->bitwise.ph0.shft = SHFT1_BYP;
 
       rogue_imm32 imm32;
       if (rogue_ref_is_val(&bitwise->src[1].ref))
@@ -1387,12 +1386,10 @@ static void rogue_encode_bitwise_instr(const rogue_bitwise_instr *bitwise,
          break;
 
       case ROGUE_BITWISE_OP_CBS:
-         instr_encoding->bitwise.ph0.cnt_byp = 0;
          instr_encoding->bitwise.ph0.cnt = CNT_CBS;
          break;
 
       case ROGUE_BITWISE_OP_FTB:
-         instr_encoding->bitwise.ph0.cnt_byp = 0;
          instr_encoding->bitwise.ph0.cnt = CNT_FTB;
          break;
 
@@ -1419,10 +1416,69 @@ static void rogue_encode_bitwise_instr(const rogue_bitwise_instr *bitwise,
 }
 #undef OM
 
+static void
+rogue_encode_bitwise_instr_group_instrs(rogue_instr_group *group,
+                                        struct util_dynarray *binary)
+{
+   rogue_instr_encoding instr_encodings[3] = { 0 };
+
+   rogue_foreach_phase_in_set_rev (p, group->header.phases) {
+      const rogue_instr *instr = group->instrs[p];
+      rogue_instr_encoding *instr_encoding;
+      unsigned instr_size;
+
+      switch (p) {
+      case ROGUE_INSTR_PHASE_0_BITMASK:
+      case ROGUE_INSTR_PHASE_0_SHIFT1:
+      case ROGUE_INSTR_PHASE_0_COUNT:
+         instr_encoding = &instr_encodings[0];
+         instr_size = group->size.instrs[ROGUE_INSTR_PHASE_0_BITMASK];
+         break;
+
+      case ROGUE_INSTR_PHASE_1_LOGICAL:
+         instr_encoding = &instr_encodings[1];
+         instr_size = group->size.instrs[ROGUE_INSTR_PHASE_1_LOGICAL];
+         break;
+
+      case ROGUE_INSTR_PHASE_2_SHIFT2:
+      case ROGUE_INSTR_PHASE_2_TEST:
+         instr_encoding = &instr_encodings[2];
+         instr_size = group->size.instrs[ROGUE_INSTR_PHASE_2_SHIFT2];
+         break;
+
+      default:
+         unreachable();
+      }
+
+      rogue_encode_bitwise_instr(rogue_instr_as_bitwise(instr),
+                                 instr_size,
+                                 instr_encoding);
+   }
+
+   if (group->size.instrs[ROGUE_INSTR_PHASE_2_SHIFT2])
+      util_dynarray_append_mem(binary,
+                               group->size.instrs[ROGUE_INSTR_PHASE_2_SHIFT2],
+                               &instr_encodings[2]);
+
+   if (group->size.instrs[ROGUE_INSTR_PHASE_1_LOGICAL])
+      util_dynarray_append_mem(binary,
+                               group->size.instrs[ROGUE_INSTR_PHASE_1_LOGICAL],
+                               &instr_encodings[1]);
+
+   if (group->size.instrs[ROGUE_INSTR_PHASE_0_BITMASK])
+      util_dynarray_append_mem(binary,
+                               group->size.instrs[ROGUE_INSTR_PHASE_0_BITMASK],
+                               &instr_encodings[0]);
+}
+
 static void rogue_encode_instr_group_instrs(rogue_instr_group *group,
                                             struct util_dynarray *binary)
 {
    rogue_instr_encoding instr_encoding;
+
+   /* Bitwise instructions are handled separately. */
+   if (group->header.alu == ROGUE_ALU_BITWISE)
+      return rogue_encode_bitwise_instr_group_instrs(group, binary);
 
    /* Reverse order for encoding. */
    rogue_foreach_phase_in_set_rev (p, group->header.phases) {

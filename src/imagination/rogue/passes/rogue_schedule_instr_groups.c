@@ -230,9 +230,6 @@ static inline bool rogue_alloc_io_sel(rogue_instr_group *group,
                   return false;
                }
 
-               /* For the bitwise ALU, we currently only support a subset of
-                * outputs/feedthroughs. */
-               /* TODO: Support the rest. */
                case ROGUE_ALU_BITWISE: {
                   enum rogue_io orig_io = io;
                   enum rogue_io dst_io;
@@ -1038,48 +1035,59 @@ static void rogue_calc_ctrl_instrs_size(rogue_instr_group *group,
    }
 }
 
-static void rogue_calc_bitwise_instrs_size(rogue_instr_group *group,
-                                           rogue_bitwise_instr *bitwise,
-                                           enum rogue_instr_phase phase)
+static void rogue_calc_bitwise_instrs_size(rogue_instr_group *group)
 {
-   switch (bitwise->op) {
-   case ROGUE_BITWISE_OP_BYP0C:
-   case ROGUE_BITWISE_OP_BYP0S:
-   case ROGUE_BITWISE_OP_BYP1L:
-   case ROGUE_BITWISE_OP_LSL0:
-   case ROGUE_BITWISE_OP_LSL2:
-   case ROGUE_BITWISE_OP_SHR:
-   case ROGUE_BITWISE_OP_ASR:
-   case ROGUE_BITWISE_OP_AND:
-   case ROGUE_BITWISE_OP_OR:
-   case ROGUE_BITWISE_OP_XOR:
-   case ROGUE_BITWISE_OP_REV:
-   case ROGUE_BITWISE_OP_CBS:
-   case ROGUE_BITWISE_OP_FTB:
-   case ROGUE_BITWISE_OP_TZ:
-   case ROGUE_BITWISE_OP_TNZ:
-      group->size.instrs[phase] = 1;
-      break;
+   /* Each bitwise "sub-phase" is actually encoded in the same instruction word.
+    * Because of this, the sizes/encodings are only ever stored/referenced in
+    * the first sub-phase.
+    */
 
-   case ROGUE_BITWISE_OP_BYP0B:
-      group->size.instrs[phase] = 1;
+   /* Phase 2. */
+   if (rogue_phase_occupied(ROGUE_INSTR_PHASE_2_TEST, group->header.phases))
+      group->size.instrs[ROGUE_INSTR_PHASE_2_SHIFT2] = 1;
 
-      if (rogue_ref_is_val(&bitwise->src[1].ref)) {
-         group->size.instrs[phase] = 3;
+   if (rogue_phase_occupied(ROGUE_INSTR_PHASE_2_SHIFT2, group->header.phases))
+      group->size.instrs[ROGUE_INSTR_PHASE_2_SHIFT2] = 1;
 
-         /* If upper 16 bits aren't zero. */
-         if (rogue_ref_get_val(&bitwise->src[1].ref) & 0xffff0000)
-            group->size.instrs[phase] = 5;
+   /* Phase 1. */
+   if (rogue_phase_occupied(ROGUE_INSTR_PHASE_1_LOGICAL, group->header.phases))
+      group->size.instrs[ROGUE_INSTR_PHASE_1_LOGICAL] = 1;
+
+   /* Phase 0. */
+   if (rogue_phase_occupied(ROGUE_INSTR_PHASE_0_COUNT, group->header.phases))
+      group->size.instrs[ROGUE_INSTR_PHASE_0_BITMASK] = 1;
+
+   if (rogue_phase_occupied(ROGUE_INSTR_PHASE_0_SHIFT1, group->header.phases))
+      group->size.instrs[ROGUE_INSTR_PHASE_0_BITMASK] = 1;
+
+   if (rogue_phase_occupied(ROGUE_INSTR_PHASE_0_BITMASK,
+                            group->header.phases)) {
+      group->size.instrs[ROGUE_INSTR_PHASE_0_BITMASK] = 1;
+
+      rogue_bitwise_instr *bitwise =
+         rogue_instr_as_bitwise(group->instrs[ROGUE_INSTR_PHASE_0_BITMASK]);
+      if (bitwise->op == ROGUE_BITWISE_OP_BYP0B) {
+         if (rogue_ref_is_val(&bitwise->src[1].ref)) {
+            group->size.instrs[ROGUE_INSTR_PHASE_0_BITMASK] = 3;
+
+            /* If upper 16 bits aren't zero. */
+            if (rogue_ref_get_val(&bitwise->src[1].ref) & 0xffff0000)
+               group->size.instrs[ROGUE_INSTR_PHASE_0_BITMASK] = 5;
+         }
       }
-      break;
-
-   default:
-      unreachable("Invalid bitwise op.");
    }
+
+   group->size.total += group->size.instrs[ROGUE_INSTR_PHASE_2_SHIFT2] +
+                        group->size.instrs[ROGUE_INSTR_PHASE_1_LOGICAL] +
+                        group->size.instrs[ROGUE_INSTR_PHASE_0_BITMASK];
 }
 
 static void rogue_calc_instrs_size(rogue_instr_group *group)
 {
+   /* Bitwise instructions are handled separately. */
+   if (group->header.alu == ROGUE_ALU_BITWISE)
+      return rogue_calc_bitwise_instrs_size(group);
+
    rogue_foreach_phase_in_set (p, group->header.phases) {
       const rogue_instr *instr = group->instrs[p];
 
@@ -1096,12 +1104,6 @@ static void rogue_calc_instrs_size(rogue_instr_group *group)
 
       case ROGUE_INSTR_TYPE_CTRL:
          rogue_calc_ctrl_instrs_size(group, rogue_instr_as_ctrl(instr), p);
-         break;
-
-      case ROGUE_INSTR_TYPE_BITWISE:
-         rogue_calc_bitwise_instrs_size(group,
-                                        rogue_instr_as_bitwise(instr),
-                                        p);
          break;
 
       default:
