@@ -40,8 +40,22 @@
 static const struct spirv_to_nir_options spirv_options = {
    .environment = NIR_SPIRV_VULKAN,
 
+   /* TODO: set these from the driver. */
+   .caps = {
+      .int16 = true,
+      .int64 = true,
+      .int8 = true,
+      .storage_16bit = true,
+      .storage_8bit = true,
+   },
+
    .ubo_addr_format = nir_address_format_64bit_global,
+   .phys_ssbo_addr_format = nir_address_format_64bit_global,
    .ssbo_addr_format = nir_address_format_64bit_global,
+   /* TODO:
+    * nir_address_format_64bit_bounded_global if robust
+    * nir_address_format_64bit_global_32bit_offset otherwise
+    */
    .push_const_addr_format = nir_address_format_32bit_offset,
 };
 
@@ -335,7 +349,7 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
       .allow_fp16 = false,
    };
 
-   NIR_PASS_V(nir, nir_opt_idiv_const, 32);
+   NIR_PASS_V(nir, nir_opt_idiv_const, 8);
    NIR_PASS_V(nir, nir_lower_idiv, &idiv_options);
    NIR_PASS_V(nir, nir_lower_frexp);
    NIR_PASS_V(nir, nir_lower_alu_to_scalar, NULL, NULL);
