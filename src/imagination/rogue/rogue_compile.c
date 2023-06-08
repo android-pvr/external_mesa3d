@@ -612,6 +612,8 @@ rogue_nir_emit_texture_sample(rogue_builder *b,
       break;
    case GLSL_SAMPLER_DIM_2D:
    case GLSL_SAMPLER_DIM_MS:
+   case GLSL_SAMPLER_DIM_SUBPASS:
+   case GLSL_SAMPLER_DIM_SUBPASS_MS:
       coord_components = 2;
       break;
    case GLSL_SAMPLER_DIM_CUBE:

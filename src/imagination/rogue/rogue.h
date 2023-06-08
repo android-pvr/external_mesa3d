@@ -4065,6 +4065,9 @@ bool rogue_nir_lower_atomics(nir_shader *shader,
 
 bool rogue_nir_lower_fquantize2f16(nir_shader *shader);
 
+bool rogue_nir_lower_input_attachments(nir_shader *shader,
+                                       rogue_build_ctx *ctx);
+
 bool rogue_nir_lower_tex(nir_shader *shader, rogue_build_ctx *ctx);
 
 bool rogue_nir_lower_io(nir_shader *shader, rogue_build_ctx *ctx, bool late);

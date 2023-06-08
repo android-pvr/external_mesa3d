@@ -371,3 +371,118 @@ bool rogue_nir_lower_tex(nir_shader *shader, rogue_build_ctx *ctx)
 
    return progress;
 }
+
+static bool
+lower_input_attachments(nir_builder *b, nir_instr *instr, void *data)
+{
+   if (instr->type != nir_instr_type_intrinsic)
+      return false;
+
+   nir_intrinsic_instr *load = nir_instr_as_intrinsic(instr);
+   if (load->intrinsic != nir_intrinsic_image_deref_load)
+      return false;
+
+   nir_deref_instr *deref = nir_src_as_deref(load->src[0]);
+   assert(glsl_type_is_image(deref->type));
+
+   enum glsl_sampler_dim image_dim = glsl_get_sampler_dim(deref->type);
+   if (image_dim != GLSL_SAMPLER_DIM_SUBPASS &&
+       image_dim != GLSL_SAMPLER_DIM_SUBPASS_MS)
+      return false;
+
+   nir_ssa_def *index_ssa = NULL;
+   unsigned index_imm = 0;
+   if (deref->deref_type == nir_deref_type_array) {
+      assert(deref->arr.index.is_ssa);
+      if (nir_src_is_const(deref->arr.index))
+         index_imm = nir_src_as_uint(deref->arr.index);
+      else
+         index_ssa = deref->arr.index.ssa;
+
+      deref = nir_deref_instr_parent(deref);
+   }
+
+   assert(deref->deref_type == nir_deref_type_var);
+   nir_variable *var = deref->var;
+   unsigned base = var->data.index;
+
+   rogue_build_ctx *ctx = data;
+   struct rogue_fs_build_data *fs_data = &ctx->stage_data.fs;
+
+   if (index_ssa) {
+      unsigned array_len = MAX2(1, glsl_array_size(var->type));
+      bool has_resident_input = false;
+      for (unsigned i = 0; i < array_len; i++) {
+         assert(base + i < fs_data->num_inputs);
+         if (fs_data->inputs[base + i].type !=
+             PVR_RENDERPASS_HWSETUP_INPUT_ACCESS_OFFCHIP) {
+            has_resident_input = true;
+            break;
+         }
+      }
+      if (!has_resident_input)
+         return false;
+   } else if (fs_data->inputs[base + index_imm].type ==
+              PVR_RENDERPASS_HWSETUP_INPUT_ACCESS_OFFCHIP) {
+      return false;
+   }
+
+   b->cursor = nir_before_instr(instr);
+
+   /* TODO: if ladder for the dynamic index case */
+   assert(!index_ssa);
+
+   assert(load->dest.is_ssa);
+
+   unsigned rt_idx = fs_data->inputs[base + index_imm].on_chip_rt;
+   nir_ssa_def *res =
+      nir_load_output(b,
+                      load->dest.ssa.num_components,
+                      load->dest.ssa.bit_size,
+                      nir_imm_int(b, 0),
+                      .base = 0,
+                      .dest_type = nir_intrinsic_dest_type(load),
+                      .io_semantics.location = FRAG_RESULT_DATA0 + rt_idx,
+                      .io_semantics.num_slots = 1,
+                      .io_semantics.fb_fetch_output = true);
+
+   b->shader->info.outputs_read |= BITFIELD64_BIT(FRAG_RESULT_DATA0 + rt_idx);
+   b->shader->info.fs.uses_fbfetch_output = true;
+
+   nir_ssa_def_rewrite_uses(&load->dest.ssa, res);
+
+   return true;
+}
+
+/**
+ * \brief Convert input attachments resident in tile buffer to tlb color reads
+ */
+PUBLIC
+bool rogue_nir_lower_input_attachments(nir_shader *shader, rogue_build_ctx *ctx)
+{
+   assert(shader->info.stage == MESA_SHADER_FRAGMENT);
+
+   bool progress = false;
+
+   NIR_PASS(progress, shader, nir_opt_dce);
+   NIR_PASS(progress, shader, nir_opt_deref);
+
+   progress = nir_shader_instructions_pass(shader,
+                                           lower_input_attachments,
+                                           nir_metadata_dominance |
+                                              nir_metadata_block_index,
+                                           ctx);
+
+   if (progress)
+      nir_opt_dce(shader);
+
+   NIR_PASS(progress,
+            shader,
+            nir_lower_input_attachments,
+            &(nir_input_attachment_options){
+               .use_fragcoord_sysval = false,
+               .use_layer_id_sysval = true,
+            });
+
+   return progress;
+}

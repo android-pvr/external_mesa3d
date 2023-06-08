@@ -254,11 +254,7 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
    NIR_PASS_V(nir, nir_split_per_member_structs);
 
    if (nir->info.stage == MESA_SHADER_FRAGMENT)
-      NIR_PASS_V(nir,
-                 nir_lower_input_attachments,
-                 &(nir_input_attachment_options){
-                    .use_fragcoord_sysval = true,
-                 });
+      NIR_PASS_V(nir, rogue_nir_lower_input_attachments, ctx);
 
    NIR_PASS_V(nir,
               nir_remove_dead_variables,
