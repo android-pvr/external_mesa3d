@@ -435,6 +435,80 @@ static void pvr_uscgen_load_op_loads(rogue_builder *b,
    }
 }
 
+static void pvr_uscgen_load_op_loads_nir(nir_builder *b,
+                                         struct pvr_uscgen_load_op_context *ctx,
+                                         struct rogue_build_ctx *rogue_ctx)
+{
+   struct rogue_fs_build_data *fs_data = &rogue_ctx->stage_data.fs;
+
+   const struct usc_mrt_setup *mrt_setup =
+      ctx->load_op->clears_loads_state.mrt_setup;
+
+   const bool msaa = !!(ctx->load_op->clears_loads_state.unresolved_msaa_mask &
+                        ctx->load_op->clears_loads_state.rt_load_mask);
+
+   nir_variable *pos = nir_get_variable_with_location(b->shader,
+                                                      nir_var_shader_in,
+                                                      VARYING_SLOT_POS,
+                                                      glsl_vec4_type());
+   nir_ssa_def *coords =
+      nir_channels(b, nir_load_var(b, pos), nir_component_mask(2));
+   nir_ssa_def *sample_id = msaa ? nir_load_sample_id(b) : NULL;
+
+   if (msaa)
+      ctx->load_op_properties->msaa_mode = ROGUE_MSAA_MODE_FULL;
+
+   u_foreach_bit (rt_idx, ctx->load_op->clears_loads_state.rt_load_mask) {
+      VkFormat fmt = pvr_uscgen_format_for_accum(
+         ctx->load_op->clears_loads_state.dest_vk_format[rt_idx]);
+      struct usc_mrt_resource *mrt_resource = &mrt_setup->mrt_resources[rt_idx];
+      nir_tex_instr *tex;
+
+      fs_data->outputs[rt_idx].accum_format = pvr_get_pbe_accum_format(fmt);
+      fs_data->outputs[rt_idx].mrt_resource = mrt_resource;
+      fs_data->outputs[rt_idx].format = vk_format_to_pipe_format(fmt);
+
+      tex = nir_tex_instr_create(b->shader, !!msaa + 1);
+      tex->src[0].src_type = nir_tex_src_coord;
+      tex->src[0].src = nir_src_for_ssa(coords);
+
+      if (msaa) {
+         tex->src[1].src_type = nir_tex_src_ms_index;
+         tex->src[1].src = nir_src_for_ssa(sample_id);
+      }
+
+      if (vk_format_is_int(fmt))
+         tex->dest_type = nir_type_int32;
+      else if (vk_format_is_uint(fmt))
+         tex->dest_type = nir_type_uint32;
+      else
+         tex->dest_type = nir_type_float32;
+
+      /* TODO: support 3D/2D array layered framebuffers */
+      tex->coord_components = 2;
+      tex->sampler_dim = msaa ? GLSL_SAMPLER_DIM_MS : GLSL_SAMPLER_DIM_2D;
+      tex->texture_index = ctx->next_sh_reg;
+      tex->sampler_index = ctx->next_sh_reg + PVR_IMAGE_DESCRIPTOR_SIZE;
+      ctx->next_sh_reg +=
+         PVR_IMAGE_DESCRIPTOR_SIZE + PVR_SAMPLER_DESCRIPTOR_SIZE;
+
+      nir_ssa_dest_init(&tex->instr, &tex->dest, 4, 32);
+      nir_builder_instr_insert(b, &tex->instr);
+
+      nir_store_output(b,
+                       &tex->dest.ssa,
+                       nir_imm_int(b, 0),
+                       .base = 0,
+                       .src_type = nir_type_uint32,
+                       .write_mask = BITFIELD_MASK(4),
+                       .io_semantics.location = FRAG_RESULT_DATA0 + rt_idx,
+                       .io_semantics.num_slots = 1);
+
+      b->shader->info.outputs_written |=
+         BITFIELD64_BIT(FRAG_RESULT_DATA0 + rt_idx);
+   }
+}
+
 static enum pipe_format clear_format_for_size(unsigned dwords)
 {
    switch (dwords) {
@@ -561,7 +635,8 @@ pvr_uscgen_load_op_nir(struct pvr_device *device,
    if (load_op->clears_loads_state.rt_clear_mask || depth_to_reg)
       pvr_uscgen_load_op_clears_nir(&b, &loadop_ctx, rogue_ctx);
 
-   assert(!load_op->clears_loads_state.rt_load_mask);
+   if (load_op->clears_loads_state.rt_load_mask)
+      pvr_uscgen_load_op_loads_nir(&b, &loadop_ctx, rogue_ctx);
 
    rogue_shader *shader = rogue_nir_compile(rogue_ctx, b.shader);
    rogue_set_shader_name(shader, "NIR load_op");
