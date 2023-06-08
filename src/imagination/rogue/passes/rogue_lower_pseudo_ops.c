@@ -111,6 +111,7 @@ rogue_lower_MINMAX(rogue_builder *b, rogue_alu_instr *alu, bool max)
    mbyp1->src[0].mod = alu->src[1].mod;
    tst2->mod |= alu->mod;
 
+   rogue_merge_instr_comment(&tst2->instr, &alu->instr, max ? "max" : "min");
    rogue_instr_delete(&alu->instr);
 
    return true;
@@ -147,8 +148,17 @@ static inline bool rogue_lower_CMP(rogue_builder *b, rogue_alu_instr *alu)
               rogue_none());
 
    /* Propagate source modifiers, condition and type. */
-   mbyp0->src[0].mod = alu->src[0].mod;
-   mbyp1->src[0].mod = alu->src[1].mod;
+   mbyp0->src[0].mod = alu->src[0].mod &
+                       (ROGUE_ALU_SRC_MOD_ABS | ROGUE_ALU_SRC_MOD_NEG);
+   mbyp1->src[0].mod = alu->src[1].mod &
+                       (ROGUE_ALU_SRC_MOD_ABS | ROGUE_ALU_SRC_MOD_NEG);
+
+   tst2->src[0].mod = alu->src[0].mod &
+                      (ROGUE_ALU_SRC_MOD_E0 | ROGUE_ALU_SRC_MOD_E1 |
+                       ROGUE_ALU_SRC_MOD_E2 | ROGUE_ALU_SRC_MOD_E3);
+   tst2->src[1].mod = alu->src[1].mod &
+                      (ROGUE_ALU_SRC_MOD_E0 | ROGUE_ALU_SRC_MOD_E1 |
+                       ROGUE_ALU_SRC_MOD_E2 | ROGUE_ALU_SRC_MOD_E3);
    tst2->mod |= alu->mod;
 
    rogue_instr_delete(&alu->instr);
@@ -192,8 +202,14 @@ static inline bool rogue_lower_CSEL(rogue_builder *b, rogue_alu_instr *alu)
    rogue_merge_instr_comment(&movc->instr, &alu->instr, "csel (set)");
 
    /* Propagate source modifiers, condition and type. */
-   mbyp0->src[0].mod = alu->src[0].mod;
-   mbyp1->src[0].mod = alu->src[1].mod;
+   mbyp0->src[0].mod |= alu->src[0].mod &
+                        (ROGUE_ALU_SRC_MOD_ABS | ROGUE_ALU_SRC_MOD_NEG);
+   mbyp1->src[0].mod |= alu->src[1].mod &
+                        (ROGUE_ALU_SRC_MOD_ABS | ROGUE_ALU_SRC_MOD_NEG);
+
+   tst1->src[0].mod |= alu->src[0].mod &
+                       (ROGUE_ALU_SRC_MOD_E0 | ROGUE_ALU_SRC_MOD_E1 |
+                        ROGUE_ALU_SRC_MOD_E2 | ROGUE_ALU_SRC_MOD_E3);
    tst1->mod |= alu->mod;
 
    rogue_instr_delete(&alu->instr);
@@ -915,17 +931,8 @@ static inline bool rogue_lower_IREV(rogue_builder *b, rogue_bitwise_instr *irev)
       rogue_REV(b, rogue_ref_io(ROGUE_IO_FT2), irev->src[0].ref);
    rogue_set_instr_group_next(&rev->instr, true);
 
-   /* TODO: encode same-phase bitwise ops properly then we can use byp0c. */
-#if 0
+   /* TODO: needs shifting to the right if bits < 32. */
    rogue_BYP0C(b, irev->dst[0].ref, rogue_ref_io(ROGUE_IO_FT2));
-#else
-   rogue_OR(b,
-            irev->dst[0].ref,
-            rogue_none(),
-            rogue_ref_io(ROGUE_IO_FT2),
-            rogue_none(),
-            rogue_ref_imm(0));
-#endif
 
    rogue_merge_instr_comment(&rev->instr, &irev->instr, "irev");
    rogue_instr_delete(&irev->instr);

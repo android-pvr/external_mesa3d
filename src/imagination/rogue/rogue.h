@@ -2039,7 +2039,7 @@ enum rogue_bitwise_op {
    ROGUE_BITWISE_OP_ICBS,
    ROGUE_BITWISE_OP_IFTB,
 
-   /* Sign extension
+   /* Sign extension (ASR)
     * out = ISXT in, sb, shift
     * out = (signed)(val << (31 - sb)) >> (31 + shift - sb)
     */

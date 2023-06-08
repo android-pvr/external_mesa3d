@@ -798,16 +798,17 @@ static void trans_nir_tex(rogue_builder *b, nir_tex_instr *tex)
    unreachable("Unsupported NIR tex instruction op.");
 }
 
-static void trans_nir_load_const32(rogue_builder *b,
-                                   nir_load_const_instr *load_const)
+static void trans_nir_load_const_bits(rogue_builder *b,
+                                      nir_load_const_instr *load_const,
+                                      unsigned bit_size)
 {
    unsigned dst_index = load_const->def.index;
    rogue_reg *dst = rogue_ssa_reg(b->shader, dst_index);
 
-   uint32_t imm = nir_const_value_as_uint(load_const->value[0], 32);
+   uint32_t imm = nir_const_value_as_uint(load_const->value[0], bit_size);
 
    rogue_alu_instr *mov = rogue_MOV(b, rogue_ref_reg(dst), rogue_ref_imm(imm));
-   rogue_add_instr_comment(&mov->instr, "load_const_32");
+   rogue_add_instr_commentf(&mov->instr, "load_const_%u", bit_size);
 }
 
 static void trans_nir_load_const64(rogue_builder *b,
@@ -833,8 +834,9 @@ static void trans_nir_load_const(rogue_builder *b,
    unsigned bit_size = load_const->def.bit_size;
 
    switch (bit_size) {
+   case 16:
    case 32:
-      return trans_nir_load_const32(b, load_const);
+      return trans_nir_load_const_bits(b, load_const, bit_size);
 
    case 64:
       return trans_nir_load_const64(b, load_const);
@@ -1116,80 +1118,117 @@ static void trans_nir_intrinsic_load_vulkan_desc_set_table_base_addr_img(
                            "load_vulkan_desc_set_table_base_addr_img.hi32");
 }
 
-static void trans_nir_intrinsic_load_global32(rogue_builder *b,
-                                              nir_intrinsic_instr *intr,
-                                              bool constant)
-{
-   unsigned load_size;
-   rogue_ref dst = nir_intr_dst32(b->shader, intr, &load_size);
-   assert(load_size <= 16); /* TODO: support even larger load sizes. */
-
-   rogue_ref64 src_addr = nir_ssa_intr_src64(b->shader, intr, 0);
-
-   rogue_backend_instr *ld = rogue_LD(b,
-                                      dst,
-                                      rogue_ref_drc(0),
-                                      rogue_ref_val(load_size),
-                                      src_addr.ref64);
-   rogue_add_instr_commentf(&ld->instr,
-                            constant ? "load_global_constant32x%u"
-                                     : "load_global32x%u",
-                            load_size);
-}
-
-static void trans_nir_intrinsic_load_global64(rogue_builder *b,
-                                              nir_intrinsic_instr *intr,
-                                              bool constant)
-{
-   rogue_ref64 dst = nir_ssa_intr_dst64(b->shader, intr);
-   rogue_ref64 src_addr = nir_ssa_intr_src64(b->shader, intr, 0);
-
-   rogue_backend_instr *ld =
-      rogue_LD(b, dst.ref64, rogue_ref_drc(0), rogue_ref_val(2), src_addr.ref64);
-   rogue_add_instr_comment(&ld->instr,
-                           constant ? "load_global_constant64"
-                                    : "load_global64");
-}
-
 static void trans_nir_intrinsic_load_global(rogue_builder *b,
                                             nir_intrinsic_instr *intr,
                                             bool constant)
 {
+   rogue_ref src_addr = intr_src(b->shader, intr, 0, NULL, 64);
+
    unsigned bit_size = nir_dest_bit_size(intr->dest);
 
-   switch (bit_size) {
-   case 32:
-      return trans_nir_intrinsic_load_global32(b, intr, constant);
+   unsigned load_components;
+   rogue_ref dst = intr_dst(b->shader, intr, &load_components, bit_size);
 
+   /* Burst loads only for 32-bit values. */
+   assert((bit_size == 32 && load_components <= 16) ||
+          (bit_size != 32 && load_components == 1));
+
+   unsigned burst_len;
+   switch (bit_size) {
+   case 16:
+      burst_len = 1;
+      break;
+
+   case 32:
+      burst_len = load_components;
+      break;
+
+   /* 64-bit loads are just 2x32-bit loads. */
    case 64:
-      return trans_nir_intrinsic_load_global64(b, intr, constant);
+      burst_len = load_components * 2;
+      break;
 
    default:
-      break;
+      unreachable("Unsupported bit size.");
    }
 
-   unreachable("Unsupported load_global bit size.");
+   /* If we're doing 8/16 bit loads, we need to mask out the rest of the loaded
+    * data that we don't want/need.
+    */
+   /* TODO: macro for getting next free ssa reg. */
+   rogue_ref ld_dst = dst;
+   if (bit_size < 32)
+      ld_dst = rogue_ref_reg(
+         rogue_ssa_reg(b->shader, b->shader->ctx->next_ssa_idx++));
+
+   rogue_backend_instr *ld =
+      rogue_LD(b, ld_dst, rogue_ref_drc(0), rogue_ref_val(burst_len), src_addr);
+
+   /* TODO: cache flags */
+   rogue_add_instr_commentf(&ld->instr,
+                            "load_global%s%ux%u",
+                            constant ? "_constant" : "",
+                            bit_size,
+                            load_components);
+
+   /* Mask out the data. */
+   if (bit_size < 32) {
+      rogue_bitwise_instr *iand =
+         rogue_IAND(b, dst, ld_dst, rogue_ref_imm(BITFIELD_MASK(bit_size)));
+      rogue_add_instr_commentf(&iand->instr, "load_mask_%u", bit_size);
+   }
 }
 
 static void trans_nir_intrinsic_store_global(rogue_builder *b,
                                              nir_intrinsic_instr *intr)
 {
-   rogue_ref64 dst_addr = nir_ssa_intr_src64(b->shader, intr, 1);
+   rogue_ref dst_addr = intr_src(b->shader, intr, 1, NULL, 64);
 
-   unsigned store_size;
-   rogue_ref src = nir_intr_src32(b->shader, intr, 0, &store_size);
-   assert(store_size <= 16);
+   unsigned bit_size = nir_src_bit_size(intr->src[0]);
+
+   unsigned store_components;
+   rogue_ref src = intr_src(b->shader, intr, 0, &store_components, bit_size);
+
+   /* Burst stores only for 32-bit values. */
+   assert((bit_size == 32 && store_components <= 16) ||
+          (bit_size != 32 && store_components == 1));
+
+   unsigned burst_len;
+   unsigned data_size;
+   switch (bit_size) {
+   case 16:
+      burst_len = 1;
+      data_size = 1;
+      break;
+
+   case 32:
+      burst_len = store_components;
+      data_size = 2;
+      break;
+
+   /* 64-bit stores are just 2x32-bit stores. */
+   case 64:
+      burst_len = store_components * 2;
+      data_size = 2;
+      break;
+
+   default:
+      unreachable("Unsupported bit size.");
+   }
 
    rogue_backend_instr *st = rogue_ST(b,
                                       src,
-                                      rogue_ref_val(2),
+                                      rogue_ref_val(data_size),
                                       rogue_ref_drc(0),
-                                      rogue_ref_val(store_size),
-                                      dst_addr.ref64,
+                                      rogue_ref_val(burst_len),
+                                      dst_addr,
                                       rogue_none());
 
    /* TODO: cache flags */
-   rogue_add_instr_comment(&st->instr, "store_global");
+   rogue_add_instr_commentf(&st->instr,
+                            "store_global%ux%u",
+                            bit_size,
+                            store_components);
 }
 
 static void trans_nir_load_push_consts_base_addr_img(rogue_builder *b,
@@ -2064,50 +2103,201 @@ static void trans_nir_alu_fddy(rogue_builder *b, nir_alu_instr *alu, bool fine)
    rogue_apply_alu_src_mods(fdsy, alu, false);
 }
 
-static void trans_nir_alu_minmax(rogue_builder *b,
-                                 nir_alu_instr *alu,
-                                 enum rogue_alu_op_mod type,
-                                 bool max)
+#define OM(op_mod) ROGUE_ALU_OP_MOD_##op_mod
+static void trans_nir_alu_minmax(rogue_builder *b, nir_alu_instr *alu)
 {
+   unsigned bit_size = nir_dest_bit_size(alu->dest.dest);
+
    unsigned dst_components;
-   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
+   rogue_ref dst = alu_dst(b->shader, alu, &dst_components, bit_size);
    assert(dst_components == 1);
 
-   rogue_ref src0 = nir_alu_src32(b->shader, alu, 0, NULL);
-   rogue_ref src1 = nir_alu_src32(b->shader, alu, 1, NULL);
+   rogue_ref src0 = alu_src(b->shader, alu, 0, NULL, bit_size);
+   rogue_ref src1 = alu_src(b->shader, alu, 1, NULL, bit_size);
 
-   rogue_alu_instr *minmax = max ? rogue_MAX(b, dst, src0, src1)
-                                 : rogue_MIN(b, dst, src0, src1);
-   rogue_set_alu_op_mod(minmax, type);
+   rogue_alu_instr *minmax;
+
+   /* Set comparison op. */
+   switch (alu->op) {
+   case nir_op_fmin:
+   case nir_op_imin:
+   case nir_op_umin:
+      minmax = rogue_MIN(b, dst, src0, src1);
+      break;
+
+   case nir_op_fmax:
+   case nir_op_imax:
+   case nir_op_umax:
+      minmax = rogue_MAX(b, dst, src0, src1);
+      break;
+
+   default:
+      unreachable();
+   }
+
+   /* Set type. */
+   switch (alu->op) {
+   case nir_op_fmin:
+   case nir_op_fmax:
+      switch (bit_size) {
+      case 32:
+         rogue_set_alu_op_mod(minmax, OM(F32));
+         break;
+
+      default:
+         unreachable();
+      }
+      break;
+
+   case nir_op_imin:
+   case nir_op_imax:
+      switch (bit_size) {
+      case 16:
+         rogue_set_alu_op_mod(minmax, OM(S16));
+         break;
+
+      case 32:
+         rogue_set_alu_op_mod(minmax, OM(S32));
+         break;
+
+      default:
+         unreachable();
+      }
+      break;
+
+   case nir_op_umin:
+   case nir_op_umax:
+      switch (bit_size) {
+      case 16:
+         rogue_set_alu_op_mod(minmax, OM(U16));
+         break;
+
+      case 32:
+         rogue_set_alu_op_mod(minmax, OM(U32));
+         break;
+
+      default:
+         unreachable();
+      }
+      break;
+
+   default:
+      unreachable();
+   }
+
    rogue_apply_alu_src_mods(minmax, alu, false);
 }
+#undef OM
 
 /* Conditionally sets the output to src1 or src2 depending on whether the
  * comparison between src0 and 0 is true or false.
  */
-/* reverse exists because we only have == 0, > 0 and >= 0 but not != 0, so this
- * lets us use Z and invert the srcs. */
-static void trans_nir_alu_csel(rogue_builder *b,
-                               nir_alu_instr *alu,
-                               enum rogue_alu_op_mod comp,
-                               enum rogue_alu_op_mod type,
-                               bool reverse,
-                               const char *comment)
+#define OM(op_mod) ROGUE_ALU_OP_MOD_##op_mod
+static void trans_nir_alu_csel(rogue_builder *b, nir_alu_instr *alu)
 {
+   /* Reverse exists because we only have == 0, > 0 and >= 0 but not != 0,
+    * so this lets us use Z and invert the srcs.
+    */
+   bool reverse = (alu->op == nir_op_fcsel) || (alu->op == nir_op_b32csel);
+   unsigned bit_size = nir_dest_bit_size(alu->dest.dest);
+
    unsigned dst_components;
-   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
+   rogue_ref dst = alu_dst(b->shader, alu, &dst_components, bit_size);
    assert(dst_components == 1);
 
-   rogue_ref src0 = nir_alu_src32(b->shader, alu, 0, NULL);
-   rogue_ref src1 = nir_alu_src32(b->shader, alu, reverse ? 2 : 1, NULL);
-   rogue_ref src2 = nir_alu_src32(b->shader, alu, reverse ? 1 : 2, NULL);
+   rogue_ref src0 = alu_src(b->shader, alu, 0, NULL, 32);
+   rogue_ref src1 = alu_src(b->shader, alu, reverse ? 2 : 1, NULL, bit_size);
+   rogue_ref src2 = alu_src(b->shader, alu, reverse ? 1 : 2, NULL, bit_size);
 
    rogue_alu_instr *csel = rogue_CSEL(b, dst, src0, src1, src2);
-   rogue_set_alu_op_mod(csel, comp);
-   rogue_set_alu_op_mod(csel, type);
-   rogue_add_instr_comment(&csel->instr, comment);
+
+   /* Set comparison op. */
+   switch (alu->op) {
+   case nir_op_fcsel:
+   case nir_op_b32csel:
+      rogue_set_alu_op_mod(csel, OM(Z));
+      break;
+
+   case nir_op_fcsel_gt:
+   case nir_op_i32csel_gt:
+      rogue_set_alu_op_mod(csel, OM(GZ));
+      break;
+
+   case nir_op_fcsel_ge:
+   case nir_op_i32csel_ge:
+      rogue_set_alu_op_mod(csel, OM(GEZ));
+      break;
+
+   default:
+      unreachable();
+   }
+
+   /* Set type. */
+   switch (alu->op) {
+   case nir_op_fcsel:
+   case nir_op_fcsel_gt:
+   case nir_op_fcsel_ge:
+      switch (bit_size) {
+      case 32:
+         rogue_set_alu_op_mod(csel, OM(F32));
+         break;
+
+      default:
+         unreachable();
+      }
+      break;
+
+   case nir_op_b32csel:
+      switch (bit_size) {
+      case 8:
+         rogue_set_alu_op_mod(csel, OM(U8));
+         break;
+
+      case 16:
+         rogue_set_alu_op_mod(csel, OM(U16));
+         break;
+
+      case 32:
+         rogue_set_alu_op_mod(csel, OM(U32));
+         break;
+
+      default:
+         unreachable();
+      }
+      break;
+
+   case nir_op_i32csel_gt:
+   case nir_op_i32csel_ge:
+      switch (bit_size) {
+      case 8:
+         rogue_set_alu_op_mod(csel, OM(S8));
+         break;
+
+      case 16:
+         rogue_set_alu_op_mod(csel, OM(S16));
+         break;
+
+      case 32:
+         rogue_set_alu_op_mod(csel, OM(S32));
+         break;
+
+      default:
+         unreachable();
+      }
+      break;
+
+   default:
+      unreachable();
+   }
+
+   if (bit_size < 32) {
+      rogue_set_alu_src_mod(csel, 0, ROGUE_ALU_SRC_MOD_E0);
+      rogue_set_alu_src_mod(csel, 1, ROGUE_ALU_SRC_MOD_E0);
+   }
+
    rogue_apply_alu_src_mods(csel, alu, reverse);
 }
+#undef OM
 
 static void trans_nir_alu_fneg(rogue_builder *b, nir_alu_instr *alu)
 {
@@ -2207,12 +2397,14 @@ trans_nir_alu_fsin_cos(rogue_builder *b, nir_alu_instr *alu, bool cos)
 
 static void trans_nir_alu_mov(rogue_builder *b, nir_alu_instr *alu)
 {
+   unsigned bit_size = nir_dest_bit_size(alu->dest.dest);
+
    unsigned dst_components;
-   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
+   rogue_ref dst = alu_dst(b->shader, alu, &dst_components, bit_size);
    assert(dst_components == 1);
 
    unsigned src_components;
-   rogue_ref src = nir_alu_src32(b->shader, alu, 0, &src_components);
+   rogue_ref src = alu_src(b->shader, alu, 0, &src_components, bit_size);
    assert(src_components == 1);
 
    rogue_MOV(b, dst, src);
@@ -2235,124 +2427,73 @@ static void trans_nir_alu_vecN(rogue_builder *b, nir_alu_instr *alu, unsigned n)
    }
 }
 
-static void trans_nir_alu_iadd16(rogue_builder *b, nir_alu_instr *alu)
-{
-   unsigned dst_components;
-   rogue_ref dst = nir_alu_dst16(b->shader, alu, &dst_components);
-   assert(dst_components == 1);
-
-   rogue_ref src0 = nir_alu_src16(b->shader, alu, 0, NULL);
-   rogue_ref src1 = nir_alu_src16(b->shader, alu, 1, NULL);
-
-   rogue_alu_instr *iadd16 = rogue_IADD16(b, dst, src0, src1);
-   rogue_set_alu_op_mod(iadd16, ROGUE_ALU_OP_MOD_S);
-   rogue_apply_alu_src_mods(iadd16, alu, false);
-}
-
-static void trans_nir_alu_iadd32(rogue_builder *b, nir_alu_instr *alu)
-{
-   unsigned dst_components;
-   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
-   assert(dst_components == 1);
-
-   rogue_ref src0 = nir_alu_src32(b->shader, alu, 0, NULL);
-   rogue_ref src1 = nir_alu_src32(b->shader, alu, 1, NULL);
-
-   rogue_alu_instr *iadd32 = rogue_IADD32(b, dst, src0, src1);
-   rogue_set_alu_op_mod(iadd32, ROGUE_ALU_OP_MOD_S);
-   rogue_apply_alu_src_mods(iadd32, alu, false);
-}
-
-static void trans_nir_alu_iadd64(rogue_builder *b, nir_alu_instr *alu)
-{
-   rogue_ref64 dst = nir_ssa_alu_dst64(b->shader, alu);
-   rogue_ref64 src0 = nir_ssa_alu_src64(b->shader, alu, 0);
-   rogue_ref64 src1 = nir_ssa_alu_src64(b->shader, alu, 1);
-
-   rogue_alu_instr *iadd64 = rogue_IADD64(b, dst.ref64, src0.ref64, src1.ref64);
-   /* N.B. No sign flag support for add64. */
-   rogue_apply_alu_src_mods(iadd64, alu, false);
-}
-
 static void trans_nir_alu_iadd(rogue_builder *b, nir_alu_instr *alu)
 {
    unsigned bit_size = nir_dest_bit_size(alu->dest.dest);
 
+   unsigned dst_components;
+   rogue_ref dst = alu_dst(b->shader, alu, &dst_components, bit_size);
+   assert(dst_components == 1);
+
+   rogue_ref src0 = alu_src(b->shader, alu, 0, NULL, bit_size);
+   rogue_ref src1 = alu_src(b->shader, alu, 1, NULL, bit_size);
+
+   rogue_alu_instr *iadd;
+
    switch (bit_size) {
    case 16:
-      return trans_nir_alu_iadd16(b, alu);
+      iadd = rogue_IADD16(b, dst, src0, src1);
+      break;
 
    case 32:
-      return trans_nir_alu_iadd32(b, alu);
+      iadd = rogue_IADD32(b, dst, src0, src1);
+      break;
 
    case 64:
-      return trans_nir_alu_iadd64(b, alu);
+      iadd = rogue_IADD64(b, dst, src0, src1);
+      break;
 
    default:
-      break;
+      unreachable("Unsupported iadd bit size.");
    }
 
-   unreachable("Unsupported iadd bit size.");
-}
+   /* Looks like add is never even really signed? */
+#if 0
+   if (bit_size < 64)
+      rogue_set_alu_op_mod(iadd, ROGUE_ALU_OP_MOD_S);
+#endif
 
-static void trans_nir_alu_imul16(rogue_builder *b, nir_alu_instr *alu)
-{
-   unsigned dst_components;
-   rogue_ref dst = nir_alu_dst16(b->shader, alu, &dst_components);
-   assert(dst_components == 1);
-
-   rogue_ref src0 = nir_alu_src16(b->shader, alu, 0, NULL);
-   rogue_ref src1 = nir_alu_src16(b->shader, alu, 1, NULL);
-
-   rogue_alu_instr *imul16 = rogue_IMUL16(b, dst, src0, src1);
-   rogue_set_alu_op_mod(imul16, ROGUE_ALU_OP_MOD_S);
-   rogue_apply_alu_src_mods(imul16, alu, false);
-}
-
-static void trans_nir_alu_imul32(rogue_builder *b, nir_alu_instr *alu)
-{
-   unsigned dst_components;
-   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
-   assert(dst_components == 1);
-
-   rogue_ref src0 = nir_alu_src32(b->shader, alu, 0, NULL);
-   rogue_ref src1 = nir_alu_src32(b->shader, alu, 1, NULL);
-
-   rogue_alu_instr *imul32 = rogue_IMUL32(b, dst, src0, src1);
-   rogue_set_alu_op_mod(imul32, ROGUE_ALU_OP_MOD_S);
-   rogue_apply_alu_src_mods(imul32, alu, false);
-}
-
-static void trans_nir_alu_imul64(rogue_builder *b, nir_alu_instr *alu)
-{
-   rogue_ref64 dst = nir_ssa_alu_dst64(b->shader, alu);
-   rogue_ref src0 = nir_alu_src32(b->shader, alu, 0, NULL);
-   rogue_ref src1 = nir_alu_src32(b->shader, alu, 1, NULL);
-
-   rogue_alu_instr *imul64 = rogue_IMUL64(b, dst.ref64, src0, src1);
-   rogue_set_alu_op_mod(imul64, ROGUE_ALU_OP_MOD_S);
-   rogue_apply_alu_src_mods(imul64, alu, false);
+   rogue_apply_alu_src_mods(iadd, alu, false);
 }
 
 static void trans_nir_alu_imul(rogue_builder *b, nir_alu_instr *alu)
 {
    unsigned bit_size = nir_dest_bit_size(alu->dest.dest);
 
+   unsigned dst_components;
+   rogue_ref dst = alu_dst(b->shader, alu, &dst_components, bit_size);
+   assert(dst_components == 1);
+
+   rogue_ref src0 = alu_src(b->shader, alu, 0, NULL, bit_size);
+   rogue_ref src1 = alu_src(b->shader, alu, 1, NULL, bit_size);
+
+   rogue_alu_instr *imul;
+
    switch (bit_size) {
    case 16:
-      return trans_nir_alu_imul16(b, alu);
+      imul = rogue_IMUL16(b, dst, src0, src1);
+      break;
 
    case 32:
-      return trans_nir_alu_imul32(b, alu);
-
-   case 64:
-      return trans_nir_alu_imul64(b, alu);
+      imul = rogue_IMUL32(b, dst, src0, src1);
+      break;
 
    default:
-      break;
+      unreachable("Unsupported imul bit size.");
    }
 
-   unreachable("Unsupported imul bit size.");
+   rogue_set_alu_op_mod(imul, ROGUE_ALU_OP_MOD_S);
+   rogue_apply_alu_src_mods(imul, alu, false);
 }
 
 static void
@@ -2385,35 +2526,29 @@ trans_nir_alu_mul_low(rogue_builder *b, nir_alu_instr *alu, bool is_signed)
    rogue_apply_alu_src_mods(mul_low, alu, false);
 }
 
-static void trans_nir_alu_ineg32(rogue_builder *b, nir_alu_instr *alu)
+static void trans_nir_alu_ineg(rogue_builder *b, nir_alu_instr *alu)
 {
+   unsigned bit_size = nir_dest_bit_size(alu->dest.dest);
+
    unsigned dst_components;
-   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
+   rogue_ref dst = alu_dst(b->shader, alu, &dst_components, bit_size);
    assert(dst_components == 1);
 
-   rogue_ref src = nir_alu_src32(b->shader, alu, 0, NULL);
-
-   rogue_INEG32(b, dst, src);
-}
-
-static void trans_nir_alu_ineg64(rogue_builder *b, nir_alu_instr *alu)
-{
-   rogue_ref64 dst = nir_ssa_alu_dst64(b->shader, alu);
-   rogue_ref64 src = nir_ssa_alu_src64(b->shader, alu, 0);
-
-   rogue_INEG64(b, dst.ref64, src.ref64);
-}
-
-static void trans_nir_alu_ineg(rogue_builder *b, nir_alu_instr *ineg)
-{
-   unsigned bit_size = nir_dest_bit_size(ineg->dest.dest);
+   rogue_ref src = alu_src(b->shader, alu, 0, NULL, bit_size);
 
    switch (bit_size) {
+
+   case 16:
+      rogue_INEG16(b, dst, src);
+      return;
+
    case 32:
-      return trans_nir_alu_ineg32(b, ineg);
+      rogue_INEG32(b, dst, src);
+      return;
 
    case 64:
-      return trans_nir_alu_ineg64(b, ineg);
+      rogue_INEG64(b, dst, src);
+      return;
 
    default:
       break;
@@ -2422,35 +2557,29 @@ static void trans_nir_alu_ineg(rogue_builder *b, nir_alu_instr *ineg)
    unreachable("Unsupported ineg bit size.");
 }
 
-static void trans_nir_alu_iabs32(rogue_builder *b, nir_alu_instr *alu)
+static void trans_nir_alu_iabs(rogue_builder *b, nir_alu_instr *alu)
 {
+   unsigned bit_size = nir_dest_bit_size(alu->dest.dest);
+
    unsigned dst_components;
-   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
+   rogue_ref dst = alu_dst(b->shader, alu, &dst_components, bit_size);
    assert(dst_components == 1);
 
-   rogue_ref src = nir_alu_src32(b->shader, alu, 0, NULL);
-
-   rogue_IABS32(b, dst, src);
-}
-
-static void trans_nir_alu_iabs64(rogue_builder *b, nir_alu_instr *alu)
-{
-   rogue_ref64 dst = nir_ssa_alu_dst64(b->shader, alu);
-   rogue_ref64 src = nir_ssa_alu_src64(b->shader, alu, 0);
-
-   rogue_IABS64(b, dst.ref64, src.ref64);
-}
-
-static void trans_nir_alu_iabs(rogue_builder *b, nir_alu_instr *iabs)
-{
-   unsigned bit_size = nir_dest_bit_size(iabs->dest.dest);
+   rogue_ref src = alu_src(b->shader, alu, 0, NULL, bit_size);
 
    switch (bit_size) {
+
+   case 16:
+      rogue_IABS16(b, dst, src);
+      return;
+
    case 32:
-      return trans_nir_alu_iabs32(b, iabs);
+      rogue_IABS32(b, dst, src);
+      return;
 
    case 64:
-      return trans_nir_alu_iabs64(b, iabs);
+      rogue_IABS64(b, dst, src);
+      return;
 
    default:
       break;
@@ -2461,105 +2590,297 @@ static void trans_nir_alu_iabs(rogue_builder *b, nir_alu_instr *iabs)
 
 /* Conditionally sets the output to 1 or 0 depending on whether the comparison
  * is true or false. */
-static void trans_nir_alu_cmp(rogue_builder *b,
-                              nir_alu_instr *alu,
-                              enum rogue_alu_op_mod comp,
-                              enum rogue_alu_op_mod type)
+#define OM(op_mod) ROGUE_ALU_OP_MOD_##op_mod
+static void trans_nir_alu_cmp(rogue_builder *b, nir_alu_instr *alu)
 {
    unsigned dst_components;
-   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
+   rogue_ref dst = alu_dst(b->shader, alu, &dst_components, 32);
    assert(dst_components == 1);
 
-   rogue_ref src0 = nir_alu_src32(b->shader, alu, 0, NULL);
-   rogue_ref src1 = nir_alu_src32(b->shader, alu, 1, NULL);
+   unsigned bit_size = nir_src_bit_size(alu->src[0].src);
+
+   rogue_ref src0 = alu_src(b->shader, alu, 0, NULL, bit_size);
+   rogue_ref src1 = alu_src(b->shader, alu, 1, NULL, bit_size);
 
    rogue_alu_instr *cmp = rogue_CMP(b, dst, src0, src1);
-   rogue_set_alu_op_mod(cmp, comp);
-   rogue_set_alu_op_mod(cmp, type);
-   rogue_apply_alu_src_mods(cmp, alu, false);
-}
 
+   /* Set comparison op. */
+   switch (alu->op) {
+   case nir_op_flt32:
+   case nir_op_ilt32:
+   case nir_op_ult32:
+      rogue_set_alu_op_mod(cmp, OM(L));
+      break;
+
+   case nir_op_fge32:
+   case nir_op_ige32:
+   case nir_op_uge32:
+      rogue_set_alu_op_mod(cmp, OM(GE));
+      break;
+
+   case nir_op_feq32:
+   case nir_op_ieq32:
+      rogue_set_alu_op_mod(cmp, OM(E));
+      break;
+
+   case nir_op_fneu32:
+   case nir_op_ine32:
+      rogue_set_alu_op_mod(cmp, OM(NE));
+      break;
+
+   default:
+      unreachable();
+   }
+
+   /* Set type. */
+   switch (alu->op) {
+   case nir_op_flt32:
+   case nir_op_fge32:
+   case nir_op_feq32:
+   case nir_op_fneu32:
+      switch (bit_size) {
+      case 32:
+         rogue_set_alu_op_mod(cmp, OM(F32));
+         break;
+
+      default:
+         unreachable();
+      }
+      break;
+
+   case nir_op_ige32:
+   case nir_op_ilt32:
+   case nir_op_ieq32:
+   case nir_op_ine32:
+      switch (bit_size) {
+      case 16:
+         rogue_set_alu_op_mod(cmp, OM(S16));
+         break;
+
+      case 32:
+         rogue_set_alu_op_mod(cmp, OM(S32));
+         break;
+
+      default:
+         unreachable();
+      }
+      break;
+
+   case nir_op_ult32:
+   case nir_op_uge32:
+      switch (bit_size) {
+      case 16:
+         rogue_set_alu_op_mod(cmp, OM(U16));
+         break;
+
+      case 32:
+         rogue_set_alu_op_mod(cmp, OM(U32));
+         break;
+
+      default:
+         unreachable();
+      }
+      break;
+
+   default:
+      unreachable();
+   }
+
+   if (bit_size < 32) {
+      rogue_set_alu_src_mod(cmp, 0, ROGUE_ALU_SRC_MOD_E0);
+      rogue_set_alu_src_mod(cmp, 1, ROGUE_ALU_SRC_MOD_E0);
+   }
+
+   rogue_apply_alu_src_mods(cmp, alu, false);
+   /* rogue_add_instr_comment(&cmp->instr, nirop); */
+}
+#undef OM
+
+/* TODO: commonise handling certain alu functions with n arguments? */
+/* TODO: Masking out here is super inefficient. This is mainly for functions
+ * that use ~0 in rogue_lower_pseudo_ops, find a better way! */
 static void trans_nir_alu_iand(rogue_builder *b, nir_alu_instr *alu)
 {
+   unsigned bit_size = nir_dest_bit_size(alu->dest.dest);
+
    unsigned dst_components;
-   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
+   rogue_ref dst = alu_dst(b->shader, alu, &dst_components, bit_size);
    assert(dst_components == 1);
 
-   rogue_ref src0 = nir_alu_src32(b->shader, alu, 0, NULL);
-   rogue_ref src1 = nir_alu_src32(b->shader, alu, 1, NULL);
+   rogue_ref src0 = alu_src(b->shader, alu, 0, NULL, bit_size);
+   rogue_ref src1 = alu_src(b->shader, alu, 1, NULL, bit_size);
 
-   rogue_IAND(b, dst, src0, src1);
+   rogue_ref _dst = dst;
+   if (bit_size < 32)
+      _dst = rogue_ref_reg(
+         rogue_ssa_reg(b->shader, b->shader->ctx->next_ssa_idx++));
+
+   rogue_IAND(b, _dst, src0, src1);
+
+   /* Mask out the data. */
+   if (bit_size < 32) {
+      rogue_bitwise_instr *iand =
+         rogue_IAND(b, dst, _dst, rogue_ref_imm(BITFIELD_MASK(bit_size)));
+      rogue_add_instr_commentf(&iand->instr, "i_mask_%u", bit_size);
+   }
 }
 
 static void trans_nir_alu_ior(rogue_builder *b, nir_alu_instr *alu)
 {
+   unsigned bit_size = nir_dest_bit_size(alu->dest.dest);
+
    unsigned dst_components;
-   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
+   rogue_ref dst = alu_dst(b->shader, alu, &dst_components, bit_size);
    assert(dst_components == 1);
 
-   rogue_ref src0 = nir_alu_src32(b->shader, alu, 0, NULL);
-   rogue_ref src1 = nir_alu_src32(b->shader, alu, 1, NULL);
+   rogue_ref src0 = alu_src(b->shader, alu, 0, NULL, bit_size);
+   rogue_ref src1 = alu_src(b->shader, alu, 1, NULL, bit_size);
 
-   rogue_IOR(b, dst, src0, src1);
+   rogue_ref _dst = dst;
+   if (bit_size < 32)
+      _dst = rogue_ref_reg(
+         rogue_ssa_reg(b->shader, b->shader->ctx->next_ssa_idx++));
+
+   rogue_IOR(b, _dst, src0, src1);
+
+   /* Mask out the data. */
+   if (bit_size < 32) {
+      rogue_bitwise_instr *iand =
+         rogue_IAND(b, dst, _dst, rogue_ref_imm(BITFIELD_MASK(bit_size)));
+      rogue_add_instr_commentf(&iand->instr, "i_mask_%u", bit_size);
+   }
 }
 
 static void trans_nir_alu_ixor(rogue_builder *b, nir_alu_instr *alu)
 {
+   unsigned bit_size = nir_dest_bit_size(alu->dest.dest);
+
    unsigned dst_components;
-   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
+   rogue_ref dst = alu_dst(b->shader, alu, &dst_components, bit_size);
    assert(dst_components == 1);
 
-   rogue_ref src0 = nir_alu_src32(b->shader, alu, 0, NULL);
-   rogue_ref src1 = nir_alu_src32(b->shader, alu, 1, NULL);
+   rogue_ref src0 = alu_src(b->shader, alu, 0, NULL, bit_size);
+   rogue_ref src1 = alu_src(b->shader, alu, 1, NULL, bit_size);
 
-   rogue_IXOR(b, dst, src0, src1);
+   rogue_ref _dst = dst;
+   if (bit_size < 32)
+      _dst = rogue_ref_reg(
+         rogue_ssa_reg(b->shader, b->shader->ctx->next_ssa_idx++));
+
+   rogue_IXOR(b, _dst, src0, src1);
+
+   /* Mask out the data. */
+   if (bit_size < 32) {
+      rogue_bitwise_instr *iand =
+         rogue_IAND(b, dst, _dst, rogue_ref_imm(BITFIELD_MASK(bit_size)));
+      rogue_add_instr_commentf(&iand->instr, "i_mask_%u", bit_size);
+   }
 }
 
 static void trans_nir_alu_inot(rogue_builder *b, nir_alu_instr *alu)
 {
+   unsigned bit_size = nir_dest_bit_size(alu->dest.dest);
+
    unsigned dst_components;
-   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
+   rogue_ref dst = alu_dst(b->shader, alu, &dst_components, bit_size);
    assert(dst_components == 1);
 
-   rogue_ref src = nir_alu_src32(b->shader, alu, 0, NULL);
+   rogue_ref src = alu_src(b->shader, alu, 0, NULL, bit_size);
 
-   rogue_INOT(b, dst, src);
+   rogue_ref _dst = dst;
+   if (bit_size < 32)
+      _dst = rogue_ref_reg(
+         rogue_ssa_reg(b->shader, b->shader->ctx->next_ssa_idx++));
+
+   rogue_INOT(b, _dst, src);
+
+   /* Mask out the data. */
+   if (bit_size < 32) {
+      rogue_bitwise_instr *iand =
+         rogue_IAND(b, dst, _dst, rogue_ref_imm(BITFIELD_MASK(bit_size)));
+      rogue_add_instr_commentf(&iand->instr, "i_mask_%u", bit_size);
+   }
 }
 
 static void trans_nir_ishr(rogue_builder *b, nir_alu_instr *alu)
 {
+   unsigned bit_size = nir_dest_bit_size(alu->dest.dest);
+
    unsigned dst_components;
-   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
+   rogue_ref dst = alu_dst(b->shader, alu, &dst_components, bit_size);
    assert(dst_components == 1);
 
-   rogue_ref src0 = nir_alu_src32(b->shader, alu, 0, NULL);
-   rogue_ref src1 = nir_alu_src32(b->shader, alu, 1, NULL);
+   rogue_ref shr_dst = dst;
+   if (bit_size < 32)
+      shr_dst = rogue_ref_reg(
+         rogue_ssa_reg(b->shader, b->shader->ctx->next_ssa_idx++));
 
-   rogue_ISHR(b, dst, src0, src1);
+   rogue_ref src0 = alu_src(b->shader, alu, 0, NULL, bit_size);
+   rogue_ref src1 = alu_src(b->shader, alu, 1, NULL, 32);
+
+   if (bit_size < 32)
+      rogue_ISXT(b, shr_dst, src0, rogue_ref_imm(bit_size - 1), src1);
+   else
+      rogue_ISHR(b, dst, src0, src1);
+
+   /* Mask out the data. */
+   if (bit_size < 32) {
+      rogue_bitwise_instr *iand =
+         rogue_IAND(b, dst, shr_dst, rogue_ref_imm(BITFIELD_MASK(bit_size)));
+      rogue_add_instr_commentf(&iand->instr, "ishr_mask_%u", bit_size);
+   }
 }
 
 static void trans_nir_ishl(rogue_builder *b, nir_alu_instr *alu)
 {
+   unsigned bit_size = nir_dest_bit_size(alu->dest.dest);
+
    unsigned dst_components;
-   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
+   rogue_ref dst = alu_dst(b->shader, alu, &dst_components, bit_size);
    assert(dst_components == 1);
 
-   rogue_ref src0 = nir_alu_src32(b->shader, alu, 0, NULL);
-   rogue_ref src1 = nir_alu_src32(b->shader, alu, 1, NULL);
+   rogue_ref shl_dst = dst;
+   if (bit_size < 32)
+      shl_dst = rogue_ref_reg(
+         rogue_ssa_reg(b->shader, b->shader->ctx->next_ssa_idx++));
 
-   rogue_ISHL(b, dst, src0, src1);
+   rogue_ref src0 = alu_src(b->shader, alu, 0, NULL, bit_size);
+   rogue_ref src1 = alu_src(b->shader, alu, 1, NULL, 32);
+
+   rogue_ISHL(b, shl_dst, src0, src1);
+
+   /* Mask out the data. */
+   if (bit_size < 32) {
+      rogue_bitwise_instr *iand =
+         rogue_IAND(b, dst, shl_dst, rogue_ref_imm(BITFIELD_MASK(bit_size)));
+      rogue_add_instr_commentf(&iand->instr, "ishl_mask_%u", bit_size);
+   }
 }
 
 static void trans_nir_ushr(rogue_builder *b, nir_alu_instr *alu)
 {
+   unsigned bit_size = nir_dest_bit_size(alu->dest.dest);
+
    unsigned dst_components;
-   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
+   rogue_ref dst = alu_dst(b->shader, alu, &dst_components, bit_size);
    assert(dst_components == 1);
 
-   rogue_ref src0 = nir_alu_src32(b->shader, alu, 0, NULL);
-   rogue_ref src1 = nir_alu_src32(b->shader, alu, 1, NULL);
+   rogue_ref shr_dst = dst;
+   if (bit_size < 32)
+      shr_dst = rogue_ref_reg(
+         rogue_ssa_reg(b->shader, b->shader->ctx->next_ssa_idx++));
 
-   rogue_USHR(b, dst, src0, src1);
+   rogue_ref src0 = alu_src(b->shader, alu, 0, NULL, bit_size);
+   rogue_ref src1 = alu_src(b->shader, alu, 1, NULL, 32);
+
+   rogue_USHR(b, shr_dst, src0, src1);
+
+   /* Mask out the data. */
+   if (bit_size < 32) {
+      rogue_bitwise_instr *iand =
+         rogue_IAND(b, dst, shr_dst, rogue_ref_imm(BITFIELD_MASK(bit_size)));
+      rogue_add_instr_commentf(&iand->instr, "ushr_mask_%u", bit_size);
+   }
 }
 
 static void trans_nir_bitfield_reverse(rogue_builder *b, nir_alu_instr *alu)
@@ -2703,22 +3024,12 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
       return trans_nir_alu_fddy(b, alu, true);
 
    case nir_op_fmin:
-      return trans_nir_alu_minmax(b, alu, OM(F32), false);
-
    case nir_op_fmax:
-      return trans_nir_alu_minmax(b, alu, OM(F32), true);
-
    case nir_op_imin:
-      return trans_nir_alu_minmax(b, alu, OM(S32), false);
-
    case nir_op_imax:
-      return trans_nir_alu_minmax(b, alu, OM(S32), true);
-
    case nir_op_umin:
-      return trans_nir_alu_minmax(b, alu, OM(U32), false);
-
    case nir_op_umax:
-      return trans_nir_alu_minmax(b, alu, OM(U32), true);
+      return trans_nir_alu_minmax(b, alu);
 
    case nir_op_fneg:
       return trans_nir_alu_fneg(b, alu);
@@ -2769,34 +3080,16 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
       return trans_nir_alu_iabs(b, alu);
 
    case nir_op_flt32:
-      return trans_nir_alu_cmp(b, alu, OM(L), OM(F32));
-
    case nir_op_fge32:
-      return trans_nir_alu_cmp(b, alu, OM(GE), OM(F32));
-
    case nir_op_feq32:
-      return trans_nir_alu_cmp(b, alu, OM(E), OM(F32));
-
    case nir_op_fneu32:
-      return trans_nir_alu_cmp(b, alu, OM(NE), OM(F32));
-
    case nir_op_ilt32:
-      return trans_nir_alu_cmp(b, alu, OM(L), OM(S32));
-
    case nir_op_ige32:
-      return trans_nir_alu_cmp(b, alu, OM(GE), OM(S32));
-
    case nir_op_ieq32:
-      return trans_nir_alu_cmp(b, alu, OM(E), OM(S32));
-
    case nir_op_ine32:
-      return trans_nir_alu_cmp(b, alu, OM(NE), OM(S32));
-
    case nir_op_ult32:
-      return trans_nir_alu_cmp(b, alu, OM(L), OM(U32));
-
    case nir_op_uge32:
-      return trans_nir_alu_cmp(b, alu, OM(GE), OM(U32));
+      return trans_nir_alu_cmp(b, alu);
 
    case nir_op_iand:
       return trans_nir_alu_iand(b, alu);
@@ -2811,22 +3104,12 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
       return trans_nir_alu_inot(b, alu);
 
    case nir_op_fcsel:
-      return trans_nir_alu_csel(b, alu, OM(Z), OM(F32), true, "fcsel");
-
    case nir_op_fcsel_gt:
-      return trans_nir_alu_csel(b, alu, OM(GZ), OM(F32), false, "fcsel_gt");
-
    case nir_op_fcsel_ge:
-      return trans_nir_alu_csel(b, alu, OM(GEZ), OM(F32), false, "fcsel_ge");
-
    case nir_op_b32csel:
-      return trans_nir_alu_csel(b, alu, OM(Z), OM(U32), true, "b32csel");
-
    case nir_op_i32csel_gt:
-      return trans_nir_alu_csel(b, alu, OM(GZ), OM(S32), false, "i32csel_gt");
-
    case nir_op_i32csel_ge:
-      return trans_nir_alu_csel(b, alu, OM(GEZ), OM(S32), false, "i32csel_ge");
+      return trans_nir_alu_csel(b, alu);
 
    case nir_op_ishr:
       return trans_nir_ishr(b, alu);
@@ -3322,7 +3605,7 @@ rogue_shader *rogue_nir_to_rogue(rogue_build_ctx *ctx, const nir_shader *nir)
    nir_foreach_register (reg, &entry->registers) {
       assert(reg->num_components == 1);
       assert(reg->num_array_elems == 0);
-      assert(reg->bit_size == 32);
+      assert(reg->bit_size <= 32);
 
       rogue_temp_reg(shader, reg->index);
    }

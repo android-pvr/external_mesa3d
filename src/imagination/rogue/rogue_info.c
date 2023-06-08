@@ -1613,6 +1613,10 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
    [ROGUE_ALU_OP_CSEL] = { .str = "csel", .num_dsts = 1, .num_srcs = 3,
       .supported_op_mods = OM(Z) | OM(GZ) | OM(GEZ) |
          OM(F32) | OM(U16) | OM(S16) | OM(U8) | OM(S8) | OM(U32) | OM(S32),
+      .supported_src_mods = {
+         [0] = SM(E0) | SM(E1) | SM(E2) | SM(E3) | SM(ABS) | SM(NEG),
+         [1] = SM(E0) | SM(E1) | SM(E2) | SM(E3) | SM(ABS) | SM(NEG),
+      },
       .supported_dst_types = { [0] = T(REG), },
       .supported_src_types = {
          [0] = T(REG) | T(REGARRAY) | T(IMM),
@@ -1623,8 +1627,8 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
    [ROGUE_ALU_OP_CMP] = { .str = "cmp", .num_dsts = 1, .num_srcs = 2,
       .supported_op_mods = OM(E) | OM(G) | OM(GE) | OM(NE) | OM(L) | OM(LE) | OM(F32) | OM(U16) | OM(S16) | OM(U8) | OM(S8) | OM(U32) | OM(S32),
       .supported_src_mods = {
-         [0] = SM(ABS) | SM(NEG),
-         [1] = SM(ABS) | SM(NEG),
+         [0] = SM(E0) | SM(E1) | SM(E2) | SM(E3) | SM(ABS) | SM(NEG),
+         [1] = SM(E0) | SM(E1) | SM(E2) | SM(E3) | SM(ABS) | SM(NEG),
       },
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY), },
       .supported_src_types = {
