@@ -263,6 +263,23 @@ static bool validate_alu_op_mod_combo(uint64_t mods)
    return true;
 }
 
+static void validate_alu_instr_UPCK(rogue_validation_state *state,
+                                    const rogue_alu_instr *upck)
+{
+   /* Ensure if repeat > 1 that no elements are set, and vice-versa. */
+   bool elems_set = false;
+   elems_set |= rogue_alu_src_mod_is_set(upck, 0, ROGUE_ALU_SRC_MOD_E0);
+   elems_set |= rogue_alu_src_mod_is_set(upck, 0, ROGUE_ALU_SRC_MOD_E1);
+   elems_set |= rogue_alu_src_mod_is_set(upck, 0, ROGUE_ALU_SRC_MOD_E2);
+   elems_set |= rogue_alu_src_mod_is_set(upck, 0, ROGUE_ALU_SRC_MOD_E3);
+
+   if (elems_set && upck->instr.repeat > 1)
+      validate_log(state,
+                   "Unpack element must not be selected with repeat > 1.");
+   else if (!elems_set && upck->instr.repeat == 1)
+      validate_log(state, "Unpack element must be selected with repeat == 1.");
+}
+
 static void validate_alu_instr(rogue_validation_state *state,
                                const rogue_alu_instr *alu)
 {
@@ -325,6 +342,20 @@ static void validate_alu_instr(rogue_validation_state *state,
                       info->src_repeat_mask,
                       &alu->src[info->valnum_src].ref,
                       info->src_valnum_mask);
+      }
+
+      /* Custom validation for certain ops. */
+      switch (alu->op) {
+      case ROGUE_ALU_OP_UPCK_U8888:
+      case ROGUE_ALU_OP_UPCK_S8888:
+      case ROGUE_ALU_OP_UPCK_U1616:
+      case ROGUE_ALU_OP_UPCK_S1616:
+      case ROGUE_ALU_OP_UPCK_F16F16:
+         validate_alu_instr_UPCK(state, alu);
+         break;
+
+      default:
+         break;
       }
    }
 }

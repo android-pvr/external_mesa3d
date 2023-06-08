@@ -1504,6 +1504,9 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       .phase = PH(0),
       .io = { .dst_set[0] = IO(FT0), .src_set[0] = IO(S0), },
       .supported_op_mods = OM(SCALE) | OM(ROUNDZERO),
+      .supported_src_mods = {
+         [0] = SM(E0) | SM(E1) | SM(E2) | SM(E3),
+      },
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY) | T(IO), },
       .supported_src_types = {
          [0] = T(REG) | T(REGARRAY) | T(IO),
@@ -1515,6 +1518,9 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       .phase = PH(0),
       .io = { .dst_set[0] = IO(FT0), .src_set[0] = IO(S0), },
       .supported_op_mods = OM(SCALE) | OM(ROUNDZERO),
+      .supported_src_mods = {
+         [0] = SM(E0) | SM(E1) | SM(E2) | SM(E3),
+      },
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY) | T(IO), },
       .supported_src_types = {
          [0] = T(REG) | T(REGARRAY) | T(IO),
@@ -1526,6 +1532,9 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       .phase = PH(0),
       .io = { .dst_set[0] = IO(FT0), .src_set[0] = IO(S0), },
       .supported_op_mods = OM(SCALE) | OM(ROUNDZERO),
+      .supported_src_mods = {
+         [0] = SM(E0) | SM(E1),
+      },
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY) | T(IO), },
       .supported_src_types = {
          [0] = T(REG) | T(REGARRAY) | T(IO),
@@ -1537,6 +1546,9 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       .phase = PH(0),
       .io = { .dst_set[0] = IO(FT0), .src_set[0] = IO(S0), },
       .supported_op_mods = OM(SCALE) | OM(ROUNDZERO),
+      .supported_src_mods = {
+         [0] = SM(E0) | SM(E1),
+      },
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY) | T(IO), },
       .supported_src_types = {
          [0] = T(REG) | T(REGARRAY) | T(IO),
@@ -1548,6 +1560,9 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       .phase = PH(0),
       .io = { .dst_set[0] = IO(FT0), .src_set[0] = IO(S0), },
       .supported_op_mods = OM(ROUNDZERO),
+      .supported_src_mods = {
+         [0] = SM(E0) | SM(E1),
+      },
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY) | T(IO), },
       .supported_src_types = {
          [0] = T(REG) | T(REGARRAY) | T(IO),
@@ -1559,9 +1574,6 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       .phase = PH(0),
       .io = { .dst_set[0] = IO(FT0), .src_set[0] = IO(S0), },
       .supported_op_mods = OM(ROUNDZERO),
-      .supported_src_mods = {
-         [0] = SM(E0) | SM(E1) | SM(E2) | SM(E3),
-      },
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY) | T(IO), },
       .supported_src_types = {
          [0] = T(REG) | T(REGARRAY) | T(IO),
@@ -1571,9 +1583,6 @@ const rogue_alu_op_info rogue_alu_op_infos[ROGUE_ALU_OP_COUNT] = {
       .phase = PH(0),
       .io = { .dst_set[0] = IO(FT0), .src_set[0] = IO(S0), },
       .supported_op_mods = OM(ROUNDZERO),
-      .supported_src_mods = {
-         [0] = SM(E0) | SM(E1) | SM(E2) | SM(E3),
-      },
       .supported_dst_types = { [0] = T(REG) | T(REGARRAY) | T(IO), },
       .supported_src_types = {
          [0] = T(REG) | T(REGARRAY) | T(IO),

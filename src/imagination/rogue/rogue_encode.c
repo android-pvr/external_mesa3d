@@ -659,14 +659,29 @@ static void rogue_encode_alu_instr(const rogue_alu_instr *alu,
       instr_encoding->alu.sngl.snglop = SNGLOP_PCK;
       instr_encoding->alu.sngl.ext0 = 1;
 
-      if (rogue_alu_src_mod_is_set(alu, 0, SM(E0)))
-         instr_encoding->alu.sngl.pck.upck.elem = TST_E0;
-      else if (rogue_alu_src_mod_is_set(alu, 0, SM(E1)))
-         instr_encoding->alu.sngl.pck.upck.elem = TST_E1;
-      else if (rogue_alu_src_mod_is_set(alu, 0, SM(E2)))
-         instr_encoding->alu.sngl.pck.upck.elem = TST_E2;
-      else if (rogue_alu_src_mod_is_set(alu, 0, SM(E3)))
-         instr_encoding->alu.sngl.pck.upck.elem = TST_E3;
+      /* TODO NEXT: rogue validation check that elem is NOT set if repeat > 1
+       * and that one *is* set if == 0/1. */
+      switch (alu->op) {
+      case ROGUE_ALU_OP_UPCK_U8888:
+      case ROGUE_ALU_OP_UPCK_S8888:
+      case ROGUE_ALU_OP_UPCK_U1616:
+      case ROGUE_ALU_OP_UPCK_S1616:
+      case ROGUE_ALU_OP_UPCK_F16F16:
+         if (rogue_alu_src_mod_is_set(alu, 0, SM(E0)))
+            instr_encoding->alu.sngl.pck.upck.elem = UPCK_E0;
+         else if (rogue_alu_src_mod_is_set(alu, 0, SM(E1)))
+            instr_encoding->alu.sngl.pck.upck.elem = UPCK_E1;
+         else if (rogue_alu_src_mod_is_set(alu, 0, SM(E2)))
+            instr_encoding->alu.sngl.pck.upck.elem = UPCK_E2;
+         else if (rogue_alu_src_mod_is_set(alu, 0, SM(E3)))
+            instr_encoding->alu.sngl.pck.upck.elem = UPCK_E3;
+         else if (alu->instr.group->header.repeat == 1)
+            unreachable("No unpack element selectors set.");
+         break;
+
+      default:
+         break;
+      }
 
       instr_encoding->alu.sngl.pck.upck.rtz |=
          rogue_alu_op_mod_is_set(alu, OM(ROUNDZERO));

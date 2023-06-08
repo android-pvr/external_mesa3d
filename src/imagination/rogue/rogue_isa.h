@@ -524,6 +524,13 @@ enum pck_fmt {
    PCK_FMT_ONE = 0b11111,
 };
 
+enum upckelem {
+   UPCK_E0 = 0b00,
+   UPCK_E1 = 0b01,
+   UPCK_E2 = 0b10,
+   UPCK_E3 = 0b11,
+};
+
 typedef struct rogue_single_cmplx_encoding {
    /* Byte 1 */
    struct {
