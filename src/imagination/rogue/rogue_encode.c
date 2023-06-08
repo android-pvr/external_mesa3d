@@ -691,11 +691,18 @@ static void rogue_encode_alu_instr(const rogue_alu_instr *alu,
       instr_encoding->alu.sngl.pck.upck.format = rogue_pck_fmt(alu->op);
       break;
 
+   case ROGUE_ALU_OP_ADD8:
+   case ROGUE_ALU_OP_MUL8:
    case ROGUE_ALU_OP_ADD16:
    case ROGUE_ALU_OP_MUL16:
       instr_encoding->alu.op = ALUOP_INT8_16;
 
       switch (alu->op) {
+      case ROGUE_ALU_OP_ADD8:
+      case ROGUE_ALU_OP_MUL8:
+         instr_encoding->alu.int8_16.f = F_8_BIT;
+         break;
+
       case ROGUE_ALU_OP_ADD16:
       case ROGUE_ALU_OP_MUL16:
          instr_encoding->alu.int8_16.f = F_16_BIT;
@@ -708,10 +715,12 @@ static void rogue_encode_alu_instr(const rogue_alu_instr *alu,
       instr_encoding->alu.int8_16.s = rogue_alu_op_mod_is_set(alu, OM(S));
 
       switch (alu->op) {
+      case ROGUE_ALU_OP_ADD8:
       case ROGUE_ALU_OP_ADD16:
          instr_encoding->alu.int8_16.int8_16_op = INT8_16_OP_ADD;
          break;
 
+      case ROGUE_ALU_OP_MUL8:
       case ROGUE_ALU_OP_MUL16:
          instr_encoding->alu.int8_16.int8_16_op = INT8_16_OP_MUL;
          break;
