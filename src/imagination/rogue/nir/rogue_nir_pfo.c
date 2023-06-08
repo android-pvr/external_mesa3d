@@ -253,7 +253,8 @@ lower_output_io(nir_builder *b, nir_instr *instr, void *cb_data)
       }
 
       /* Update the variable and dereference types. */
-      output_var->type = glsl_type;
+      if (output_var)
+         output_var->type = glsl_type;
 
       return NIR_LOWER_INSTR_PROGRESS_REPLACE;
    }
@@ -357,6 +358,10 @@ static void rogue_lower_blend(nir_shader *shader, rogue_build_ctx *ctx)
 {
    struct rogue_fs_build_data *fs_data = &ctx->stage_data.fs;
    const struct vk_color_blend_state *cb = fs_data->cb_state;
+
+   /* No blending info given, skip it */
+   if (!cb)
+      return;
 
    nir_lower_blend_options opts = {
       .scalar_blend_const = false,
