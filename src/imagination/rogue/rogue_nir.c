@@ -361,6 +361,8 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
       NIR_PASS_V(nir, nir_opt_cse);
    } while (progress);
 
+   NIR_PASS_V(nir, nir_lower_bool_to_int32);
+   NIR_PASS_V(nir, rogue_nir_lower_alu_conversion_to_intrinsic);
    NIR_PASS_V(nir, rogue_nir_algebraic_late);
    NIR_PASS_V(nir, nir_opt_constant_folding);
    NIR_PASS_V(nir, nir_opt_combine_barriers, NULL, NULL);
@@ -369,8 +371,6 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
 
    /* Remove unused constant registers. */
    NIR_PASS_V(nir, nir_opt_dce);
-
-   NIR_PASS_V(nir, nir_lower_bool_to_int32);
 
    /*
    if (nir->info.stage == MESA_SHADER_FRAGMENT &&

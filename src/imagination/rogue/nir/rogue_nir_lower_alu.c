@@ -34,6 +34,54 @@
  * \brief Contains various alu-lowering passes.
  */
 
+/* TODO: support pack as well. */
+static bool is_alu_conversion(const nir_instr *instr, UNUSED const void *_data)
+{
+   return instr->type == nir_instr_type_alu &&
+          nir_op_infos[nir_instr_as_alu(instr)->op].is_conversion;
+}
+
+static nir_ssa_def *
+lower_alu_conversion(nir_builder *b, nir_instr *instr, UNUSED void *_data)
+{
+   nir_alu_instr *alu = nir_instr_as_alu(instr);
+   nir_ssa_def *src = nir_ssa_for_alu_src(b, alu, 0);
+   nir_alu_type src_type = nir_op_infos[alu->op].input_types[0] | src->bit_size;
+   nir_alu_type dst_type = nir_op_infos[alu->op].output_type;
+
+   nir_rounding_mode rounding_mode = nir_rounding_mode_undef;
+   bool sat = false;
+
+   switch (alu->op) {
+   case nir_op_f2f16_rtne:
+      rounding_mode = nir_rounding_mode_rtne;
+      break;
+
+   case nir_op_f2f16_rtz:
+      rounding_mode = nir_rounding_mode_rtz;
+      break;
+
+   default:
+      break;
+   }
+
+   return nir_convert_alu_types(b,
+                                alu->dest.dest.ssa.bit_size,
+                                src,
+                                .src_type = src_type,
+                                .dest_type = dst_type,
+                                .rounding_mode = rounding_mode,
+                                .saturate = sat);
+}
+
+bool rogue_nir_lower_alu_conversion_to_intrinsic(nir_shader *shader)
+{
+   return nir_shader_lower_instructions(shader,
+                                        is_alu_conversion,
+                                        lower_alu_conversion,
+                                        NULL);
+}
+
 static bool is_fquantize2f16(const nir_instr *instr, const void *data)
 {
    if (instr->type != nir_instr_type_alu)

@@ -1329,6 +1329,378 @@ static void trans_nir_intrinsic_discard_if(rogue_builder *b,
    rogue_add_instr_comment(&atst_if->instr, "discard_if");
 }
 
+static inline const char *nir_alu_type_str(nir_alu_type type)
+{
+   switch (type) {
+   case nir_type_int:
+      return "int";
+
+   case nir_type_uint:
+      return "uint";
+
+   case nir_type_bool:
+      return "bool";
+
+   case nir_type_float:
+      return "float";
+
+   default:
+      break;
+   }
+
+   unreachable("Unsupported nir_alu_type.");
+}
+
+static inline const char *nir_rounding_mode_str(nir_rounding_mode round)
+{
+   switch (round) {
+   case nir_rounding_mode_undef:
+      return "undef";
+
+   case nir_rounding_mode_rtne:
+      return "rtne";
+
+   case nir_rounding_mode_ru:
+      return "ru";
+
+   case nir_rounding_mode_rd:
+      return "rd";
+
+   case nir_rounding_mode_rtz:
+      return "rtz";
+
+   default:
+      break;
+   }
+
+   unreachable("Unsupported nir_rounding_mode.");
+}
+
+/* TODO: hash instead? */
+#define CONV(SRC_TYPE,                                                   \
+             SRC_BITS,                                                   \
+             SRC_COMPS,                                                  \
+             DST_TYPE,                                                   \
+             DST_BITS,                                                   \
+             DST_COMPS,                                                  \
+             ROUNDING_MODE,                                              \
+             SAT)                                                        \
+   (src_type == nir_type_##SRC_TYPE && src_bits == SRC_BITS &&           \
+    src_components == SRC_COMPS && dst_type == nir_type_##DST_TYPE &&    \
+    dst_bits == DST_BITS && dst_components == DST_COMPS && sat == SAT && \
+    rounding_mode == nir_rounding_mode_##ROUNDING_MODE)
+
+static void trans_nir_intrinsic_convert_alu_types(rogue_builder *b,
+                                                  nir_intrinsic_instr *intr)
+{
+   nir_alu_type src_sized_type = nir_intrinsic_src_type(intr);
+   nir_alu_type dst_sized_type = nir_intrinsic_dest_type(intr);
+
+   nir_alu_type src_type = nir_alu_type_get_base_type(src_sized_type);
+   nir_alu_type dst_type = nir_alu_type_get_base_type(dst_sized_type);
+
+   unsigned src_bits = nir_alu_type_get_type_size(src_sized_type);
+   unsigned dst_bits = nir_alu_type_get_type_size(dst_sized_type);
+
+   nir_rounding_mode rounding_mode = nir_intrinsic_rounding_mode(intr);
+   bool sat = nir_intrinsic_saturate(intr);
+
+   unsigned dst_components;
+   rogue_ref dst = intr_dst(b->shader, intr, &dst_components, dst_bits);
+
+   unsigned src_components;
+   rogue_ref src = intr_src(b->shader, intr, 0, &src_components, src_bits);
+
+   rogue_instr *instr = NULL;
+   do {
+      /* Bool to integer conversions. */
+      if (CONV(bool, 32, 1, uint, 8, 1, undef, false) ||
+          CONV(bool, 32, 1, uint, 16, 1, undef, false) ||
+          CONV(bool, 32, 1, uint, 32, 1, undef, false) ||
+          CONV(bool, 32, 1, int, 8, 1, undef, false) ||
+          CONV(bool, 32, 1, int, 16, 1, undef, false) ||
+          CONV(bool, 32, 1, int, 32, 1, undef, false)) {
+         rogue_alu_instr *csel =
+            rogue_CSEL(b, dst, src, rogue_ref_imm(0), rogue_ref_imm(1));
+         rogue_set_alu_op_mod(csel, ROGUE_ALU_OP_MOD_Z);
+         rogue_set_alu_op_mod(csel, ROGUE_ALU_OP_MOD_U32);
+         instr = &csel->instr;
+      }
+
+      /* Bool to float conversions. */
+      if (CONV(bool, 32, 1, float, 32, 1, undef, false)) {
+         rogue_alu_instr *csel = rogue_CSEL(b,
+                                            dst,
+                                            src,
+                                            rogue_ref_imm_f(0.0f),
+                                            rogue_ref_imm_f(1.0f));
+         rogue_set_alu_op_mod(csel, ROGUE_ALU_OP_MOD_Z);
+         rogue_set_alu_op_mod(csel, ROGUE_ALU_OP_MOD_U32);
+         instr = &csel->instr;
+      }
+
+      /* Unsigned src_bits < dst_bits => bitcast. */
+      if (CONV(uint, 8, 1, uint, 16, 1, undef, false) ||
+          CONV(uint, 8, 1, uint, 32, 1, undef, false) ||
+          CONV(uint, 16, 1, uint, 32, 1, undef, false)) {
+         rogue_alu_instr *mov = rogue_MOV(b, dst, src);
+         instr = &mov->instr;
+         break;
+      }
+
+      /* Signed src_bits < dst_bits => sign-extend. */
+      if (CONV(int, 8, 1, int, 16, 1, undef, false) ||
+          CONV(int, 8, 1, int, 32, 1, undef, false) ||
+          CONV(int, 16, 1, int, 32, 1, undef, false)) {
+         rogue_bitwise_instr *isxt = rogue_ISXT(b,
+                                                dst,
+                                                src,
+                                                rogue_ref_imm(src_bits - 1),
+                                                rogue_ref_imm(0));
+         instr = &isxt->instr;
+         break;
+      }
+
+      /* (Un)signed src_bits > dst_bits => bitcast/mask. */
+      if (CONV(int, 16, 1, int, 8, 1, undef, false) ||
+          CONV(int, 32, 1, int, 8, 1, undef, false) ||
+          CONV(int, 32, 1, int, 16, 1, undef, false) ||
+          CONV(uint, 16, 1, uint, 8, 1, undef, false) ||
+          CONV(uint, 32, 1, uint, 8, 1, undef, false) ||
+          CONV(uint, 32, 1, uint, 16, 1, undef, false)) {
+         rogue_bitwise_instr *iand =
+            rogue_IAND(b, dst, src, rogue_ref_imm(BITFIELD_MASK(dst_bits)));
+         instr = &iand->instr;
+         break;
+      }
+
+      /* (Un)signed -> float => element selection allows us to skip sign
+       * extension.
+       */
+      if (CONV(uint, 8, 1, float, 32, 1, undef, false) ||
+          CONV(uint, 16, 1, float, 32, 1, undef, false) ||
+          CONV(uint, 32, 1, float, 32, 1, undef, false) ||
+          CONV(int, 8, 1, float, 32, 1, undef, false) ||
+          CONV(int, 16, 1, float, 32, 1, undef, false) ||
+          CONV(int, 32, 1, float, 32, 1, undef, false)) {
+         rogue_alu_instr *upck;
+         switch (src_sized_type) {
+         case nir_type_uint8:
+            upck = rogue_UPCK_U8888(b, dst, src);
+            /* rogue_set_alu_op_mod(upck, ROGUE_ALU_OP_MOD_ROUNDZERO); */
+            rogue_set_alu_src_mod(upck, 0, ROGUE_ALU_SRC_MOD_E0);
+            break;
+
+         case nir_type_uint16:
+            upck = rogue_UPCK_U1616(b, dst, src);
+            /* rogue_set_alu_op_mod(upck, ROGUE_ALU_OP_MOD_ROUNDZERO); */
+            rogue_set_alu_src_mod(upck, 0, ROGUE_ALU_SRC_MOD_E0);
+            break;
+
+         case nir_type_uint32:
+            upck = rogue_UPCK_U32(b, dst, src);
+            /* rogue_set_alu_op_mod(upck, ROGUE_ALU_OP_MOD_ROUNDZERO); */
+            break;
+
+         case nir_type_int8:
+            upck = rogue_UPCK_S8888(b, dst, src);
+            /* rogue_set_alu_op_mod(upck, ROGUE_ALU_OP_MOD_ROUNDZERO); */
+            rogue_set_alu_src_mod(upck, 0, ROGUE_ALU_SRC_MOD_E0);
+            break;
+
+         case nir_type_int16:
+            upck = rogue_UPCK_S1616(b, dst, src);
+            /* rogue_set_alu_op_mod(upck, ROGUE_ALU_OP_MOD_ROUNDZERO); */
+            rogue_set_alu_src_mod(upck, 0, ROGUE_ALU_SRC_MOD_E0);
+            break;
+
+         case nir_type_int32:
+            upck = rogue_UPCK_S32(b, dst, src);
+            /* rogue_set_alu_op_mod(upck, ROGUE_ALU_OP_MOD_ROUNDZERO); */
+            break;
+
+         default:
+            unreachable();
+         }
+
+         instr = &upck->instr;
+         break;
+      }
+
+      /* Float -> (un)signed => movc write masking for dst_bits < 32. */
+      if (CONV(float, 32, 1, uint, 8, 1, undef, false) ||
+          CONV(float, 32, 1, uint, 16, 1, undef, false) ||
+          CONV(float, 32, 1, uint, 32, 1, undef, false) ||
+          CONV(float, 32, 1, int, 8, 1, undef, false) ||
+          CONV(float, 32, 1, int, 16, 1, undef, false) ||
+          CONV(float, 32, 1, int, 32, 1, undef, false)) {
+         rogue_alu_instr *mbyp0 =
+            rogue_MBYP0(b, rogue_ref_io(ROGUE_IO_FT0), rogue_ref_imm(0));
+         rogue_set_instr_group_next(&mbyp0->instr, true);
+
+         rogue_alu_instr *pck;
+
+         switch (dst_sized_type) {
+         case nir_type_uint8:
+            pck = rogue_PCK_U8888(b, rogue_ref_io(ROGUE_IO_FT2), src);
+            rogue_set_alu_op_mod(pck, ROGUE_ALU_OP_MOD_ROUNDZERO);
+            break;
+
+         case nir_type_uint16:
+            pck = rogue_PCK_U1616(b, rogue_ref_io(ROGUE_IO_FT2), src);
+            rogue_set_alu_op_mod(pck, ROGUE_ALU_OP_MOD_ROUNDZERO);
+            break;
+
+         case nir_type_uint32:
+            pck = rogue_PCK_U32(b, rogue_ref_io(ROGUE_IO_FT2), src);
+            rogue_set_alu_op_mod(pck, ROGUE_ALU_OP_MOD_ROUNDZERO);
+            break;
+
+         case nir_type_int8:
+            pck = rogue_PCK_S8888(b, rogue_ref_io(ROGUE_IO_FT2), src);
+            rogue_set_alu_op_mod(pck, ROGUE_ALU_OP_MOD_ROUNDZERO);
+            break;
+
+         case nir_type_int16:
+            pck = rogue_PCK_S1616(b, rogue_ref_io(ROGUE_IO_FT2), src);
+            rogue_set_alu_op_mod(pck, ROGUE_ALU_OP_MOD_ROUNDZERO);
+            break;
+
+         case nir_type_int32:
+            pck = rogue_PCK_S32(b, rogue_ref_io(ROGUE_IO_FT2), src);
+            rogue_set_alu_op_mod(pck, ROGUE_ALU_OP_MOD_ROUNDZERO);
+            break;
+
+         default:
+            unreachable();
+         }
+
+         rogue_set_instr_group_next(&pck->instr, true);
+
+         rogue_alu_instr *movc = rogue_MOVC(b,
+                                            dst,
+                                            rogue_none(),
+                                            rogue_none(),
+                                            rogue_ref_io(ROGUE_IO_FT2),
+                                            rogue_ref_io(ROGUE_IO_FT0),
+                                            rogue_none(),
+                                            rogue_none());
+         if (dst_bits >= 8)
+            rogue_set_alu_dst_mod(movc, 0, ROGUE_ALU_DST_MOD_E0);
+
+         if (dst_bits >= 16)
+            rogue_set_alu_dst_mod(movc, 0, ROGUE_ALU_DST_MOD_E1);
+
+         if (dst_bits >= 24)
+            rogue_set_alu_dst_mod(movc, 0, ROGUE_ALU_DST_MOD_E2);
+
+         if (dst_bits == 32)
+            rogue_set_alu_dst_mod(movc, 0, ROGUE_ALU_DST_MOD_E3);
+
+         instr = &pck->instr;
+         break;
+      }
+
+      /* Float src_bits < dst_bits. */
+      if (CONV(float, 16, 1, float, 32, 1, undef, false)) {
+         rogue_alu_instr *upck_f16f16 = rogue_UPCK_F16F16(b, dst, src);
+         rogue_set_alu_op_mod(upck_f16f16, ROGUE_ALU_OP_MOD_ROUNDZERO);
+         rogue_set_alu_src_mod(upck_f16f16, 0, ROGUE_ALU_SRC_MOD_E0);
+         instr = &upck_f16f16->instr;
+         break;
+      }
+
+      /* Float src_bits > dst_bits. */
+      if (CONV(float, 32, 1, float, 16, 1, undef, false) ||
+          CONV(float, 32, 1, float, 16, 1, rtne, false) ||
+          CONV(float, 32, 1, float, 16, 1, rtz, false)) {
+         rogue_alu_instr *mbyp0 =
+            rogue_MBYP0(b, rogue_ref_io(ROGUE_IO_FT0), rogue_ref_imm(0));
+         rogue_set_instr_group_next(&mbyp0->instr, true);
+
+         rogue_alu_instr *pck;
+
+         switch (dst_sized_type) {
+         case nir_type_float16:
+            pck = rogue_PCK_F16F16(b, rogue_ref_io(ROGUE_IO_FT2), src);
+            break;
+
+         default:
+            unreachable();
+         }
+
+         switch (rounding_mode) {
+         /* Default to rtz. */
+         case nir_rounding_mode_undef:
+         case nir_rounding_mode_rtz:
+            rogue_set_alu_op_mod(pck, ROGUE_ALU_OP_MOD_ROUNDZERO);
+            break;
+
+         case nir_rounding_mode_rtne:
+            /* Do nothing; default for pck is rtne. */
+            break;
+
+         default:
+            unreachable();
+         }
+
+         rogue_set_instr_group_next(&pck->instr, true);
+
+         rogue_alu_instr *movc = rogue_MOVC(b,
+                                            dst,
+                                            rogue_none(),
+                                            rogue_none(),
+                                            rogue_ref_io(ROGUE_IO_FT2),
+                                            rogue_ref_io(ROGUE_IO_FT0),
+                                            rogue_none(),
+                                            rogue_none());
+         if (dst_bits >= 8)
+            rogue_set_alu_dst_mod(movc, 0, ROGUE_ALU_DST_MOD_E0);
+
+         if (dst_bits >= 16)
+            rogue_set_alu_dst_mod(movc, 0, ROGUE_ALU_DST_MOD_E1);
+
+         if (dst_bits >= 24)
+            rogue_set_alu_dst_mod(movc, 0, ROGUE_ALU_DST_MOD_E2);
+
+         if (dst_bits == 32)
+            rogue_set_alu_dst_mod(movc, 0, ROGUE_ALU_DST_MOD_E3);
+
+         instr = &pck->instr;
+         break;
+      }
+   } while (0);
+
+   if (instr) {
+      rogue_add_instr_commentf(instr,
+                               "%s%ux%u -> %s%ux%u (rnd: %s, sat: %c)",
+                               nir_alu_type_str(src_type),
+                               src_bits,
+                               src_components,
+                               nir_alu_type_str(dst_type),
+                               dst_bits,
+                               dst_components,
+                               nir_rounding_mode_str(rounding_mode),
+                               sat ? 'y' : 'n');
+      return;
+   }
+
+   fprintf(
+      stdout,
+      "Unsupported conversion from %s%ux%u -> %s%ux%u (rnd: %s, sat: %c)\n",
+      nir_alu_type_str(src_type),
+      src_bits,
+      src_components,
+      nir_alu_type_str(dst_type),
+      dst_bits,
+      dst_components,
+      nir_rounding_mode_str(rounding_mode),
+      sat ? 'y' : 'n');
+   unreachable();
+}
+
+#undef CONV
+
 static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
 {
    switch (intr->intrinsic) {
@@ -1380,6 +1752,9 @@ static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
 
    case nir_intrinsic_discard_if:
       return trans_nir_intrinsic_discard_if(b, intr);
+
+   case nir_intrinsic_convert_alu_types:
+      return trans_nir_intrinsic_convert_alu_types(b, intr);
 
    default:
       break;
@@ -2084,65 +2459,6 @@ static void trans_nir_alu_iabs(rogue_builder *b, nir_alu_instr *iabs)
    unreachable("Unsupported iabs bit size.");
 }
 
-static void trans_nir_alu_i16_to_i32(rogue_builder *b, nir_alu_instr *alu)
-{
-   unsigned src_components;
-   rogue_ref src = nir_alu_src16(b->shader, alu, 0, &src_components);
-   assert(src_components == 1);
-
-   unsigned dst_components;
-   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
-   assert(dst_components == 1);
-
-   /* Sign-extension. */
-   rogue_bitwise_instr *isxt =
-      rogue_ISXT(b, dst, src, rogue_ref_imm(15), rogue_ref_imm(0));
-   rogue_add_instr_comment(&isxt->instr, "i16_to_i32 (sxt)");
-}
-
-static void trans_nir_alu_i2i32(rogue_builder *b, nir_alu_instr *alu)
-{
-   unsigned bit_size = nir_src_bit_size(alu->src[0].src);
-   switch (bit_size) {
-   case 16:
-      return trans_nir_alu_i16_to_i32(b, alu);
-
-   default:
-      break;
-   }
-
-   unreachable("Unsupported i2i32 bit size.");
-}
-
-static void trans_nir_alu_i32_to_i64(rogue_builder *b, nir_alu_instr *alu)
-{
-   rogue_ref src = nir_alu_src32(b->shader, alu, 0, NULL);
-
-   rogue_ref64 dst = nir_ssa_alu_dst64(b->shader, alu);
-
-   rogue_alu_instr *mov = rogue_MOV(b, dst.lo32, src);
-   rogue_add_instr_comment(&mov->instr, "i32_to_i64 (lower bits)");
-
-   /* Sign-extension for upper bits. */
-   rogue_bitwise_instr *isxt =
-      rogue_ISXT(b, src, dst.hi32, rogue_ref_imm(31), rogue_ref_imm(31));
-   rogue_add_instr_comment(&isxt->instr, "i32_to_i64 (sxt upper bits)");
-}
-
-static void trans_nir_alu_i2i64(rogue_builder *b, nir_alu_instr *alu)
-{
-   unsigned bit_size = nir_src_bit_size(alu->src[0].src);
-   switch (bit_size) {
-   case 32:
-      return trans_nir_alu_i32_to_i64(b, alu);
-
-   default:
-      break;
-   }
-
-   unreachable("Unsupported i2i64 bit size.");
-}
-
 /* Conditionally sets the output to 1 or 0 depending on whether the comparison
  * is true or false. */
 static void trans_nir_alu_cmp(rogue_builder *b,
@@ -2161,84 +2477,6 @@ static void trans_nir_alu_cmp(rogue_builder *b,
    rogue_set_alu_op_mod(cmp, comp);
    rogue_set_alu_op_mod(cmp, type);
    rogue_apply_alu_src_mods(cmp, alu, false);
-}
-
-static void trans_nir_alu_f2i32(rogue_builder *b, nir_alu_instr *alu)
-{
-   unsigned dst_components;
-   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
-   assert(dst_components == 1);
-
-   rogue_ref src = nir_alu_src32(b->shader, alu, 0, NULL);
-
-   rogue_alu_instr *pck_s32 = rogue_PCK_S32(b, dst, src);
-   rogue_set_alu_op_mod(pck_s32, ROGUE_ALU_OP_MOD_ROUNDZERO);
-}
-
-static void trans_nir_alu_f2u32(rogue_builder *b, nir_alu_instr *alu)
-{
-   unsigned dst_components;
-   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
-   assert(dst_components == 1);
-
-   rogue_ref src = nir_alu_src32(b->shader, alu, 0, NULL);
-
-   rogue_alu_instr *pck_u32 = rogue_PCK_U32(b, dst, src);
-   rogue_set_alu_op_mod(pck_u32, ROGUE_ALU_OP_MOD_ROUNDZERO);
-}
-
-static void trans_nir_alu_i2f32(rogue_builder *b, nir_alu_instr *alu)
-{
-   unsigned dst_components;
-   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
-   assert(dst_components == 1);
-
-   rogue_ref src = nir_alu_src32(b->shader, alu, 0, NULL);
-
-   rogue_alu_instr *upck_s32 = rogue_UPCK_S32(b, dst, src);
-   rogue_set_alu_op_mod(upck_s32, ROGUE_ALU_OP_MOD_ROUNDZERO);
-}
-
-static void trans_nir_alu_u2f32(rogue_builder *b, nir_alu_instr *alu)
-{
-   unsigned dst_components;
-   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
-   assert(dst_components == 1);
-
-   rogue_ref src = nir_alu_src32(b->shader, alu, 0, NULL);
-
-   rogue_alu_instr *upck_u32 = rogue_UPCK_U32(b, dst, src);
-   rogue_set_alu_op_mod(upck_u32, ROGUE_ALU_OP_MOD_ROUNDZERO);
-}
-
-static void trans_nir_alu_b2f32(rogue_builder *b, nir_alu_instr *alu)
-{
-   unsigned dst_components;
-   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
-   assert(dst_components == 1);
-
-   rogue_ref src = nir_alu_src32(b->shader, alu, 0, NULL);
-
-   rogue_alu_instr *csel =
-      rogue_CSEL(b, dst, src, rogue_ref_imm_f(0.0f), rogue_ref_imm_f(1.0f));
-   rogue_set_alu_op_mod(csel, ROGUE_ALU_OP_MOD_Z);
-   rogue_set_alu_op_mod(csel, ROGUE_ALU_OP_MOD_U32);
-   rogue_add_instr_comment(&csel->instr, "b2f32");
-}
-
-static void trans_nir_alu_b2i32(rogue_builder *b, nir_alu_instr *alu)
-{
-   unsigned dst_components;
-   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
-   assert(dst_components == 1);
-
-   rogue_ref src = nir_alu_src32(b->shader, alu, 0, NULL);
-
-   rogue_alu_instr *csel =
-      rogue_CSEL(b, dst, src, rogue_ref_imm(0), rogue_ref_imm(1));
-   rogue_set_alu_op_mod(csel, ROGUE_ALU_OP_MOD_Z);
-   rogue_set_alu_op_mod(csel, ROGUE_ALU_OP_MOD_U32);
-   rogue_add_instr_comment(&csel->instr, "b2i32");
 }
 
 static void trans_nir_alu_iand(rogue_builder *b, nir_alu_instr *alu)
@@ -2530,12 +2768,6 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
    case nir_op_iabs:
       return trans_nir_alu_iabs(b, alu);
 
-   case nir_op_i2i32:
-      return trans_nir_alu_i2i32(b, alu);
-
-   case nir_op_i2i64:
-      return trans_nir_alu_i2i64(b, alu);
-
    case nir_op_flt32:
       return trans_nir_alu_cmp(b, alu, OM(L), OM(F32));
 
@@ -2565,24 +2797,6 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
 
    case nir_op_uge32:
       return trans_nir_alu_cmp(b, alu, OM(GE), OM(U32));
-
-   case nir_op_f2i32:
-      return trans_nir_alu_f2i32(b, alu);
-
-   case nir_op_f2u32:
-      return trans_nir_alu_f2u32(b, alu);
-
-   case nir_op_i2f32:
-      return trans_nir_alu_i2f32(b, alu);
-
-   case nir_op_b2f32:
-      return trans_nir_alu_b2f32(b, alu);
-
-   case nir_op_u2f32:
-      return trans_nir_alu_u2f32(b, alu);
-
-   case nir_op_b2i32:
-      return trans_nir_alu_b2i32(b, alu);
 
    case nir_op_iand:
       return trans_nir_alu_iand(b, alu);
