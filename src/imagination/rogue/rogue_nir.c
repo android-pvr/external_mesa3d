@@ -56,8 +56,6 @@ static const nir_shader_compiler_options nir_options = {
    .lower_fsqrt = true,
    .lower_fmod = true,
    .lower_ftrunc = true,
-   .lower_bitfield_extract_to_shifts = true,
-   .lower_bitfield_insert_to_shifts = true,
    .lower_insert_byte = true,
    .lower_insert_word = true,
    .lower_ifind_msb = true,
@@ -351,6 +349,7 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
    do {
       progress = false;
 
+      NIR_PASS(progress, nir, rogue_nir_algebraic_late);
       NIR_PASS(progress, nir, nir_opt_algebraic_late);
       /*
        * NIR_PASS_V(nir, nir_lower_to_source_mods, nir_lower_all_source_mods);
@@ -363,7 +362,6 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
 
    NIR_PASS_V(nir, nir_lower_bool_to_int32);
    NIR_PASS_V(nir, rogue_nir_lower_alu_conversion_to_intrinsic);
-   NIR_PASS_V(nir, rogue_nir_algebraic_late);
    NIR_PASS_V(nir, nir_opt_constant_folding);
    NIR_PASS_V(nir, nir_opt_combine_barriers, NULL, NULL);
 

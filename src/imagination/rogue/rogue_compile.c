@@ -2883,6 +2883,90 @@ static void trans_nir_ushr(rogue_builder *b, nir_alu_instr *alu)
    }
 }
 
+static void trans_nir_bitfield_insert(rogue_builder *b, nir_alu_instr *alu)
+{
+   unsigned bit_size = nir_dest_bit_size(alu->dest.dest);
+
+   unsigned dst_components;
+   rogue_ref dst = alu_dst(b->shader, alu, &dst_components, bit_size);
+   assert(dst_components == 1);
+
+   rogue_ref base = alu_src(b->shader, alu, 0, NULL, bit_size);
+   rogue_ref insert = alu_src(b->shader, alu, 1, NULL, bit_size);
+   rogue_ref offset = alu_src(b->shader, alu, 2, NULL, bit_size);
+   rogue_ref bits = alu_src(b->shader, alu, 3, NULL, bit_size);
+
+   /* TODO: bitfield_insert pseudo-op */
+   rogue_bitwise_instr *msk = rogue_MSK(b,
+                                        rogue_ref_io(ROGUE_IO_FT0),
+                                        rogue_ref_io(ROGUE_IO_FT1),
+                                        bits,
+                                        offset);
+   rogue_set_instr_group_next(&msk->instr, true);
+
+   rogue_bitwise_instr *lsl0 = rogue_LSL0(b,
+                                          rogue_ref_io(ROGUE_IO_FT2),
+                                          insert,
+                                          rogue_ref_io(ROGUE_IO_S1));
+   rogue_set_instr_group_next(&lsl0->instr, true);
+
+   rogue_bitwise_instr * or = rogue_OR(b,
+                                       dst,
+                                       rogue_ref_io(ROGUE_IO_FT1),
+                                       rogue_ref_io(ROGUE_IO_FT2),
+                                       rogue_ref_io(ROGUE_IO_FT1),
+                                       base);
+
+   rogue_add_instr_comment(& or->instr, "bitfield_insert");
+}
+
+static void
+trans_nir_bitfield_extract(rogue_builder *b, nir_alu_instr *alu, bool is_signed)
+{
+   unsigned bit_size = nir_dest_bit_size(alu->dest.dest);
+
+   unsigned dst_components;
+   rogue_ref dst = alu_dst(b->shader, alu, &dst_components, bit_size);
+   assert(dst_components == 1);
+
+   rogue_ref base = alu_src(b->shader, alu, 0, NULL, bit_size);
+   rogue_ref offset = alu_src(b->shader, alu, 1, NULL, bit_size);
+   rogue_ref bits = alu_src(b->shader, alu, 2, NULL, bit_size);
+
+   /* TODO: bitfield_extract pseudo-op */
+   rogue_bitwise_instr *msk = rogue_MSK(b,
+                                        rogue_ref_io(ROGUE_IO_FT0),
+                                        rogue_ref_io(ROGUE_IO_FT1),
+                                        bits,
+                                        offset);
+   rogue_set_instr_group_next(&msk->instr, true);
+
+   rogue_bitwise_instr *byp0s =
+      rogue_BYP0S(b, rogue_ref_io(ROGUE_IO_FT2), base);
+   rogue_set_instr_group_next(&byp0s->instr, true);
+
+   rogue_bitwise_instr * or = rogue_OR(b,
+                                       rogue_ref_io(ROGUE_IO_FT4),
+                                       rogue_ref_io(ROGUE_IO_FT1),
+                                       rogue_ref_io(ROGUE_IO_FT2),
+                                       rogue_ref_io(ROGUE_IO_FT1),
+                                       rogue_ref_imm(0));
+   rogue_set_instr_group_next(& or->instr, true);
+
+   rogue_bitwise_instr *shr;
+   if (is_signed) {
+      /* Arithmetic right shift using mask top bit (FT0 = bits + offset). */
+      shr = rogue_ASR(b, dst, rogue_ref_io(ROGUE_IO_FT4), offset);
+      rogue_set_bitwise_op_mod(shr, ROGUE_BITWISE_OP_MOD_MTB);
+   } else {
+      shr = rogue_SHR(b, dst, rogue_ref_io(ROGUE_IO_FT4), offset);
+   }
+
+   rogue_add_instr_commentf(&shr->instr,
+                            "%cbitfield_extract",
+                            is_signed ? 'i' : 'u');
+}
+
 static void trans_nir_bitfield_reverse(rogue_builder *b, nir_alu_instr *alu)
 {
    unsigned dst_components;
@@ -3119,6 +3203,15 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
 
    case nir_op_ushr:
       return trans_nir_ushr(b, alu);
+
+   case nir_op_bitfield_insert:
+      return trans_nir_bitfield_insert(b, alu);
+
+   case nir_op_ubitfield_extract:
+      return trans_nir_bitfield_extract(b, alu, false);
+
+   case nir_op_ibitfield_extract:
+      return trans_nir_bitfield_extract(b, alu, true);
 
    case nir_op_bitfield_reverse:
       return trans_nir_bitfield_reverse(b, alu);

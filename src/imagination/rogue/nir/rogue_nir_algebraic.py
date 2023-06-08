@@ -30,7 +30,11 @@ d = 'd'
 e = 'e'
 
 late = [
+    (('extract_u16', 'a@32', 'b@32'), ('ubitfield_extract', a, ('imul', b, 16), 16)),
+    (('extract_i16', 'a@32', 'b@32'), ('ibitfield_extract', a, ('imul', b, 16), 16)),
 
+    (('extract_u8', 'a@32', 'b@32'), ('ubitfield_extract', a, ('imul', b, 8), 8)),
+    (('extract_i8', 'a@32', 'b@32'), ('ibitfield_extract', a, ('imul', b, 8), 8)),
 ]
 
 def main():

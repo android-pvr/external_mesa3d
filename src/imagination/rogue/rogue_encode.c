@@ -1353,6 +1353,11 @@ static void rogue_encode_bitwise_instr(const rogue_bitwise_instr *bitwise,
       instr_encoding->bitwise.ph0.shft = SHFT1_REV;
       break;
 
+   case ROGUE_BITWISE_OP_MSK:
+      instr_encoding->bitwise.phase0 = 1;
+      instr_encoding->bitwise.ph0.bm = 1;
+      break;
+
    case ROGUE_BITWISE_OP_BYP0B: {
       instr_encoding->bitwise.phase0 = 1;
 
