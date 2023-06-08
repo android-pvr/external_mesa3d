@@ -2395,26 +2395,6 @@ trans_nir_unpack_32_2x16_split(rogue_builder *b, nir_alu_instr *alu, bool hi32)
       rogue_IAND(b, dst, src, rogue_ref_imm(0x0000ffff));
 }
 
-static void trans_nir_fquantize2f16(rogue_builder *b, nir_alu_instr *alu)
-{
-   unsigned dst_components;
-   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
-   assert(dst_components == 1);
-
-   unsigned src_components;
-   rogue_ref src = nir_alu_src32(b->shader, alu, 0, &src_components);
-   assert(src_components == 1);
-
-   unsigned intrmdt_idx = b->shader->ctx->next_ssa_idx++;
-   rogue_ref intrmdt = rogue_ref_reg(rogue_ssa_reg(b->shader, intrmdt_idx));
-
-   rogue_alu_instr *pck_f16f16 = rogue_PCK_F16F16(b, intrmdt, src);
-   rogue_add_instr_comment(&pck_f16f16->instr, "fquantize2f16_part_1");
-
-   rogue_alu_instr *upck_f16f16 = rogue_UPCK_F16F16(b, dst, intrmdt);
-   rogue_add_instr_comment(&upck_f16f16->instr, "fquantize2f16_part_2");
-}
-
 #define OM(op_mod) ROGUE_ALU_OP_MOD_##op_mod
 static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
 {
@@ -2666,9 +2646,6 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
 
    case nir_op_unpack_32_2x16_split_y:
       return trans_nir_unpack_32_2x16_split(b, alu, true);
-
-   case nir_op_fquantize2f16:
-      return trans_nir_fquantize2f16(b, alu);
 
    default:
       break;
