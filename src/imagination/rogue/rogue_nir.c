@@ -72,8 +72,7 @@ static const nir_shader_compiler_options nir_options = {
    .has_fused_comp_and_csel = true,
    .support_8bit_alu = true,
    .support_16bit_alu = true,
-   .max_unroll_iterations = 32,
-   .max_unroll_iterations_aggressive = 128,
+   .max_unroll_iterations = 16,
    /* TODO: exclude the remaining native int64 ops we actually support. */
    .lower_int64_options = ~0 & ~nir_lower_iadd64 & ~nir_lower_iabs64 &
                           ~nir_lower_ineg64,
