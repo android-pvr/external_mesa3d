@@ -1924,7 +1924,8 @@ static inline unsigned nir_count_variables_with_modes(const nir_shader *nir,
  */
 void pvr_collect_io_data_fs(struct rogue_common_build_data *common_data,
                             struct rogue_fs_build_data *fs_data,
-                            nir_shader *nir)
+                            nir_shader *nir,
+                            bool no_perspective)
 {
    unsigned num_inputs = nir_count_variables_with_modes(nir, nir_var_shader_in);
    assert(num_inputs < (ARRAY_SIZE(fs_data->iterator_args.fpu_iterators) - 1));
@@ -1945,12 +1946,14 @@ void pvr_collect_io_data_fs(struct rogue_common_build_data *common_data,
       /* If the fragment shader has inputs, the first iterator must be used for
        * the W component.
        */
-      pvr_reserve_iterator(&fs_data->iterator_args,
-                           rogue_from_gl_varying_loc(VARYING_SLOT_POS),
-                           3,
-                           INTERP_MODE_NOPERSPECTIVE,
-                           false,
-                           1);
+      if (!no_perspective) {
+         pvr_reserve_iterator(&fs_data->iterator_args,
+                              rogue_from_gl_varying_loc(VARYING_SLOT_POS),
+                              3,
+                              INTERP_MODE_NOPERSPECTIVE,
+                              false,
+                              1);
+      }
 
       nir_foreach_shader_in_variable (var, nir) {
          const unsigned components = glsl_get_components(var->type);
@@ -1978,6 +1981,9 @@ void pvr_collect_io_data_fs(struct rogue_common_build_data *common_data,
             interp = INTERP_MODE_NOPERSPECTIVE;
             assert(components == 2 && var->data.location_frac == 0);
          }
+
+         if (no_perspective)
+            interp = INTERP_MODE_NOPERSPECTIVE;
 
          rogue_loc = rogue_from_gl_varying_loc(var->data.location);
 
@@ -2267,7 +2273,10 @@ static void pvr_collect_io_data(struct rogue_build_ctx *ctx, nir_shader *nir)
    /* Collect stage-specific data. */
    switch (stage) {
    case MESA_SHADER_FRAGMENT:
-      return pvr_collect_io_data_fs(common_data, &ctx->stage_data.fs, nir);
+      return pvr_collect_io_data_fs(common_data,
+                                    &ctx->stage_data.fs,
+                                    nir,
+                                    false);
 
    case MESA_SHADER_VERTEX:
       return pvr_collect_io_data_vs(

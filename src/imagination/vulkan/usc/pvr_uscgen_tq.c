@@ -521,7 +521,8 @@ pvr_uscgen_tq_frag_nir(const struct pvr_device *device,
 
    pvr_collect_io_data_fs(&rogue_ctx->common_data[MESA_SHADER_FRAGMENT],
                           fs_data,
-                          b.shader);
+                          b.shader,
+                          true);
 
    shader = rogue_nir_compile(rogue_ctx, b.shader);
    rogue_set_shader_name(shader, "NIR load_op");

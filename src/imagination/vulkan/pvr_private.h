@@ -1469,7 +1469,8 @@ void pvr_descriptor_size_info_init(
 
 void pvr_collect_io_data_fs(struct rogue_common_build_data *common_data,
                             struct rogue_fs_build_data *fs_data,
-                            nir_shader *nir);
+                            nir_shader *nir,
+                            bool no_perspective);
 
 #define PVR_FROM_HANDLE(__pvr_type, __name, __handle) \
    VK_FROM_HANDLE(__pvr_type, __name, __handle)
