@@ -1922,9 +1922,9 @@ static inline unsigned nir_count_variables_with_modes(const nir_shader *nir,
  * \param[in] fs_data Fragment-specific build data.
  * \param[in] nir NIR fragment shader.
  */
-static void pvr_collect_io_data_fs(struct rogue_common_build_data *common_data,
-                                   struct rogue_fs_build_data *fs_data,
-                                   nir_shader *nir)
+void pvr_collect_io_data_fs(struct rogue_common_build_data *common_data,
+                            struct rogue_fs_build_data *fs_data,
+                            nir_shader *nir)
 {
    unsigned num_inputs = nir_count_variables_with_modes(nir, nir_var_shader_in);
    assert(num_inputs < (ARRAY_SIZE(fs_data->iterator_args.fpu_iterators) - 1));
