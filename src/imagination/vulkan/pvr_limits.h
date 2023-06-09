@@ -47,6 +47,11 @@
 
 #define PVR_MAX_ARRAY_LAYERS (PVRX(TEXSTATE_IMAGE_WORD1_DEPTH_MAX_SIZE) + 1U)
 
+/* Maximum supported value across all devices; per-device limit can be
+ * found via the 'max_multisample' feature.
+ */
+#define PVR_MAX_SAMPLE_COUNT 8U
+
 #define PVR_MAX_DESCRIPTOR_SETS 4U
 #define PVR_MAX_DESCRIPTOR_SET_UNIFORM_DYNAMIC_BUFFERS 8U
 #define PVR_MAX_DESCRIPTOR_SET_STORAGE_DYNAMIC_BUFFERS 8U

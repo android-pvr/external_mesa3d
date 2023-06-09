@@ -509,23 +509,6 @@ static void pvr_uscgen_load_op_loads_nir(nir_builder *b,
    }
 }
 
-static enum pipe_format clear_format_for_size(unsigned dwords)
-{
-   switch (dwords) {
-   case 1:
-      return PIPE_FORMAT_R32_UINT;
-   case 2:
-      return PIPE_FORMAT_R32G32_UINT;
-   case 3:
-      return PIPE_FORMAT_R32G32B32_UINT;
-   case 4:
-      return PIPE_FORMAT_R32G32B32A32_UINT;
-   default:
-      unreachable("Invalid accum format size");
-   }
-   return PIPE_FORMAT_NONE;
-}
-
 static void
 pvr_uscgen_load_op_clears_nir(nir_builder *b,
                               struct pvr_uscgen_load_op_context *ctx,
@@ -553,7 +536,7 @@ pvr_uscgen_load_op_clears_nir(nir_builder *b,
       fs_data->outputs[rt_idx].accum_format = PVR_PBE_ACCUM_FORMAT_UINT32;
       fs_data->outputs[rt_idx].mrt_resource = mrt_resource;
       fs_data->outputs[rt_idx].format =
-         clear_format_for_size(accum_size_dwords);
+         pvr_uscgen_raw_pipe_format(accum_size_dwords);
 
       for (int i = 0; i < accum_size_dwords; i++)
          chans[i] = nir_load_preamble(b, 1, 32, .base = ctx->next_sh_reg++);

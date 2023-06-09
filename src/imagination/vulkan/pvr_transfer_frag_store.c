@@ -200,18 +200,19 @@ static VkResult pvr_transfer_frag_store_entry_data_compile(
    sh_reg_layout->combined_image_samplers.count = 1;
    next_free_sh_reg += sizeof(struct pvr_combined_image_sampler_descriptor) / 4;
 
-   /* TODO: Handle dynamic_const_regs used for PVR_INT_COORD_SET_FLOATS_{4,6}, Z
-    * position, texel unwind, etc. when compiler adds support for them.
-    */
    sh_reg_layout->dynamic_consts.offset = next_free_sh_reg;
+   /* Compiler will set this too. */
    sh_reg_layout->dynamic_consts.count = 0;
 
    sh_reg_layout->driver_total = next_free_sh_reg;
 
-   pvr_uscgen_tq_frag(shader_props,
+   pvr_uscgen_tq_frag(device,
+                      shader_props,
                       &entry_data->sh_reg_layout,
                       num_usc_temps_out,
                       &shader);
+
+   sh_reg_layout->driver_total += sh_reg_layout->dynamic_consts.count;
 
    result = pvr_gpu_upload_usc(device,
                                util_dynarray_begin(&shader),

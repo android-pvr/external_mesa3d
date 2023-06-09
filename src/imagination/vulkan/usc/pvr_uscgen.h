@@ -163,6 +163,28 @@ void pvr_uscgen_eot(const char *name,
                     unsigned *temps_used,
                     struct util_dynarray *binary);
 
+static enum pipe_format pvr_uscgen_raw_pipe_format(unsigned dwords)
+{
+   switch (dwords) {
+   case 1:
+      return PIPE_FORMAT_R32_UINT;
+   case 2:
+      return PIPE_FORMAT_R32G32_UINT;
+   case 3:
+      return PIPE_FORMAT_R32G32B32_UINT;
+   case 4:
+      return PIPE_FORMAT_R32G32B32A32_UINT;
+   default:
+      unreachable("Invalid accum format size");
+   }
+   return PIPE_FORMAT_NONE;
+}
+
+void pvr_uscgen_per_job_eot(uint32_t emit_count,
+                            const uint32_t *emit_state,
+                            unsigned *temps_used,
+                            struct util_dynarray *binary);
+
 void pvr_uscgen_passthrough_vtx(struct util_dynarray *binary, bool rta);
 
 void pvr_uscgen_load_op(struct pvr_device *device,
@@ -176,7 +198,8 @@ void pvr_uscgen_idfwdf(struct util_dynarray *binary,
 
 void pvr_uscgen_nop(struct util_dynarray *binary);
 
-void pvr_uscgen_tq_frag(const struct pvr_tq_shader_properties *shader_props,
+void pvr_uscgen_tq_frag(const struct pvr_device *device,
+                        const struct pvr_tq_shader_properties *shader_props,
                         struct pvr_tq_frag_sh_reg_layout *sh_reg_layout,
                         unsigned *temps_used,
                         struct util_dynarray *binary);

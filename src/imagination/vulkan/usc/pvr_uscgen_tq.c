@@ -24,16 +24,526 @@
 #include <assert.h>
 #include <stdint.h>
 
+#include "nir.h"
+#include "nir_builder.h"
+#include "nir_conversion_builder.h"
+#include "nir_format_convert.h"
+#include "pvr_debug.h"
 #include "pvr_uscgen.h"
 #include "rogue/rogue.h"
 #include "rogue/rogue_builder.h"
 #include "util/u_dynarray.h"
 
-void pvr_uscgen_tq_frag(const struct pvr_tq_shader_properties *shader_props,
+static bool needs_packing(enum pvr_transfer_pbe_pixel_src format)
+{
+   switch (format) {
+   case PVR_TRANSFER_PBE_PIXEL_SRC_RAW64:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_F32X2:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_MOV_BY45:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_D32S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_CONV_D24_D32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_CONV_D32U_D32F:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_CONV_D32_D24S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_RAW32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_F32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SWAP_LMSB:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_CONV_S8D24_D24S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_D24S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_S8D24:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_RAW128:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_F32X4:
+      return false;
+   default:
+      break;
+   }
+   return true;
+}
+
+static bool needs_conversion(enum pvr_transfer_pbe_pixel_src format)
+{
+   switch (format) {
+   case PVR_TRANSFER_PBE_PIXEL_SRC_CONV_D24_D32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_CONV_D32U_D32F:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_CONV_D32_D24S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_DMRG_D32_D24S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_DMRG_D32U_D24S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SMRG_D24S8_D32S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SWAP_LMSB:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_CONV_S8D24_D24S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_MOV_BY45:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SMRG_D32S8_D32S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_Y_UV_INTERLEAVED:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_YVU_PACKED:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_Y_U_V:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_YUV_PACKED:
+      return true;
+   default:
+      break;
+   }
+   return false;
+}
+
+static void
+int_format_signs(enum pvr_transfer_pbe_pixel_src format, bool *src, bool *dst)
+{
+   switch (format) {
+   case PVR_TRANSFER_PBE_PIXEL_SRC_UU8888:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_US8888:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_UU16U16:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_US16S16:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_US32S32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_U4XS32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_UU1010102:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_RBSWAP_UU1010102:
+      *src = false;
+      break;
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SU8888:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SS8888:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SU16U16:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SS16S16:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SU32U32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_S4XU32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SU1010102:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_RBSWAP_SU1010102:
+      *src = true;
+      break;
+   default:
+      unreachable("Invalid format");
+   }
+
+   switch (format) {
+   case PVR_TRANSFER_PBE_PIXEL_SRC_UU8888:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SU8888:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_UU16U16:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SU16U16:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SU32U32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_S4XU32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_UU1010102:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SU1010102:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_RBSWAP_UU1010102:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_RBSWAP_SU1010102:
+      *dst = false;
+      break;
+   case PVR_TRANSFER_PBE_PIXEL_SRC_US8888:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SS8888:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_US16S16:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SS16S16:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_US32S32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_U4XS32:
+      *dst = true;
+      break;
+   default:
+      unreachable("Invalid format");
+   }
+}
+
+static nir_ssa_def *pack_int_value(nir_builder *b,
+                                   unsigned *next_sh,
+                                   bool pick_component,
+                                   nir_ssa_def *src,
+                                   enum pvr_transfer_pbe_pixel_src format)
+{
+   unsigned src_num_components = 4;
+   const unsigned bits_8[] = { 8, 8, 8, 8 };
+   const unsigned bits_10[] = { 10, 10, 10, 2 };
+   const unsigned bits_16[] = { 16, 16, 16, 16 };
+   const unsigned bits_32[] = { 32, 32, 32, 32 };
+   const unsigned *bits;
+   bool src_signed, dst_signed;
+   int_format_signs(format, &src_signed, &dst_signed);
+
+   switch (format) {
+   case PVR_TRANSFER_PBE_PIXEL_SRC_UU8888:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_US8888:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SU8888:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SS8888:
+      bits = bits_8;
+      break;
+   case PVR_TRANSFER_PBE_PIXEL_SRC_UU16U16:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_US16S16:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SU16U16:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SS16S16:
+      bits = bits_16;
+      break;
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SU32U32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_S4XU32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_US32S32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_U4XS32:
+      bits = bits_32;
+      break;
+   case PVR_TRANSFER_PBE_PIXEL_SRC_UU1010102:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SU1010102:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_RBSWAP_UU1010102:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_RBSWAP_SU1010102:
+      bits = bits_10;
+      break;
+   default:
+      unreachable("Invalid format");
+   }
+
+   if (format == PVR_TRANSFER_PBE_PIXEL_SRC_SU32U32 ||
+       format == PVR_TRANSFER_PBE_PIXEL_SRC_US32S32) {
+      src_num_components = 2;
+   }
+
+   if (format == PVR_TRANSFER_PBE_PIXEL_SRC_RBSWAP_UU1010102 ||
+       format == PVR_TRANSFER_PBE_PIXEL_SRC_RBSWAP_SU1010102) {
+      unsigned swiz[] = { 2, 1, 0, 3 };
+      src = nir_swizzle(b, src, swiz, 4);
+   }
+
+   if (src_signed != dst_signed) {
+      src = nir_convert_with_rounding(b,
+                                      src,
+                                      src_signed ? nir_type_int : nir_type_uint,
+                                      dst_signed ? nir_type_int32
+                                                 : nir_type_uint32,
+                                      nir_rounding_mode_undef,
+                                      true);
+   }
+
+   if (dst_signed)
+      src = nir_format_clamp_sint(b, src, bits);
+   else
+      src = nir_format_clamp_uint(b, src, bits);
+
+   if ((bits[0] < 32) && dst_signed)
+      src = nir_format_mask_uvec(b, src, bits);
+
+   if (bits != bits_16) {
+      src = nir_format_pack_uint(b, src, bits, src_num_components);
+   } else {
+      src =
+         nir_vec2(b,
+                  nir_format_pack_uint(b, nir_channels(b, src, 0x3), bits, 2),
+                  nir_format_pack_uint(b, nir_channels(b, src, 0xc), bits, 2));
+   }
+
+   if (!pick_component)
+      return src;
+
+   unreachable("Pick Component not implemented yet");
+}
+
+static nir_ssa_def *
+pvr_uscgen_tq_frag_pack(nir_builder *b,
+                        unsigned *next_sh,
+                        bool pick_component,
+                        nir_ssa_def *src,
+                        enum pvr_transfer_pbe_pixel_src format)
+{
+   if (!needs_packing(format))
+      return src;
+
+   /* Integer packing */
+   switch (format) {
+   case PVR_TRANSFER_PBE_PIXEL_SRC_UU8888:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_US8888:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_UU16U16:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_US16S16:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SU8888:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SS8888:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SU16U16:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SS16S16:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SU32U32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_S4XU32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_US32S32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_U4XS32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_UU1010102:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SU1010102:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_RBSWAP_UU1010102:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_RBSWAP_SU1010102:
+      return pack_int_value(b, next_sh, pick_component, src, format);
+
+   case PVR_TRANSFER_PBE_PIXEL_SRC_F16F16:
+      return nir_vec2(b,
+                      nir_pack_half_2x16(b, nir_channels(b, src, 0x3)),
+                      nir_pack_half_2x16(b, nir_channels(b, src, 0xc)));
+   case PVR_TRANSFER_PBE_PIXEL_SRC_U16NORM:
+      return nir_vec2(b,
+                      nir_pack_unorm_2x16(b, nir_channels(b, src, 0x3)),
+                      nir_pack_unorm_2x16(b, nir_channels(b, src, 0xc)));
+   case PVR_TRANSFER_PBE_PIXEL_SRC_S16NORM:
+      return nir_vec2(b,
+                      nir_pack_snorm_2x16(b, nir_channels(b, src, 0x3)),
+                      nir_pack_snorm_2x16(b, nir_channels(b, src, 0xc)));
+   case PVR_TRANSFER_PBE_PIXEL_SRC_F16_U8:
+      return nir_pack_unorm_4x8(b, src);
+
+   default:
+      unreachable("Unimplemented pvr_transfer_pbe_pixel_src");
+   }
+}
+
+static nir_ssa_def *
+pvr_uscgen_tq_frag_conv(nir_builder *b,
+                        nir_ssa_def *src,
+                        enum pvr_transfer_pbe_pixel_src format)
+{
+   if (!needs_conversion(format))
+      return src;
+
+   unreachable("Not implemented yet!");
+}
+
+static nir_ssa_def *pvr_uscgen_tq_frag_load_sw_filter(
+   nir_builder *b,
+   uint32_t load_idx,
+   nir_ssa_def *coords,
+   const struct pvr_tq_shader_properties *shader_props,
+   struct pvr_tq_frag_sh_reg_layout *sh_reg_layout)
+{
+   unreachable("Not implemented yet!");
+}
+
+static nir_ssa_def *
+pvr_uscgen_tq_frag_load(nir_builder *b,
+                        uint32_t load_idx,
+                        nir_ssa_def *coords,
+                        const struct pvr_tq_shader_properties *shader_props,
+                        struct pvr_tq_frag_sh_reg_layout *sh_reg_layout)
+{
+   const struct pvr_tq_layer_properties *layer_props =
+      &shader_props->layer_props;
+
+   const unsigned num_samples = (shader_props->full_rate || !layer_props->msaa)
+                                   ? 1
+                                   : layer_props->sample_count;
+
+   nir_ssa_def *samples[PVR_MAX_SAMPLE_COUNT];
+
+   for (unsigned sample_idx = 0; sample_idx < num_samples; sample_idx++) {
+      nir_tex_instr *tex;
+
+      tex = nir_tex_instr_create(b->shader, !!layer_props->msaa + 1);
+      tex->src[0].src_type = nir_tex_src_coord;
+      tex->src[0].src = nir_src_for_ssa(coords);
+
+      if (layer_props->msaa) {
+         unsigned resolved_idx = layer_props->resolve_op - PVR_RESOLVE_SAMPLE0;
+         nir_ssa_def *ms_idx;
+
+         if (shader_props->full_rate)
+            ms_idx = nir_load_sample_id(b);
+         else if (layer_props->resolve_op >= PVR_RESOLVE_SAMPLE0)
+            ms_idx = nir_imm_int(b, resolved_idx);
+         else
+            ms_idx = nir_imm_int(b, sample_idx);
+
+         tex->src[1].src_type = nir_tex_src_ms_index;
+         tex->src[1].src = nir_src_for_ssa(ms_idx);
+      }
+
+      tex->dest_type = pvr_pbe_pixel_is_norm(layer_props->pbe_format)
+                          ? nir_type_float32
+                          : nir_type_uint32;
+
+      tex->coord_components = layer_props->sample ? 3 : 2;
+
+      tex->sampler_dim = GLSL_SAMPLER_DIM_2D;
+      if (layer_props->msaa)
+         tex->sampler_dim = GLSL_SAMPLER_DIM_MS;
+      else if (layer_props->sample)
+         tex->sampler_dim = GLSL_SAMPLER_DIM_3D;
+
+      assert(load_idx < sh_reg_layout->combined_image_samplers.count);
+      tex->texture_index =
+         sh_reg_layout->combined_image_samplers.offsets[load_idx].image;
+      tex->sampler_index =
+         sh_reg_layout->combined_image_samplers.offsets[load_idx].sampler;
+
+      nir_ssa_dest_init(&tex->instr, &tex->dest, 4, 32);
+      nir_builder_instr_insert(b, &tex->instr);
+
+      samples[sample_idx] = &tex->dest.ssa;
+   }
+
+   assert(num_samples == 1 && "MSAA resolve not implemented yet");
+
+   return samples[0];
+}
+
+static nir_ssa_def *
+pvr_uscgen_tq_frag_coords(nir_builder *b,
+                          unsigned *next_sh,
+                          const struct pvr_tq_shader_properties *shader_props,
+                          struct pvr_tq_frag_sh_reg_layout *sh_reg_layout)
+{
+   const struct pvr_tq_layer_properties *layer_props =
+      &shader_props->layer_props;
+   unsigned base_sh = sh_reg_layout->dynamic_consts.offset;
+   bool varying = shader_props->iterated;
+   unsigned location = varying ? VARYING_SLOT_VAR0 : VARYING_SLOT_POS;
+   const struct glsl_type *var_type = glsl_vec_type(varying ? 2 : 4);
+   nir_variable *pos = nir_get_variable_with_location(b->shader,
+                                                      nir_var_shader_in,
+                                                      location,
+                                                      var_type);
+   nir_ssa_def *coords =
+      nir_channels(b, nir_load_var(b, pos), nir_component_mask(2));
+
+   assert(layer_props->layer_floats != PVR_INT_COORD_SET_FLOATS_6);
+   if (!varying && layer_props->layer_floats == PVR_INT_COORD_SET_FLOATS_4) {
+      /* coords.xy = coords.xy * (sh[0], sh[2]) + (sh[1], s[3]) */
+      nir_ssa_def *mult =
+         nir_vec2(b,
+                  nir_load_preamble(b, 1, 32, .base = *next_sh + base_sh),
+                  nir_load_preamble(b, 1, 32, .base = *next_sh + base_sh + 2));
+      nir_ssa_def *add =
+         nir_vec2(b,
+                  nir_load_preamble(b, 1, 32, .base = *next_sh + base_sh + 1),
+                  nir_load_preamble(b, 1, 32, .base = *next_sh + base_sh + 3));
+      coords = nir_fmad(b, coords, mult, add);
+      *next_sh += 4;
+   }
+
+   /* 3D texture, the depth comes from shared regs */
+   if (layer_props->sample) {
+      nir_ssa_def *depth =
+         nir_load_preamble(b, 1, 32, .base = *next_sh + base_sh);
+
+      coords = nir_pad_vector(b, coords, 3);
+      coords = nir_vector_insert_imm(b, coords, depth, 2);
+      (*next_sh)++;
+   }
+
+   return coords;
+}
+
+static void
+pvr_uscgen_tq_frag_nir(const struct pvr_device *device,
+                       const struct pvr_tq_shader_properties *shader_props,
+                       struct pvr_tq_frag_sh_reg_layout *sh_reg_layout,
+                       unsigned *temps_used,
+                       struct util_dynarray *binary)
+{
+   const struct pvr_tq_layer_properties *layer_props =
+      &shader_props->layer_props;
+   unsigned next_sh = 0;
+   uint32_t loads;
+
+   struct pvr_pipeline_layout pipeline_layout = { 0 };
+   struct rogue_build_ctx *rogue_ctx =
+      rogue_build_context_create(device->pdevice->compiler, &pipeline_layout);
+
+   struct rogue_fs_build_data *fs_data = &rogue_ctx->stage_data.fs;
+
+   unsigned pixel_size = pvr_pbe_pixel_size(layer_props->pbe_format);
+   struct usc_mrt_resource mrt_resource = {
+      .intermediate_size = PVR_DW_TO_BYTES(pixel_size),
+      .type = USC_MRT_RESOURCE_TYPE_OUTPUT_REG,
+      .reg = { .output_reg = 0, .offset = 0 },
+   };
+
+   unsigned shareds_used;
+   rogue_shader *shader;
+
+   nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_FRAGMENT,
+                                                  rogue_nir_options(),
+                                                  "TQ (fragment)");
+
+   /* TODO: Unrestrict. */
+   assert(shader_props->pick_component == false);
+
+   /* TODO: Unrestrict. */
+   assert(layer_props->resolve_op >= PVR_RESOLVE_SAMPLE0 ||
+          !layer_props->msaa || shader_props->full_rate);
+   assert(layer_props->layer_floats != PVR_INT_COORD_SET_FLOATS_6);
+   assert(layer_props->byte_unwind == 0);
+   assert(layer_props->linear == false);
+
+   loads = pvr_pbe_pixel_num_loads(layer_props->pbe_format);
+   /* TODO: Unrestrict. */
+   assert(loads == 1);
+
+   fs_data->num_outputs = loads;
+   fs_data->outputs =
+      rzalloc_array_size(rogue_ctx, sizeof(*fs_data->outputs), loads);
+
+   fs_data->outputs[0].format = pvr_uscgen_raw_pipe_format(pixel_size);
+   fs_data->outputs[0].accum_format = PVR_PBE_ACCUM_FORMAT_UINT32;
+   fs_data->outputs[0].mrt_resource = &mrt_resource;
+
+   for (uint32_t load = 0; load < loads; load++) {
+      nir_ssa_def *loaded_data;
+      nir_ssa_def *coords =
+         pvr_uscgen_tq_frag_coords(&b, &next_sh, shader_props, sh_reg_layout);
+
+      assert(!layer_props->linear || !layer_props->msaa);
+
+      if (layer_props->linear) {
+         loaded_data = pvr_uscgen_tq_frag_load_sw_filter(&b,
+                                                         load,
+                                                         coords,
+                                                         shader_props,
+                                                         sh_reg_layout);
+      } else {
+         loaded_data = pvr_uscgen_tq_frag_load(&b,
+                                               load,
+                                               coords,
+                                               shader_props,
+                                               sh_reg_layout);
+      }
+
+      loaded_data =
+         pvr_uscgen_tq_frag_conv(&b, loaded_data, layer_props->pbe_format);
+
+      loaded_data = pvr_uscgen_tq_frag_pack(&b,
+                                            &next_sh,
+                                            shader_props->pick_component,
+                                            loaded_data,
+                                            layer_props->pbe_format);
+
+      nir_store_output(&b,
+                       nir_resize_vector(&b, loaded_data, pixel_size),
+                       nir_imm_int(&b, 0),
+                       .base = 0,
+                       .src_type = nir_type_uint32,
+                       .write_mask = BITFIELD_MASK(pixel_size),
+                       .io_semantics.location = FRAG_RESULT_DATA0 + load,
+                       .io_semantics.num_slots = 1);
+
+      b.shader->info.outputs_written |=
+         BITFIELD64_BIT(FRAG_RESULT_DATA0 + load);
+   }
+
+   pvr_collect_io_data_fs(&rogue_ctx->common_data[MESA_SHADER_FRAGMENT],
+                          fs_data,
+                          b.shader);
+
+   shader = rogue_nir_compile(rogue_ctx, b.shader);
+   rogue_set_shader_name(shader, "NIR load_op");
+
+   rogue_encode_shader(NULL, shader, binary);
+
+   shareds_used = rogue_count_used_regs(shader, ROGUE_REG_CLASS_SHARED);
+   assert(shareds_used >= sh_reg_layout->driver_total);
+   assert(next_sh == (shareds_used - sh_reg_layout->driver_total));
+   sh_reg_layout->dynamic_consts.count = next_sh;
+   sh_reg_layout->compiler_out_total = 0;
+   sh_reg_layout->compiler_out.usc_constants.count = 0;
+
+   *temps_used = rogue_count_used_regs(shader, ROGUE_REG_CLASS_TEMP);
+
+   ralloc_free(b.shader);
+   ralloc_free(rogue_ctx);
+}
+
+void pvr_uscgen_tq_frag(const struct pvr_device *device,
+                        const struct pvr_tq_shader_properties *shader_props,
                         struct pvr_tq_frag_sh_reg_layout *sh_reg_layout,
                         unsigned *temps_used,
                         struct util_dynarray *binary)
 {
+   if (PVR_IS_DEBUG_SET(TQ_NIR)) {
+      pvr_uscgen_tq_frag_nir(device,
+                             shader_props,
+                             sh_reg_layout,
+                             temps_used,
+                             binary);
+      return;
+   }
+
    rogue_builder b;
    rogue_shader *shader = rogue_shader_create(NULL, MESA_SHADER_NONE);
 
