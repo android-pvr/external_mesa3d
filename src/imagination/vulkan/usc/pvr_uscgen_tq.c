@@ -137,8 +137,23 @@ int_format_signs(enum pvr_transfer_pbe_pixel_src format, bool *src, bool *dst)
    }
 }
 
+static nir_ssa_def *
+picked_component(nir_builder *b, nir_ssa_def *src, unsigned base_sh)
+{
+   nir_variable *pos = nir_get_variable_with_location(b->shader,
+                                                      nir_var_shader_in,
+                                                      VARYING_SLOT_POS,
+                                                      glsl_vec4_type());
+   nir_ssa_def *coord_x = nir_f2i32(b, nir_channel(b, nir_load_var(b, pos), 0));
+   nir_ssa_def *offset = nir_load_preamble(b, 1, 32, .base = base_sh + 1);
+   nir_ssa_def *mask = nir_load_preamble(b, 1, 32, .base = base_sh);
+   nir_ssa_def *comp_idx = nir_iand(b, nir_isub(b, coord_x, offset), mask);
+   nir_ssa_def *shift_val = nir_imul_imm(b, comp_idx, 8);
+   return nir_ushr(b, src, shift_val);
+}
+
 static nir_ssa_def *pack_int_value(nir_builder *b,
-                                   unsigned *next_sh,
+                                   unsigned base_sh,
                                    bool pick_component,
                                    nir_ssa_def *src,
                                    enum pvr_transfer_pbe_pixel_src format)
@@ -206,7 +221,6 @@ static nir_ssa_def *pack_int_value(nir_builder *b,
       src = nir_format_clamp_sint(b, src, bits);
    else
       src = nir_format_clamp_uint(b, src, bits);
-
    if ((bits[0] < 32) && dst_signed)
       src = nir_format_mask_uvec(b, src, bits);
 
@@ -222,12 +236,12 @@ static nir_ssa_def *pack_int_value(nir_builder *b,
    if (!pick_component)
       return src;
 
-   unreachable("Pick Component not implemented yet");
+   return picked_component(b, src, base_sh);
 }
 
 static nir_ssa_def *
 pvr_uscgen_tq_frag_pack(nir_builder *b,
-                        unsigned *next_sh,
+                        unsigned base_sh,
                         bool pick_component,
                         nir_ssa_def *src,
                         enum pvr_transfer_pbe_pixel_src format)
@@ -253,7 +267,7 @@ pvr_uscgen_tq_frag_pack(nir_builder *b,
    case PVR_TRANSFER_PBE_PIXEL_SRC_SU1010102:
    case PVR_TRANSFER_PBE_PIXEL_SRC_RBSWAP_UU1010102:
    case PVR_TRANSFER_PBE_PIXEL_SRC_RBSWAP_SU1010102:
-      return pack_int_value(b, next_sh, pick_component, src, format);
+      return pack_int_value(b, base_sh, pick_component, src, format);
 
    case PVR_TRANSFER_PBE_PIXEL_SRC_F16F16:
       return nir_vec2(b,
@@ -417,6 +431,7 @@ pvr_uscgen_tq_frag_nir(const struct pvr_device *device,
                        unsigned *temps_used,
                        struct util_dynarray *binary)
 {
+   unsigned base_sh = sh_reg_layout->dynamic_consts.offset;
    const struct pvr_tq_layer_properties *layer_props =
       &shader_props->layer_props;
    unsigned next_sh = 0;
@@ -441,9 +456,6 @@ pvr_uscgen_tq_frag_nir(const struct pvr_device *device,
    nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_FRAGMENT,
                                                   rogue_nir_options(),
                                                   "TQ (fragment)");
-
-   /* TODO: Unrestrict. */
-   assert(shader_props->pick_component == false);
 
    /* TODO: Unrestrict. */
    assert(layer_props->resolve_op >= PVR_RESOLVE_SAMPLE0 ||
@@ -489,7 +501,7 @@ pvr_uscgen_tq_frag_nir(const struct pvr_device *device,
          pvr_uscgen_tq_frag_conv(&b, loaded_data, layer_props->pbe_format);
 
       loaded_data = pvr_uscgen_tq_frag_pack(&b,
-                                            &next_sh,
+                                            next_sh + base_sh,
                                             shader_props->pick_component,
                                             loaded_data,
                                             layer_props->pbe_format);
@@ -518,8 +530,8 @@ pvr_uscgen_tq_frag_nir(const struct pvr_device *device,
 
    shareds_used = rogue_count_used_regs(shader, ROGUE_REG_CLASS_SHARED);
    assert(shareds_used >= sh_reg_layout->driver_total);
-   assert(next_sh == (shareds_used - sh_reg_layout->driver_total));
-   sh_reg_layout->dynamic_consts.count = next_sh;
+   sh_reg_layout->dynamic_consts.count =
+      shareds_used - sh_reg_layout->driver_total;
    sh_reg_layout->compiler_out_total = 0;
    sh_reg_layout->compiler_out.usc_constants.count = 0;
 
