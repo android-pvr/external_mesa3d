@@ -289,6 +289,157 @@ pvr_uscgen_tq_frag_pack(nir_builder *b,
    }
 }
 
+static bool uses_int_resolve(enum pvr_transfer_pbe_pixel_src format)
+{
+   switch (format) {
+   case PVR_TRANSFER_PBE_PIXEL_SRC_F32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_F16F16:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_F16_U8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_DMRG_D32S8_D32S8:
+      return false;
+   case PVR_TRANSFER_PBE_PIXEL_SRC_RAW32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_RAW64:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SMRG_D24S8_D24S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_DMRG_D24S8_D24S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_DMRG_D32U_D24S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SWAP_LMSB:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SMRG_D32S8_D32S8:
+      return true;
+   default:
+      unreachable("Unsupported pvr_transfer_pbe_pixel_src");
+   }
+   return false;
+}
+
+static void prepare_samples_for_resolve(nir_builder *b,
+                                        nir_ssa_def **samples,
+                                        unsigned num_samples,
+                                        enum pvr_transfer_pbe_pixel_src format,
+                                        enum pvr_resolve_op resolve_op)
+{
+   unsigned num_components;
+
+   if (resolve_op == PVR_RESOLVE_MIN || resolve_op == PVR_RESOLVE_MAX) {
+      if (format != PVR_TRANSFER_PBE_PIXEL_SRC_DMRG_D24S8_D24S8)
+         return;
+
+      /* Mask out the stencil component since it is in the significant bits */
+      for (unsigned i = 0; i < num_samples; i++)
+         samples[i] = nir_iand_imm(b, samples[i], BITFIELD_MASK(24));
+
+      return;
+   }
+
+   assert(resolve_op == PVR_RESOLVE_BLEND);
+
+   switch (format) {
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SMRG_D24S8_D24S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SWAP_LMSB:
+      /* Mask out depth and convert to f32 */
+      for (unsigned i = 0; i < num_samples; i++) {
+         samples[i] = nir_ushr_imm(b, samples[i], 24);
+         samples[i] = nir_u2f32(b, nir_channel(b, samples[i], 0));
+      }
+      return;
+
+   case PVR_TRANSFER_PBE_PIXEL_SRC_DMRG_D24S8_D24S8:
+      /* Mask out stencil and convert to f32 */
+      for (unsigned i = 0; i < num_samples; i++) {
+         samples[i] = nir_iand_imm(b, samples[i], ~BITFIELD_RANGE(24, 8));
+         samples[i] = nir_u2f32(b, nir_channel(b, samples[i], 0));
+      }
+      return;
+
+   case PVR_TRANSFER_PBE_PIXEL_SRC_F32:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_DMRG_D32S8_D32S8:
+      num_components = 1;
+      break;
+   case PVR_TRANSFER_PBE_PIXEL_SRC_F32X2:
+      num_components = 2;
+      break;
+   default:
+      assert(pvr_pbe_pixel_is_norm(format));
+      num_components = 4;
+      break;
+   }
+
+   for (unsigned i = 0; i < num_samples; i++)
+      samples[i] = nir_trim_vector(b, samples[i], num_components);
+}
+
+static nir_ssa_def *post_process_resolve(nir_builder *b,
+                                         nir_ssa_def *src,
+                                         enum pvr_transfer_pbe_pixel_src format,
+                                         enum pvr_resolve_op resolve_op)
+{
+   unsigned bits;
+
+   if (resolve_op != PVR_RESOLVE_BLEND)
+      return src;
+
+   switch (format) {
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SMRG_D24S8_D24S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SWAP_LMSB:
+      /* Convert back to unorm and shift back to correct place */
+      bits = 8;
+      assert(src->num_components == 1);
+      src = nir_format_float_to_unorm(b, src, &bits);
+      return nir_ishl_imm(b, src, 24);
+
+   case PVR_TRANSFER_PBE_PIXEL_SRC_DMRG_D24S8_D24S8:
+      /* Convert back to unorm */
+      bits = 24;
+      assert(src->num_components == 1);
+      return nir_format_float_to_unorm(b, src, &bits);
+
+   default:
+      break;
+   }
+
+   return src;
+}
+
+static nir_ssa_def *resolve_samples(nir_builder *b,
+                                    nir_ssa_def **samples,
+                                    unsigned num_samples,
+                                    enum pvr_transfer_pbe_pixel_src format,
+                                    enum pvr_resolve_op resolve_op)
+{
+   nir_ssa_def *accum = NULL;
+   nir_ssa_def *coeff = NULL;
+   nir_op op;
+
+   switch (resolve_op) {
+   case PVR_RESOLVE_BLEND:
+      op = nir_op_ffma;
+      coeff = nir_imm_float(b, 1.0 / num_samples);
+      break;
+
+   case PVR_RESOLVE_MIN:
+      op = uses_int_resolve(format) ? nir_op_imin : nir_op_fmin;
+      break;
+
+   case PVR_RESOLVE_MAX:
+      op = uses_int_resolve(format) ? nir_op_imax : nir_op_fmax;
+      break;
+
+   default:
+      unreachable("Unsupported pvr_transfer_pbe_pixel_src");
+   }
+
+   prepare_samples_for_resolve(b, samples, num_samples, format, resolve_op);
+
+   accum = samples[0];
+   for (unsigned i = 1; i < num_samples; i++) {
+      if (resolve_op == PVR_RESOLVE_BLEND)
+         accum = nir_ffma(b, samples[i], coeff, accum);
+      else
+         accum = nir_build_alu2(b, op, samples[i], accum);
+   }
+
+   return post_process_resolve(b, accum, format, resolve_op);
+}
+
 static nir_ssa_def *
 pvr_uscgen_tq_frag_conv(nir_builder *b,
                         nir_ssa_def *src,
@@ -372,9 +523,14 @@ pvr_uscgen_tq_frag_load(nir_builder *b,
       samples[sample_idx] = &tex->dest.ssa;
    }
 
-   assert(num_samples == 1 && "MSAA resolve not implemented yet");
+   if (num_samples == 1)
+      return samples[0];
 
-   return samples[0];
+   return resolve_samples(b,
+                          samples,
+                          num_samples,
+                          layer_props->pbe_format,
+                          layer_props->resolve_op);
 }
 
 static nir_ssa_def *
@@ -458,8 +614,6 @@ pvr_uscgen_tq_frag_nir(const struct pvr_device *device,
                                                   "TQ (fragment)");
 
    /* TODO: Unrestrict. */
-   assert(layer_props->resolve_op >= PVR_RESOLVE_SAMPLE0 ||
-          !layer_props->msaa || shader_props->full_rate);
    assert(layer_props->layer_floats != PVR_INT_COORD_SET_FLOATS_6);
    assert(layer_props->byte_unwind == 0);
    assert(layer_props->linear == false);
