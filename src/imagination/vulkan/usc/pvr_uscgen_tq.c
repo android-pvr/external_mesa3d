@@ -76,6 +76,8 @@ static bool needs_conversion(enum pvr_transfer_pbe_pixel_src format)
    case PVR_TRANSFER_PBE_PIXEL_SRC_YVU_PACKED:
    case PVR_TRANSFER_PBE_PIXEL_SRC_Y_U_V:
    case PVR_TRANSFER_PBE_PIXEL_SRC_YUV_PACKED:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SMRG_S8_D32S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SMRG_S8_D24S8:
       return true;
    default:
       break;
@@ -518,10 +520,59 @@ pvr_uscgen_tq_frag_conv(nir_builder *b,
                         nir_ssa_def *src,
                         enum pvr_transfer_pbe_pixel_src format)
 {
-   if (!needs_conversion(format))
-      return src;
+   unsigned bits;
+   switch (format) {
+   case PVR_TRANSFER_PBE_PIXEL_SRC_CONV_D24_D32:
+      bits = 32;
+      return nir_format_unorm_to_float(
+         b,
+         nir_iand_imm(b, nir_channel(b, src, 0), BITFIELD_MASK(24)),
+         &bits);
 
-   unreachable("Not implemented yet!");
+   case PVR_TRANSFER_PBE_PIXEL_SRC_CONV_D32U_D32F:
+      bits = 32;
+      return nir_format_unorm_to_float(b, nir_channel(b, src, 0), &bits);
+
+   case PVR_TRANSFER_PBE_PIXEL_SRC_CONV_D32_D24S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_DMRG_D32_D24S8:
+      bits = 24;
+      return nir_format_float_to_unorm(b, nir_channel(b, src, 0), &bits);
+
+   case PVR_TRANSFER_PBE_PIXEL_SRC_DMRG_D32U_D24S8:
+      return nir_ushr_imm(b, nir_channel(b, src, 0), 8);
+
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SMRG_D24S8_D32S8:
+      return nir_vec2(b,
+                      nir_ssa_undef(b, 1, 32),
+                      nir_ushr_imm(b, nir_channel(b, src, 0), 24));
+
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SWAP_LMSB:
+      return nir_ushr_imm(b, nir_channel(b, src, 0), 24);
+
+   case PVR_TRANSFER_PBE_PIXEL_SRC_CONV_S8D24_D24S8:
+      src = nir_channel(b, src, 0);
+      return nir_mask_shift_or(b,
+                               nir_ushr_imm(b, src, 24),
+                               src,
+                               BITFIELD_MASK(24),
+                               8);
+
+   case PVR_TRANSFER_PBE_PIXEL_SRC_MOV_BY45:
+      return nir_vec2(b,
+                      nir_ssa_undef(b, 1, 32),
+                      nir_ushr_imm(b, nir_channel(b, src, 0), 24));
+
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SMRG_S8_D32S8:
+      return nir_vec2(b, nir_ssa_undef(b, 1, 32), nir_channel(b, src, 0));
+
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SMRG_S8_D24S8:
+      return nir_ishl_imm(b, nir_channel(b, src, 0), 24);
+
+   default:
+      assert(!needs_conversion(format));
+   }
+
+   return src;
 }
 
 static nir_ssa_def *pvr_uscgen_tq_frag_load_sw_filter(
