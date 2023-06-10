@@ -239,12 +239,53 @@ static nir_ssa_def *pack_int_value(nir_builder *b,
    return picked_component(b, src, base_sh);
 }
 
+static nir_ssa_def *merge_depth_stencil(nir_builder *b,
+                                        nir_ssa_def *src,
+                                        enum pipe_format format,
+                                        bool merge_depth,
+                                        unsigned load_idx)
+{
+   nir_ssa_def *dst;
+   unsigned mask;
+
+   assert(format == PIPE_FORMAT_Z32_FLOAT_S8X24_UINT ||
+          format == PIPE_FORMAT_Z24_UNORM_S8_UINT);
+
+   dst = nir_load_output(b,
+                         format == PIPE_FORMAT_Z32_FLOAT_S8X24_UINT ? 2 : 1,
+                         32,
+                         nir_imm_int(b, 0),
+                         .base = 0,
+                         .dest_type = nir_type_uint32,
+                         .io_semantics.location = FRAG_RESULT_DATA0 + load_idx,
+                         .io_semantics.num_slots = 1,
+                         .io_semantics.fb_fetch_output = true);
+
+   b->shader->info.outputs_read |= BITFIELD64_BIT(FRAG_RESULT_DATA0 + load_idx);
+   b->shader->info.fs.uses_fbfetch_output = true;
+
+   if (format == PIPE_FORMAT_Z32_FLOAT_S8X24_UINT) {
+      if (merge_depth)
+         return nir_vec2(b, nir_channel(b, src, 0), nir_channel(b, dst, 1));
+      else
+         return nir_vec2(b, nir_channel(b, dst, 0), nir_channel(b, src, 1));
+   }
+
+   if (merge_depth)
+      mask = BITFIELD_MASK(24);
+   else
+      mask = BITFIELD_RANGE(24, 8);
+
+   return nir_ior(b, nir_iand_imm(b, src, mask), nir_iand_imm(b, src, ~mask));
+}
+
 static nir_ssa_def *
 pvr_uscgen_tq_frag_pack(nir_builder *b,
                         unsigned base_sh,
                         bool pick_component,
                         nir_ssa_def *src,
-                        enum pvr_transfer_pbe_pixel_src format)
+                        enum pvr_transfer_pbe_pixel_src format,
+                        unsigned load_idx)
 {
    if (!needs_packing(format))
       return src;
@@ -284,6 +325,38 @@ pvr_uscgen_tq_frag_pack(nir_builder *b,
    case PVR_TRANSFER_PBE_PIXEL_SRC_F16_U8:
       return nir_pack_unorm_4x8(b, src);
 
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SMRG_S8_D32S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SMRG_D24S8_D32S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SMRG_D32S8_D32S8:
+      return merge_depth_stencil(b,
+                                 src,
+                                 PIPE_FORMAT_Z32_FLOAT_S8X24_UINT,
+                                 false,
+                                 load_idx);
+
+   case PVR_TRANSFER_PBE_PIXEL_SRC_DMRG_D32S8_D32S8:
+      return merge_depth_stencil(b,
+                                 src,
+                                 PIPE_FORMAT_Z32_FLOAT_S8X24_UINT,
+                                 true,
+                                 load_idx);
+
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SMRG_S8_D24S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_SMRG_D24S8_D24S8:
+      return merge_depth_stencil(b,
+                                 src,
+                                 PIPE_FORMAT_Z24_UNORM_S8_UINT,
+                                 false,
+                                 load_idx);
+
+   case PVR_TRANSFER_PBE_PIXEL_SRC_DMRG_D24S8_D24S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_DMRG_D32_D24S8:
+   case PVR_TRANSFER_PBE_PIXEL_SRC_DMRG_D32U_D24S8:
+      return merge_depth_stencil(b,
+                                 src,
+                                 PIPE_FORMAT_Z24_UNORM_S8_UINT,
+                                 true,
+                                 load_idx);
    default:
       unreachable("Unimplemented pvr_transfer_pbe_pixel_src");
    }
@@ -660,7 +733,8 @@ pvr_uscgen_tq_frag_nir(const struct pvr_device *device,
                                             next_sh + base_sh,
                                             shader_props->pick_component,
                                             loaded_data,
-                                            layer_props->pbe_format);
+                                            layer_props->pbe_format,
+                                            load);
 
       nir_store_output(&b,
                        nir_resize_vector(&b, loaded_data, pixel_size),
