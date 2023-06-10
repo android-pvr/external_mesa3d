@@ -455,8 +455,10 @@ static void pvr_uscgen_load_op_loads_nir(nir_builder *b,
       nir_channels(b, nir_load_var(b, pos), nir_component_mask(2));
    nir_ssa_def *sample_id = msaa ? nir_load_sample_id(b) : NULL;
 
-   if (msaa)
+   if (msaa) {
+      b->shader->info.fs.uses_sample_shading = true;
       ctx->load_op_properties->msaa_mode = ROGUE_MSAA_MODE_FULL;
+   }
 
    u_foreach_bit (rt_idx, ctx->load_op->clears_loads_state.rt_load_mask) {
       VkFormat fmt = pvr_uscgen_format_for_accum(

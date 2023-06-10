@@ -2007,6 +2007,11 @@ void pvr_collect_io_data_fs(struct rogue_common_build_data *common_data,
 
    /* TODO: Process outputs. */
    fs_data->translucent = nir->info.fs.uses_fbfetch_output;
+   /* TODO: Selective rate for blending with the use of phase changes */
+   if (nir->info.fs.uses_sample_shading || nir->info.fs.uses_fbfetch_output)
+      fs_data->msaa_mode = ROGUE_MSAA_MODE_FULL;
+   else
+      fs_data->msaa_mode = ROGUE_MSAA_MODE_PIXEL;
 }
 
 struct pvr_output_reg {

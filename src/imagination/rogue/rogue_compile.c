@@ -819,7 +819,7 @@ rogue_nir_emit_texture_sample(rogue_builder *b,
          }
 
          if (info->ms_idx)
-            ADD_SMP_OPT(info->ms_idx, 0, 2, 16);
+            ADD_SMP_OPT(info->ms_idx, 0, 3, 16);
 
          rogue_MOV(
             b,
@@ -1378,11 +1378,17 @@ static void trans_nir_intrinsic_load_input_fs(rogue_builder *b,
 
       switch (component) {
       case 0:
-         src = rogue_special_reg(b->shader, ROGUE_SPECIAL_REG_X_P);
+         if (fs_data->msaa_mode == ROGUE_MSAA_MODE_PIXEL)
+            src = rogue_special_reg(b->shader, ROGUE_SPECIAL_REG_X_P);
+         else
+            src = rogue_special_reg(b->shader, ROGUE_SPECIAL_REG_X_S);
          break;
 
       case 1:
-         src = rogue_special_reg(b->shader, ROGUE_SPECIAL_REG_Y_P);
+         if (fs_data->msaa_mode == ROGUE_MSAA_MODE_PIXEL)
+            src = rogue_special_reg(b->shader, ROGUE_SPECIAL_REG_Y_P);
+         else
+            src = rogue_special_reg(b->shader, ROGUE_SPECIAL_REG_Y_S);
          break;
       }
       assert(src);

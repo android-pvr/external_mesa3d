@@ -488,12 +488,14 @@ pvr_uscgen_tq_frag_load(nir_builder *b,
          unsigned resolved_idx = layer_props->resolve_op - PVR_RESOLVE_SAMPLE0;
          nir_ssa_def *ms_idx;
 
-         if (shader_props->full_rate)
+         if (shader_props->full_rate) {
             ms_idx = nir_load_sample_id(b);
-         else if (layer_props->resolve_op >= PVR_RESOLVE_SAMPLE0)
+            b->shader->info.fs.uses_sample_shading = true;
+         } else if (layer_props->resolve_op >= PVR_RESOLVE_SAMPLE0) {
             ms_idx = nir_imm_int(b, resolved_idx);
-         else
+         } else {
             ms_idx = nir_imm_int(b, sample_idx);
+         }
 
          tex->src[1].src_type = nir_tex_src_ms_index;
          tex->src[1].src = nir_src_for_ssa(ms_idx);
