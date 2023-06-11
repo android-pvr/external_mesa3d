@@ -27,6 +27,7 @@
 #include "util/macros.h"
 #include "util/ralloc.h"
 #include "util/sparse_array.h"
+#include "util/u_dynarray.h"
 
 #include <stdbool.h>
 
@@ -414,55 +415,60 @@ rogue_ssa_vec_reg(rogue_shader *shader, unsigned index, unsigned component)
    return rogue_vec_reg_cached(shader, ROGUE_REG_CLASS_SSA, index, component);
 }
 
-static rogue_regarray *rogue_find_common_regarray(rogue_regarray *regarray,
-                                                  bool *is_parent,
-                                                  rogue_reg ***parent_regptr,
-                                                  bool *overlaps)
+static bool
+rogue_find_common_root_regarrays(rogue_regarray *regarray,
+                                 bool *is_parent,
+                                 struct util_dynarray *common_regarrays)
 {
-   rogue_regarray *common_regarray = NULL;
-
-   assert(overlaps);
-   *overlaps = false;
+   assert(common_regarrays);
 
    for (unsigned u = 0; u < regarray->size; ++u) {
       if (regarray->regs[u]->regarray) {
-         if (common_regarray && regarray->regs[u]->regarray != common_regarray)
-            unreachable("Mismatching regarrays.");
-         else if (!common_regarray)
-            common_regarray = regarray->regs[u]->regarray;
+         rogue_regarray *common_regarray = regarray->regs[u]->regarray;
+         for (; u < regarray->size - 1; ++u)
+            if (regarray->regs[u + 1]->regarray != common_regarray)
+               break;
+         /* Scalar registers MUST point to root reg arrays. */
+         assert(!common_regarray->parent);
+         util_dynarray_append(common_regarrays,
+                              rogue_regarray *,
+                              common_regarray);
       }
    }
 
-   if (common_regarray) {
-      unsigned min_index = regarray->regs[0]->index;
-      unsigned max_index = min_index + regarray->size - 1;
+   if (!util_dynarray_contains(common_regarrays, rogue_regarray *))
+      return false;
 
+   unsigned min_index = regarray->regs[0]->index;
+   unsigned max_index = min_index + regarray->size - 1;
+   util_dynarray_foreach (common_regarrays, rogue_regarray *, elem) {
+      rogue_regarray *common_regarray = elem[0];
       unsigned min_common_index = common_regarray->regs[0]->index;
       unsigned max_common_index = min_common_index + common_regarray->size - 1;
 
-      /* TODO: Create a new parent array that encapsulates both ranges? */
-      /* Ensure that the new regarray doesn't occupy only part of its parent,
-       * and also registers *beyond* its parent. */
+      /* The calling function MUST create a new parent array that
+       * encapsulates all of the overlapping the reg arrays */
       if ((min_index > min_common_index && max_index > max_common_index) ||
           (min_index < min_common_index && max_index < max_common_index))
-         *overlaps = true;
-
-      *is_parent = regarray->size > common_regarray->size;
-      const rogue_regarray *parent_regarray = *is_parent ? regarray
-                                                         : common_regarray;
-      const rogue_regarray *child_regarray = *is_parent ? common_regarray
-                                                        : regarray;
-
-      for (unsigned u = 0; u < parent_regarray->size; ++u) {
-         if (child_regarray->regs[0]->index ==
-             parent_regarray->regs[u]->index) {
-            *parent_regptr = &parent_regarray->regs[u];
-            break;
-         }
-      }
+         return true;
    }
 
-   return common_regarray;
+   unsigned count_regarrays =
+      util_dynarray_num_elements(common_regarrays, rogue_regarray *);
+
+   if (count_regarrays > 1) {
+      /* common_regarrays only has root level regarrays.
+       * This means that if it has >1 items and there is no overlap, and since
+       * the common regarrays themselves cannot overlap, this regarray must
+       * encompass all of the other ones. */
+      *is_parent = true;
+   } else {
+      rogue_regarray *common_regarray =
+         util_dynarray_top(common_regarrays, rogue_regarray *);
+      *is_parent = regarray->size > common_regarray->size;
+   }
+
+   return false;
 }
 
 static rogue_regarray *rogue_regarray_create(rogue_shader *shader,
@@ -489,80 +495,106 @@ static rogue_regarray *rogue_regarray_create(rogue_shader *shader,
    }
 
    bool is_parent = false;
-   rogue_reg **parent_regptr = NULL;
    bool overlaps = false;
-   rogue_regarray *common_regarray = rogue_find_common_regarray(regarray,
-                                                                &is_parent,
-                                                                &parent_regptr,
-                                                                &overlaps);
+   rogue_regarray *common_regarrays_data[10]; /* Arbitrary size */
+   struct util_dynarray common_regarrays;
+   util_dynarray_init_from_stack(&common_regarrays,
+                                 common_regarrays_data,
+                                 sizeof(common_regarrays_data));
+   overlaps =
+      rogue_find_common_root_regarrays(regarray, &is_parent, &common_regarrays);
 
-   if (!common_regarray) {
+   if (!util_dynarray_contains(&common_regarrays, rogue_regarray *)) {
       assert(!overlaps);
       /* We don't share any registers with another regarray. */
       for (unsigned u = 0; u < size; ++u)
          regarray->regs[u]->regarray = regarray;
    } else {
+      unsigned base_index = regarray->regs[0]->index;
+
       if (overlaps) {
-         if (allow_overlap) {
-            assert(!component);
-            assert(!vec);
+         assert(allow_overlap);
+         assert(!component);
+         assert(!vec);
 
-            /* Calculate properties of parent regarray that will hold both.  */
-            unsigned parent_start_index =
-               MIN2(regarray->regs[0]->index, common_regarray->regs[0]->index);
-            unsigned parent_end_index = MAX2(
-               regarray->regs[0]->index + regarray->size - 1,
-               common_regarray->regs[0]->index + common_regarray->size - 1);
-            unsigned parent_size = parent_end_index - parent_start_index + 1;
-
-            rogue_regarray *parent = rogue_regarray_cached(shader,
-                                                           parent_size,
-                                                           class,
-                                                           parent_start_index,
-                                                           false);
-
-            common_regarray = rogue_find_common_regarray(regarray,
-                                                         &is_parent,
-                                                         &parent_regptr,
-                                                         &overlaps);
-
-            assert(common_regarray == parent);
-            assert(!is_parent);
-            assert(!overlaps);
-         } else {
-            unreachable("Can't have overlapping partial regarrays.");
+         /* Calculate properties of parent regarray that will hold all of
+          * them. */
+         unsigned parent_start_index = base_index;
+         unsigned parent_end_index = base_index + size - 1;
+         util_dynarray_foreach (&common_regarrays, rogue_regarray *, elem) {
+            parent_start_index =
+               MIN2(parent_start_index, elem[0]->regs[0]->index);
+            parent_end_index =
+               MAX2(parent_end_index,
+                    elem[0]->regs[0]->index + elem[0]->size - 1);
          }
+         unsigned parent_size = parent_end_index - parent_start_index + 1;
+
+         rogue_regarray *parent = rogue_regarray_cached(shader,
+                                                        parent_size,
+                                                        class,
+                                                        parent_start_index,
+                                                        false);
+
+         util_dynarray_clear(&common_regarrays);
+         overlaps = rogue_find_common_root_regarrays(regarray,
+                                                     &is_parent,
+                                                     &common_regarrays);
+
+         assert(util_dynarray_num_elements(&common_regarrays,
+                                           rogue_regarray *) == 1);
+         assert(util_dynarray_top(&common_regarrays, rogue_regarray *) ==
+                parent);
+         assert(!is_parent);
+         assert(!overlaps);
       }
 
       if (is_parent) {
-         /* We share registers with another regarray, and it is a subset of us.
-          */
-         for (unsigned u = 0; u < common_regarray->size; ++u)
-            common_regarray->regs[u]->regarray = regarray;
+         /* We share registers with other regarrays, and they are a subset. */
+         util_dynarray_foreach (&common_regarrays, rogue_regarray *, elem) {
+            rogue_regarray *common_regarray = elem[0];
+            for (unsigned u = 0; u < common_regarray->size; ++u)
+               common_regarray->regs[u]->regarray = regarray;
 
-         /* Steal its children. */
-         rogue_foreach_subarray_safe (subarray, common_regarray) {
-            unsigned parent_index = common_regarray->regs[0]->index;
-            unsigned child_index = subarray->regs[0]->index;
-            assert(child_index >= parent_index);
+            unsigned common_index = common_regarray->regs[0]->index;
+            assert(common_index >= base_index);
+            unsigned common_offset = common_index - base_index;
+            /* Steal its children. */
+            rogue_foreach_subarray_safe (subarray, common_regarray) {
+               unsigned child_index = subarray->regs[0]->index;
+               assert(child_index >= common_index);
 
-            subarray->parent = regarray;
-            subarray->regs = &parent_regptr[child_index - parent_index];
+               subarray->parent = regarray;
+               subarray->regs =
+                  &regarray->regs[child_index - common_index + common_offset];
 
-            list_del(&subarray->child_link);
-            list_addtail(&subarray->child_link, &regarray->children);
+               list_del(&subarray->child_link);
+               list_addtail(&subarray->child_link, &regarray->children);
+            }
+
+            common_regarray->parent = regarray;
+            ralloc_free(common_regarray->regs);
+            common_regarray->regs = &regarray->regs[common_offset];
+            list_addtail(&common_regarray->child_link, &regarray->children);
+
+            /* Own all the registers in the range */
+            for (unsigned u = 0; u < size; ++u)
+               regarray->regs[u]->regarray = regarray;
          }
-
-         common_regarray->parent = regarray;
-         ralloc_free(common_regarray->regs);
-         common_regarray->regs = parent_regptr;
-         list_addtail(&common_regarray->child_link, &regarray->children);
       } else {
-         /* We share registers with another regarray, and we are a subset of it.
-          */
+         /* We share registers with another regarray, and we are a subset. */
+         assert(util_dynarray_num_elements(&common_regarrays,
+                                           rogue_regarray *) == 1);
+         rogue_regarray *common_regarray =
+            util_dynarray_top(&common_regarrays, rogue_regarray *);
+
+         unsigned common_index = common_regarray->regs[0]->index;
+         assert(base_index >= common_index);
+         unsigned offset = base_index - common_index;
+
          regarray->parent = common_regarray;
          ralloc_free(regarray->regs);
-         regarray->regs = parent_regptr;
+         regarray->regs = &common_regarray->regs[offset];
          assert(list_is_empty(&regarray->children));
          list_addtail(&regarray->child_link, &common_regarray->children);
       }
