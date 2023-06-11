@@ -2211,7 +2211,7 @@ static void pvr_descriptor_update_input_attachment(
 
          if (!PVR_HAS_FEATURE(dev_info, tpu_array_textures)) {
             const uint32_t secondary_offset =
-               pvr_get_required_descriptor_primary_offset(
+               pvr_get_required_descriptor_secondary_offset(
                   device,
                   set->layout,
                   binding,
