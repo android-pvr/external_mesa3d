@@ -2449,15 +2449,15 @@ static inline void pvr_graphics_pipeline_assign_fs_io(
    const struct pvr_renderpass_hwsetup_subpass *hw_subpass,
    const struct vk_color_blend_state *cb_state)
 {
-   fs_data->num_outputs = subpass->color_count;
+   fs_data->num_outputs = hw_subpass->setup.num_render_targets;
    fs_data->outputs =
-      ralloc_array_size(ctx, sizeof(*fs_data->outputs), subpass->color_count);
+      ralloc_array_size(ctx, sizeof(*fs_data->outputs), fs_data->num_outputs);
 
    for (unsigned u = 0; u < subpass->color_count; ++u) {
       unsigned idx = subpass->color_attachments[u];
       VkFormat vk_format = pass->attachments[idx].vk_format;
       const struct usc_mrt_resource *mrt_resource =
-         &hw_subpass->setup.mrt_resources[idx];
+         &hw_subpass->setup.mrt_resources[u];
 
       fs_data->outputs[u].accum_format = pvr_get_pbe_accum_format(vk_format);
       fs_data->outputs[u].format = vk_format_to_pipe_format(vk_format);
@@ -2473,6 +2473,24 @@ static inline void pvr_graphics_pipeline_assign_fs_io(
    for (unsigned u = 0; u < subpass->input_count; ++u) {
       fs_data->inputs[u].type = hw_subpass->input_access[u].type;
       fs_data->inputs[u].on_chip_rt = hw_subpass->input_access[u].on_chip_rt;
+
+      if (fs_data->inputs[u].type !=
+          PVR_RENDERPASS_HWSETUP_INPUT_ACCESS_OFFCHIP) {
+         unsigned idx = subpass->input_attachments[u];
+         unsigned mrt_idx = fs_data->inputs[u].on_chip_rt;
+         const struct usc_mrt_resource *mrt_resource =
+            &hw_subpass->setup.mrt_resources[mrt_idx];
+         VkFormat vk_format = pass->attachments[idx].vk_format;
+
+         if (fs_data->inputs[u].type ==
+             PVR_RENDERPASS_HWSETUP_INPUT_ACCESS_ONCHIP_ZREPLICATE)
+            vk_format = VK_FORMAT_R32_SFLOAT;
+
+         fs_data->outputs[mrt_idx].accum_format =
+            pvr_get_pbe_accum_format(vk_format);
+         fs_data->outputs[mrt_idx].format = vk_format_to_pipe_format(vk_format);
+         fs_data->outputs[mrt_idx].mrt_resource = mrt_resource;
+      }
    }
 
    fs_data->cb_state = cb_state;
