@@ -206,17 +206,21 @@ lower_output_io(nir_builder *b, nir_instr *instr, void *cb_data)
 
    b->cursor = nir_before_instr(instr);
 
-   unsigned size = components / pbe_dwords;
-   assert(!(components % pbe_dwords));
+   unsigned size = DIV_ROUND_UP(components, pbe_dwords);
+
    if (is_store) {
       nir_src *output_src = &intr->src[0];
-      nir_component_mask_t chan_mask = nir_component_mask(size);
 
-      nir_ssa_def *chans, *pack;
       for (unsigned out = 0; out < pbe_dwords; ++out) {
-         chans = nir_channels(b, output_src->ssa, chan_mask << (out * size));
+         nir_component_mask_t chan_mask =
+            nir_component_mask(MIN2(size, components - out * size));
+
+         nir_ssa_def *chans =
+            nir_channels(b, output_src->ssa, chan_mask << (out * size));
+         chans = nir_resize_vector(b, chans, size);
+
          /* TODO: Make the pack optional. */
-         pack = do_pack(b, pbe, chans);
+         nir_ssa_def *pack = do_pack(b, pbe, chans);
          nir_store_output(b,
                           pack,
                           nir_imm_int(b, 0),
@@ -248,7 +252,7 @@ lower_output_io(nir_builder *b, nir_instr *instr, void *cb_data)
                          .io_semantics = sem);
 
       nir_ssa_def *upck = do_unpack(b, pbe, load, size);
-      for (unsigned c = 0; c < size; c++)
+      for (unsigned c = 0; c < MIN2(size, components - in * size); c++)
          unpacks[num_unpack_comp++] = nir_channel(b, upck, c);
    }
 
