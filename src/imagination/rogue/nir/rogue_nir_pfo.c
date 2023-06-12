@@ -85,6 +85,59 @@ do_pack(nir_builder *b, enum pvr_pbe_accum_format pbe, nir_ssa_def *chans)
    return NULL;
 }
 
+static inline nir_ssa_def *do_unpack(nir_builder *b,
+                                     enum pvr_pbe_accum_format pbe,
+                                     nir_ssa_def *pck,
+                                     unsigned num_components)
+{
+   const unsigned bits_2101010[] = { 10, 10, 10, 2 };
+   const unsigned bits_8888[] = { 8, 8, 8, 8 };
+   const unsigned bits_1616[] = { 16, 16 };
+
+   switch (pbe) {
+   case PVR_PBE_ACCUM_FORMAT_U8:
+      return nir_unpack_unorm_4x8(b, pck);
+
+   case PVR_PBE_ACCUM_FORMAT_S8:
+      return nir_unpack_snorm_4x8(b, pck);
+
+   case PVR_PBE_ACCUM_FORMAT_U16:
+      return nir_unpack_unorm_2x16(b, pck);
+
+   case PVR_PBE_ACCUM_FORMAT_S16:
+      return nir_unpack_snorm_2x16(b, pck);
+
+   case PVR_PBE_ACCUM_FORMAT_F16:
+      return nir_unpack_half_2x16(b, pck);
+
+   case PVR_PBE_ACCUM_FORMAT_F32:
+   case PVR_PBE_ACCUM_FORMAT_SINT32:
+   case PVR_PBE_ACCUM_FORMAT_UINT32:
+      return pck;
+
+   case PVR_PBE_ACCUM_FORMAT_U1010102:
+      return nir_format_unpack_uint(b, pck, bits_2101010, num_components);
+
+   case PVR_PBE_ACCUM_FORMAT_UINT8:
+      return nir_format_unpack_uint(b, pck, bits_8888, num_components);
+
+   case PVR_PBE_ACCUM_FORMAT_SINT8:
+      return nir_format_unpack_int(b, pck, bits_8888, num_components, true);
+
+   case PVR_PBE_ACCUM_FORMAT_UINT16:
+      return nir_format_unpack_uint(b, pck, bits_1616, num_components);
+
+   case PVR_PBE_ACCUM_FORMAT_SINT16:
+      return nir_format_unpack_int(b, pck, bits_1616, num_components, true);
+
+   default:
+      break;
+   }
+
+   unreachable("Unsupported pbe_accum_format.");
+   return NULL;
+}
+
 static inline const struct glsl_type *
 pbe_accum_to_glsl_type(enum pvr_pbe_accum_format pbe)
 {
@@ -118,22 +171,21 @@ pbe_accum_to_glsl_type(enum pvr_pbe_accum_format pbe)
 
 /* TODO: Support complex PFO with blending. */
 static nir_ssa_def *
-lower_store_output(nir_builder *b, nir_instr *instr, void *cb_data)
+lower_output_io(nir_builder *b, nir_instr *instr, void *cb_data)
 {
    struct rogue_fs_build_data *fs_data = (struct rogue_fs_build_data *)cb_data;
 
-   nir_intrinsic_instr *old_store = nir_instr_as_intrinsic(instr);
-   nir_src *output_src = &old_store->src[0];
-   unsigned components = nir_src_num_components(*output_src);
+   nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
+   bool is_store = intr->intrinsic == nir_intrinsic_store_output;
 
-   nir_io_semantics sem = nir_intrinsic_io_semantics(old_store);
+   nir_io_semantics sem = nir_intrinsic_io_semantics(intr);
    nir_variable *output_var =
       nir_find_variable_with_location(b->shader,
                                       nir_var_shader_out,
                                       sem.location);
    unsigned location = sem.location - FRAG_RESULT_DATA0;
-   unsigned mrt_idx = location + nir_src_as_uint(old_store->src[1]) +
-                      nir_intrinsic_base(old_store);
+   unsigned mrt_idx = location + nir_src_as_uint(intr->src[!!is_store]) +
+                      nir_intrinsic_base(intr);
    const struct usc_mrt_resource *mrt_resource =
       fs_data->outputs[mrt_idx].mrt_resource;
 
@@ -141,8 +193,8 @@ lower_store_output(nir_builder *b, nir_instr *instr, void *cb_data)
    assert(mrt_resource->reg.offset == 0);
 
    enum pvr_pbe_accum_format pbe = fs_data->outputs[mrt_idx].accum_format;
-   ASSERTED enum pipe_format format = fs_data->outputs[mrt_idx].format;
-   assert(components == util_format_get_nr_components(format));
+   enum pipe_format format = fs_data->outputs[mrt_idx].format;
+   unsigned components = util_format_get_nr_components(format);
 
    unsigned pbe_dwords =
       DIV_ROUND_UP(mrt_resource->intermediate_size, sizeof(uint32_t));
@@ -154,37 +206,72 @@ lower_store_output(nir_builder *b, nir_instr *instr, void *cb_data)
 
    b->cursor = nir_before_instr(instr);
 
-   unsigned input_size = components / pbe_dwords;
+   unsigned size = components / pbe_dwords;
    assert(!(components % pbe_dwords));
-   nir_component_mask_t chan_mask = nir_component_mask(input_size);
+   if (is_store) {
+      nir_src *output_src = &intr->src[0];
+      nir_component_mask_t chan_mask = nir_component_mask(size);
 
-   nir_ssa_def *chans, *pack;
-   for (unsigned out = 0; out < pbe_dwords; ++out) {
-      chans = nir_channels(b, output_src->ssa, chan_mask << (out * input_size));
-      /* TODO: Make the pack optional. */
-      pack = do_pack(b, pbe, chans);
-      nir_store_output(b,
-                       pack,
-                       nir_imm_zero(b, 1, 32),
-                       .base = mrt_resource->reg.output_reg + out,
-                       .src_type = nir_type,
-                       .write_mask = 1,
-                       .io_semantics = nir_intrinsic_io_semantics(old_store));
+      nir_ssa_def *chans, *pack;
+      for (unsigned out = 0; out < pbe_dwords; ++out) {
+         chans = nir_channels(b, output_src->ssa, chan_mask << (out * size));
+         /* TODO: Make the pack optional. */
+         pack = do_pack(b, pbe, chans);
+         nir_store_output(b,
+                          pack,
+                          nir_imm_int(b, 0),
+                          .base = mrt_resource->reg.output_reg + out,
+                          .src_type = nir_type,
+                          .write_mask = 1,
+                          .io_semantics = sem);
+      }
+
+      /* Update the variable and dereference types. */
+      output_var->type = glsl_type;
+
+      return NIR_LOWER_INSTR_PROGRESS_REPLACE;
    }
 
-   /* Update the variable and dereference types. */
-   output_var->type = glsl_type;
+   bool is_float = nir_alu_type_get_base_type(nir_type) == nir_type_float;
 
-   return NIR_LOWER_INSTR_PROGRESS_REPLACE;
+   int num_unpack_comp = 0;
+   nir_ssa_def *unpacks[4];
+
+   for (unsigned in = 0; in < pbe_dwords; ++in) {
+      nir_ssa_def *load =
+         nir_load_output(b,
+                         1,
+                         32,
+                         nir_imm_int(b, 0),
+                         .base = mrt_resource->reg.output_reg + in,
+                         .dest_type = nir_type,
+                         .io_semantics = sem);
+
+      nir_ssa_def *upck = do_unpack(b, pbe, load, size);
+      for (unsigned c = 0; c < size; c++)
+         unpacks[num_unpack_comp++] = nir_channel(b, upck, c);
+   }
+
+   /* Missing .gba comps */
+   for (; num_unpack_comp < 3; num_unpack_comp++)
+      unpacks[num_unpack_comp] = nir_imm_int(b, 0);
+   if (num_unpack_comp == 3) {
+      unpacks[num_unpack_comp++] = is_float ? nir_imm_float(b, 1.0)
+                                            : nir_imm_int(b, 0);
+   }
+
+   assert(num_unpack_comp == 4);
+   return nir_vec(b, unpacks, num_unpack_comp);
 }
 
-static bool is_store_output(const nir_instr *instr, UNUSED const void *cb_data)
+static bool is_output_io(const nir_instr *instr, UNUSED const void *cb_data)
 {
    if (instr->type != nir_instr_type_intrinsic)
       return false;
 
    nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
-   if (intr->intrinsic != nir_intrinsic_store_output)
+   if (intr->intrinsic != nir_intrinsic_store_output &&
+       intr->intrinsic != nir_intrinsic_load_output)
       return false;
 
    nir_io_semantics sem = nir_intrinsic_io_semantics(intr);
@@ -305,8 +392,8 @@ bool rogue_nir_pfo(nir_shader *shader, rogue_build_ctx *ctx)
    rogue_lower_blend(shader, ctx);
 
    nir_shader_lower_instructions(shader,
-                                 is_store_output,
-                                 lower_store_output,
+                                 is_output_io,
+                                 lower_output_io,
                                  &ctx->stage_data.fs);
    return true;
 }

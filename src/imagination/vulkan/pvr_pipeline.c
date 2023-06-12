@@ -1833,6 +1833,8 @@ pvr_fragment_state_init(struct pvr_graphics_pipeline *gfx_pipeline,
    /* TODO: handle other cases. */
    if (fs_data->discard)
       fragment_state->pass_type = PVRX(TA_PASSTYPE_PUNCH_THROUGH);
+   else if (fs_data->translucent)
+      fragment_state->pass_type = PVRX(TA_PASSTYPE_TRANSLUCENT);
    else
       fragment_state->pass_type = PVRX(TA_PASSTYPE_OPAQUE);
 
@@ -2291,6 +2293,7 @@ static void pvr_collect_io_data_fs(struct rogue_common_build_data *common_data,
    }
 
    /* TODO: Process outputs. */
+   fs_data->translucent = nir->info.fs.uses_fbfetch_output;
 }
 
 struct pvr_output_reg {

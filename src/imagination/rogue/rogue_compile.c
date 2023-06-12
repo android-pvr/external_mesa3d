@@ -1629,6 +1629,39 @@ static void trans_nir_intrinsic_load_input(rogue_builder *b,
    unreachable("Unsupported NIR load_input variant.");
 }
 
+static void trans_nir_intrinsic_load_output_fs(rogue_builder *b,
+                                               nir_intrinsic_instr *intr)
+{
+   assert(b->shader->stage == MESA_SHADER_FRAGMENT);
+
+   unsigned reg_idx = nir_intrinsic_base(intr) + nir_src_as_uint(intr->src[0]);
+
+   unsigned load_size;
+   rogue_ref dst = nir_intr_dst32(b->shader, intr, &load_size);
+   rogue_ref src = rogue_ref_reg(rogue_pixout_reg(b->shader, reg_idx));
+   /* Pixel output registers can't be used with repeat >
+    * 1, so load_size will always be limited to 1.
+    */
+   assert(load_size == 1);
+
+   rogue_alu_instr *mov = rogue_MOV(b, dst, src);
+   rogue_add_instr_commentf(&mov->instr, "load_output_fs");
+}
+
+static void trans_nir_intrinsic_load_output(rogue_builder *b,
+                                            nir_intrinsic_instr *intr)
+{
+   switch (b->shader->stage) {
+   case MESA_SHADER_FRAGMENT:
+      return trans_nir_intrinsic_load_output_fs(b, intr);
+
+   default:
+      break;
+   }
+
+   unreachable("Unsupported NIR load_output variant.");
+}
+
 static void trans_nir_intrinsic_store_output_fs(rogue_builder *b,
                                                 nir_intrinsic_instr *intr)
 {
@@ -2347,6 +2380,9 @@ static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
 
    case nir_intrinsic_store_output:
       return trans_nir_intrinsic_store_output(b, intr);
+
+   case nir_intrinsic_load_output:
+      return trans_nir_intrinsic_load_output(b, intr);
 
    case nir_intrinsic_load_vulkan_desc_set_table_base_addr_img:
       return trans_nir_intrinsic_load_vulkan_desc_set_table_base_addr_img(b,
