@@ -118,8 +118,7 @@ static inline void rogue_ra_setup_class(struct ra_regs *ra_regs,
    class_info->hw_class = hw_class;
 
    for (unsigned t = num_hw_prealloced; t < num_hw - (stride - 1); ++t)
-      if (!(t % stride))
-         ra_class_add_reg(ra_class, t);
+      ra_class_add_reg(ra_class, t);
 }
 
 /* TODO: Track successors/predecessors and do this properly when
