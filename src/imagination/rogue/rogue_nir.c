@@ -293,6 +293,9 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
    /* Clean up deref_vars. */
    NIR_PASS_V(nir, nir_opt_dce);
    NIR_PASS_V(nir, nir_opt_constant_folding);
+   NIR_PASS_V(nir,
+              nir_io_add_const_offset_to_base,
+              nir_var_shader_in | nir_var_shader_out);
 
    /* Load inputs to scalars (single registers later). */
    /* TODO: Fitrp can process multiple frag inputs at once, scalarise I/O. */

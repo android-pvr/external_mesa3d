@@ -205,8 +205,8 @@ lower_output_io(nir_builder *b, nir_instr *instr, void *cb_data)
                                       nir_var_shader_out,
                                       sem.location);
    unsigned location = sem.location - FRAG_RESULT_DATA0;
-   unsigned mrt_idx = location + nir_src_as_uint(intr->src[!!is_store]) +
-                      nir_intrinsic_base(intr);
+   unsigned mrt_idx = location + nir_src_as_uint(intr->src[!!is_store]);
+   assert(mrt_idx < fs_data->num_outputs);
    const struct usc_mrt_resource *mrt_resource =
       fs_data->outputs[mrt_idx].mrt_resource;
 
