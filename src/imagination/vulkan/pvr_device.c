@@ -3048,6 +3048,21 @@ pvr_sampler_get_hw_addr_mode_from_vk(VkSamplerAddressMode addr_mode)
    }
 }
 
+static inline uint64_t pvr_sampler_filter_clear_mask(void)
+{
+   uint64_t minfilter_mask =
+      util_bitpack_ones(PVRX(TEXSTATE_SAMPLER_MINFILTER_START),
+                        PVRX(TEXSTATE_SAMPLER_MINFILTER_END));
+   uint64_t magfilter_mask =
+      util_bitpack_ones(PVRX(TEXSTATE_SAMPLER_MAGFILTER_START),
+                        PVRX(TEXSTATE_SAMPLER_MAGFILTER_END));
+   uint64_t mipfilter_mask =
+      util_bitpack_ones(PVRX(TEXSTATE_SAMPLER_MIPFILTER_START),
+                        PVRX(TEXSTATE_SAMPLER_MIPFILTER_END));
+
+   return ~(minfilter_mask | magfilter_mask | mipfilter_mask);
+}
+
 VkResult pvr_CreateSampler(VkDevice _device,
                            const VkSamplerCreateInfo *pCreateInfo,
                            const VkAllocationCallbacks *pAllocator,
@@ -3191,6 +3206,21 @@ VkResult pvr_CreateSampler(VkDevice _device,
       if (pCreateInfo->unnormalizedCoordinates)
          word.non_normalized_coords = true;
    }
+
+   /* Gather sampler requires linear filtering */
+   sampler->gather_descriptor = sampler->descriptor;
+
+   sampler->gather_descriptor.data.sampler_word &=
+      pvr_sampler_filter_clear_mask();
+
+   sampler->gather_descriptor.data.sampler_word |=
+      util_bitpack_uint(PVRX(TEXSTATE_FILTER_LINEAR),
+                        PVRX(TEXSTATE_SAMPLER_MINFILTER_START),
+                        PVRX(TEXSTATE_SAMPLER_MINFILTER_END));
+   sampler->gather_descriptor.data.sampler_word |=
+      util_bitpack_uint(PVRX(TEXSTATE_FILTER_LINEAR),
+                        PVRX(TEXSTATE_SAMPLER_MAGFILTER_START),
+                        PVRX(TEXSTATE_SAMPLER_MAGFILTER_END));
 
    *pSampler = pvr_sampler_to_handle(sampler);
 

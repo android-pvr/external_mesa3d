@@ -87,11 +87,12 @@ void pvr_descriptor_size_info_init(
    /* UINT_MAX is a place holder. These values will be filled by calling the
     * init function, and set appropriately based on device features.
     */
+   /* clang-format off */
    static const struct pvr_descriptor_size_info template_size_infos[] = {
       /* VK_DESCRIPTOR_TYPE_SAMPLER */
-      { PVR_SAMPLER_DESCRIPTOR_SIZE, 0, 4 },
+      { PVR_SAMPLER_DESCRIPTOR_SIZE * 2, UINT_MAX, 4 },
       /* VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER */
-      { PVR_IMAGE_DESCRIPTOR_SIZE + PVR_SAMPLER_DESCRIPTOR_SIZE, UINT_MAX, 4 },
+      { PVR_IMAGE_DESCRIPTOR_SIZE + PVR_SAMPLER_DESCRIPTOR_SIZE * 2, UINT_MAX, 4 },
       /* VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE */
       { 4, UINT_MAX, 4 },
       /* VK_DESCRIPTOR_TYPE_STORAGE_IMAGE */
@@ -111,11 +112,16 @@ void pvr_descriptor_size_info_init(
       /* VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT */
       { 8, UINT_MAX, 4 }
    };
+   /* clang-format on */
 
    *size_info_out = template_size_infos[type];
 
    switch (type) {
    case VK_DESCRIPTOR_TYPE_SAMPLER:
+      size_info_out->secondary =
+         PVR_DESC_IMAGE_SECONDARY_TOTAL_SIZE(&device->pdevice->dev_info);
+      break;
+
    case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
    case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
       break;
@@ -1482,17 +1488,23 @@ pvr_descriptor_set_create(struct pvr_device *device,
                    sampler->descriptor.words,
                    sizeof(sampler->descriptor.words));
 
+            memcpy((uint8_t *)pvr_bo_suballoc_get_map_addr(set->pvr_bo) +
+                      PVR_DW_TO_BYTES(offset_in_dwords + 4),
+                   sampler->gather_descriptor.words,
+                   sizeof(sampler->gather_descriptor.words));
+
             /* Patch the required_bo. */
             /* TODO: For now we'll keep the above code. Eventually we should
              * redo the descriptor set logic so that we don't end up with two
              * different layouts.
              */
 
-            offset_in_dwords = pvr_get_descriptor_primary_offset(device,
-                                                                 layout,
-                                                                 binding,
-                                                                 stage,
-                                                                 j);
+            offset_in_dwords =
+               pvr_get_required_descriptor_primary_offset(device,
+                                                          layout,
+                                                          binding,
+                                                          stage,
+                                                          j);
 
             if (binding->type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
                offset_in_dwords += 4;
@@ -1501,6 +1513,11 @@ pvr_descriptor_set_create(struct pvr_device *device,
                       PVR_DW_TO_BYTES(offset_in_dwords),
                    sampler->descriptor.words,
                    sizeof(sampler->descriptor.words));
+
+            memcpy((uint8_t *)pvr_bo_suballoc_get_map_addr(set->pvr_bo) +
+                      PVR_DW_TO_BYTES(offset_in_dwords + 4),
+                   sampler->gather_descriptor.words,
+                   sizeof(sampler->gather_descriptor.words));
          }
       }
    }
@@ -1696,6 +1713,10 @@ static void pvr_descriptor_update_sampler(
                 sampler->descriptor.words,
                 sizeof(sampler->descriptor.words));
 
+         memcpy(mem_ptr + primary_offset + 4,
+                sampler->gather_descriptor.words,
+                sizeof(sampler->gather_descriptor.words));
+
          /* Patch the required_bo. */
          /* TODO: For now we'll keep the above code. Eventually we should redo
           * the descriptor set logic so that we don't end up with two different
@@ -1714,6 +1735,10 @@ static void pvr_descriptor_update_sampler(
          memcpy(mem_ptr + primary_offset,
                 sampler->descriptor.words,
                 sizeof(sampler->descriptor.words));
+
+         memcpy(mem_ptr + primary_offset + 4,
+                sampler->gather_descriptor.words,
+                sizeof(sampler->gather_descriptor.words));
       }
    }
 }
@@ -1857,6 +1882,10 @@ static void pvr_descriptor_update_sampler_texture(
             memcpy(mem_ptr + primary_offset + PVR_IMAGE_DESCRIPTOR_SIZE,
                    sampler->descriptor.words,
                    sizeof(sampler->descriptor.words));
+
+            memcpy(mem_ptr + primary_offset + PVR_IMAGE_DESCRIPTOR_SIZE + 4,
+                   sampler->gather_descriptor.words,
+                   sizeof(sampler->gather_descriptor.words));
          }
 
          pvr_write_image_descriptor_secondaries(dev_info,
@@ -1902,6 +1931,10 @@ static void pvr_descriptor_update_sampler_texture(
             memcpy(mem_ptr + primary_offset + PVR_IMAGE_DESCRIPTOR_SIZE,
                    sampler->descriptor.words,
                    sizeof(sampler->descriptor.words));
+
+            memcpy(mem_ptr + primary_offset + PVR_IMAGE_DESCRIPTOR_SIZE + 4,
+                   sampler->gather_descriptor.words,
+                   sizeof(sampler->gather_descriptor.words));
          }
 
          pvr_write_image_descriptor_secondaries(dev_info,

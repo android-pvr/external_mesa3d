@@ -368,6 +368,7 @@ struct pvr_sampler {
    struct vk_object_base base;
 
    union pvr_sampler_descriptor descriptor;
+   union pvr_sampler_descriptor gather_descriptor;
 };
 
 struct pvr_descriptor_size_info {

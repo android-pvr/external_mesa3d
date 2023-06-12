@@ -335,9 +335,18 @@ SOFTWARE.
     <field name="lumakey" start="47" end="47" type="bool"/>
     <field name="addrmode_v" start="44" end="46" type="ADDRMODE"/>
     <field name="addrmode_u" start="41" end="43" type="ADDRMODE"/>
-    <field name="mipfilter" start="40" end="40" type="bool"/>
-    <field name="minfilter" start="38" end="39" type="FILTER"/>
-    <field name="magfilter" start="36" end="37" type="FILTER"/>
+    <field name="mipfilter" start="40" end="40" type="bool">
+      <define name="START" value="40"/>
+      <define name="END" value="40"/>
+    </field>
+    <field name="minfilter" start="38" end="39" type="FILTER">
+      <define name="START" value="38"/>
+      <define name="END" value="39"/>
+    </field>
+    <field name="magfilter" start="36" end="37" type="FILTER">
+      <define name="START" value="36"/>
+      <define name="END" value="37"/>
+    </field>
     <field name="anisoctl" start="33" end="35" type="ANISOCTL"/>
     <field name="maxlod" start="23" end="32" type="CLAMP"/>
     <field name="minlod" start="13" end="22" type="CLAMP"/>
