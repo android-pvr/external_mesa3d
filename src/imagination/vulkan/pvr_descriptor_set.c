@@ -433,6 +433,8 @@ static void pvr_dump_in_memory_required_layout_sizes(
          case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
          case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
          case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+         case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
+         case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
             break;
 
          default:
@@ -463,6 +465,8 @@ static void pvr_dump_in_memory_required_layout_sizes(
          case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
          case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
          case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+         case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
+         case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
             break;
 
          default:
@@ -509,6 +513,8 @@ pvr_setup_required_in_memory_layout(struct pvr_device *device,
       case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
       case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
       case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+      case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
+      case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
          break;
 
       default:
@@ -862,6 +868,8 @@ pvr_dump_in_register_layout_sizes(const struct pvr_device *device,
             case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
             case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
             case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+            case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
+            case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
                break;
 
             default:
@@ -905,6 +913,8 @@ pvr_dump_in_register_layout_sizes(const struct pvr_device *device,
             case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
             case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
             case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+            case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
+            case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
                break;
 
             default:
@@ -1061,6 +1071,7 @@ VkResult pvr_CreatePipelineLayout(VkDevice _device,
             case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
             case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
             case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
+            case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
             case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
             case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
             case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
@@ -2077,6 +2088,35 @@ static void pvr_descriptor_update_buffer_view(
             write_set->descriptorType,
             mem_ptr + primary_offset,
             size_info.secondary ? mem_ptr + secondary_offset : NULL);
+
+         /* Patch the required_bo. */
+         /* TODO: For now we'll keep the above code. Eventually we should redo
+          * the descriptor set logic so that we don't end up with two different
+          * layouts.
+          */
+
+         mem_ptr = pvr_bo_suballoc_get_map_addr(set->required_bo);
+
+         primary_offset = pvr_get_required_descriptor_primary_offset(
+            device,
+            set->layout,
+            binding,
+            j,
+            write_set->dstArrayElement + i);
+
+         secondary_offset = pvr_get_required_descriptor_secondary_offset(
+            device,
+            set->layout,
+            binding,
+            j,
+            write_set->dstArrayElement + i);
+
+         pvr_write_buffer_descriptor(
+            dev_info,
+            bview,
+            write_set->descriptorType,
+            mem_ptr + primary_offset,
+            size_info.secondary ? mem_ptr + secondary_offset : NULL);
       }
    }
 }
@@ -2400,6 +2440,8 @@ static void pvr_copy_descriptor_set(struct pvr_device *device,
    case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
    case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
    case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+   case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
+   case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
       break;
 
    default:
