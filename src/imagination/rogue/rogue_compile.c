@@ -424,6 +424,44 @@ nir_dst32_component(rogue_shader *shader, nir_dest dest, unsigned comp_num)
                                : rogue_temp_reg(shader, dest.reg.reg->index));
 }
 
+static rogue_ref
+rogue_nir_src32(rogue_shader *shader, nir_src src, unsigned *src_components)
+{
+   bool is_ssa = src.is_ssa;
+   assert(nir_src_bit_size(src) == 32);
+
+   unsigned num_components = nir_src_num_components(src);
+
+   if (src_components)
+      *src_components = num_components;
+
+   if (num_components > 1) {
+      assert(is_ssa);
+      return rogue_ref_regarray(
+         rogue_ssa_vec_regarray(shader, num_components, src.ssa->index, 0));
+   }
+
+   return rogue_ref_reg(is_ssa ? rogue_ssa_reg(shader, src.ssa->index)
+                               : rogue_temp_reg(shader, src.reg.reg->index));
+}
+
+static rogue_ref
+rogue_nir_src32_component(rogue_shader *shader, nir_src src, unsigned comp_num)
+{
+   bool is_ssa = src.is_ssa;
+   assert(nir_src_bit_size(src) == 32);
+
+   if (nir_src_num_components(src) > 1) {
+      assert(is_ssa);
+      return rogue_ref_regarray(
+         rogue_ssa_vec_regarray(shader, 1, src.ssa->index, comp_num));
+   }
+
+   assert(comp_num == 0);
+   return rogue_ref_reg(is_ssa ? rogue_ssa_reg(shader, src.ssa->index)
+                               : rogue_temp_reg(shader, src.reg.reg->index));
+}
+
 static rogue_ref nir_intr_src32(rogue_shader *shader,
                                 const nir_intrinsic_instr *intr,
                                 unsigned src_num,
@@ -624,115 +662,89 @@ static void trans_nir_jump(rogue_builder *b, nir_jump_instr *jump)
    unreachable("Unsupported NIR jump instruction type.");
 }
 
-static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
+struct rogue_nir_tex_smp_info {
+   unsigned channels;
+   bool pack_f16 : 1;
+   bool fcnorm : 1;
+   bool is_array : 1;
+   bool int_coord : 1;
+   bool nn_coord : 1;
+   bool point_sampler : 1;
+   bool lod_bias : 1;
+   enum glsl_sampler_dim dim;
+   unsigned image_base;
+   unsigned sampler_base;
+   nir_src *coords;
+   nir_src *proj;
+   nir_src *lod;
+   nir_src *ddx;
+   nir_src *ddy;
+   nir_src *offset;
+   nir_src *ms_idx;
+   nir_src *secondary_idx;
+   nir_src *image_idx;
+   nir_src *sampler_idx;
+};
+
+static rogue_backend_instr *
+rogue_nir_emit_texture_sample(rogue_builder *b,
+                              rogue_ref dst,
+                              struct rogue_nir_tex_smp_info *info)
 {
    const struct pvr_device_info *dev_info = b->shader->ctx->compiler->dev_info;
 
-   unsigned channels = nir_dest_num_components(tex->dest);
-   unsigned coord_components = tex->coord_components;
+   unsigned coord_components;
+   switch (info->dim) {
+   case GLSL_SAMPLER_DIM_1D:
+   case GLSL_SAMPLER_DIM_BUF:
+      coord_components = 1;
+      break;
+   case GLSL_SAMPLER_DIM_2D:
+   case GLSL_SAMPLER_DIM_MS:
+      coord_components = 2;
+      break;
+   case GLSL_SAMPLER_DIM_CUBE:
+   case GLSL_SAMPLER_DIM_3D:
+      coord_components = 3;
+      break;
+   default:
+      unreachable("Unsupported glsl_sampler_dim");
+   }
+
+   assert(info->coords);
+   unsigned smp_data_components = coord_components;
+
+   if (info->is_array && !PVR_HAS_FEATURE(dev_info, tpu_array_textures))
+      smp_data_components += 2;
+
+   if (info->proj) {
+      assert(nir_src_num_components(*info->proj) == 1);
+      smp_data_components++;
+   }
+
+   if (info->lod) {
+      assert(nir_src_num_components(*info->lod) == 1);
+      smp_data_components++;
+   }
+   if (info->ddx || info->ddy) {
+      assert(info->ddx && info->ddy);
+      assert(nir_src_num_components(*info->ddx) ==
+             nir_src_num_components(*info->ddy));
+      assert(nir_src_num_components(*info->ddx) == coord_components);
+      smp_data_components += coord_components;
+   }
+   if (info->ms_idx || info->offset) {
+      assert(!info->ms_idx || (nir_src_num_components(*info->ms_idx) == 1));
+      assert(!info->ms_idx ||
+             (nir_src_num_components(*info->offset) == coord_components));
+      smp_data_components++;
+   }
 
    rogue_ref smp_data_ref;
-   unsigned coords_src = ROGUE_REG_UNUSED;
-   unsigned proj_src = ROGUE_REG_UNUSED;
-   unsigned lod_src = ROGUE_REG_UNUSED;
-   unsigned ddx_src = ROGUE_REG_UNUSED;
-   unsigned ddy_src = ROGUE_REG_UNUSED;
-   unsigned ms_idx_src = ROGUE_REG_UNUSED;
-   unsigned offset_src = ROGUE_REG_UNUSED;
-   unsigned secondary_index = ROGUE_REG_UNUSED;
-
-   unsigned texture_offset_src = ROGUE_REG_UNUSED;
-   unsigned sampler_offset_src = ROGUE_REG_UNUSED;
-
-   bool pack_f16;
-   unsigned dst_components;
-   rogue_ref dst = nir_tex_dst32(b->shader, tex, &dst_components, &pack_f16);
-   assert(!pack_f16);
-
-   assert(channels <= 4);
-   assert(!tex->is_shadow);
-   assert(!tex->is_new_style_shadow);
-   assert(!tex->is_sparse);
-   assert(!tex->texture_non_uniform);
-   assert(!tex->sampler_non_uniform);
-
-   unsigned smp_data_components = 0;
-
-   for (unsigned u = 0; u < tex->num_srcs; ++u) {
-      unsigned src_components;
-      nir_tex_src32(b->shader, tex, u, &src_components);
-      switch (tex->src[u].src_type) {
-      case nir_tex_src_coord:
-         assert(coords_src == ROGUE_REG_UNUSED);
-         coords_src = u;
-         break;
-
-      case nir_tex_src_bias:
-      case nir_tex_src_lod:
-         /* TODO: promote to shared regs if uniform */
-         assert(lod_src == ROGUE_REG_UNUSED);
-         lod_src = u;
-         break;
-
-      case nir_tex_src_projector:
-         assert(proj_src == ROGUE_REG_UNUSED);
-         proj_src = u;
-         break;
-
-      case nir_tex_src_ddx:
-         assert(ddx_src == ROGUE_REG_UNUSED);
-         ddx_src = u;
-         break;
-
-      case nir_tex_src_ddy:
-         assert(ddy_src == ROGUE_REG_UNUSED);
-         ddy_src = u;
-         break;
-
-      case nir_tex_src_offset:
-         assert(offset_src == ROGUE_REG_UNUSED);
-         offset_src = u;
-         break;
-
-      case nir_tex_src_ms_index:
-         assert(ms_idx_src == ROGUE_REG_UNUSED);
-         ms_idx_src = u;
-         break;
-
-      case nir_tex_src_texture_offset:
-         assert(texture_offset_src == ROGUE_REG_UNUSED);
-         texture_offset_src = u;
-         continue;
-
-      case nir_tex_src_sampler_offset:
-         assert(sampler_offset_src == ROGUE_REG_UNUSED);
-         sampler_offset_src = u;
-         continue;
-
-      case nir_tex_src_backend1:
-         assert(secondary_index == ROGUE_REG_UNUSED);
-         secondary_index = u;
-         continue;
-
-      default:
-         unreachable("Unsupported NIR tex source type.");
-      }
-
-      smp_data_components += src_components;
-   }
-
-   if (tex->is_array && (!PVR_HAS_FEATURE(dev_info, tpu_array_textures) ||
-                         proj_src != ROGUE_REG_UNUSED)) {
-      coord_components--;
-
-      if (!PVR_HAS_FEATURE(dev_info, tpu_array_textures))
-         smp_data_components++;
-   }
-
-   assert(coords_src != ROGUE_REG_UNUSED);
-
-   /* Move all the data into contiguous temp regs */
-   if (smp_data_components > coord_components) {
+   if (smp_data_components == coord_components) {
+      smp_data_ref = rogue_nir_src32(b->shader, *info->coords, NULL);
+   } else {
+      /* Move all the data into contiguous temp regs */
       unsigned data_base_idx = b->shader->ctx->next_ssa_idx;
       ++b->shader->ctx->next_ssa_idx;
       rogue_regarray *smp_data = rogue_ssa_vec_regarray(b->shader,
@@ -741,44 +753,38 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
                                                         0);
       unsigned data_idx = 0;
 
-#define ADD_SMP_DATA(src_idx, component)                                \
+#define ADD_SMP_DATA(nir_src, component)                                \
    do {                                                                 \
       rogue_regarray *data =                                            \
          rogue_ssa_vec_regarray(b->shader, 1, data_base_idx, data_idx); \
       rogue_ref src =                                                   \
-         nir_tex_src32_component(b->shader, tex, src_idx, component);   \
+         rogue_nir_src32_component(b->shader, *nir_src, component);     \
       rogue_MOV(b, rogue_ref_regarray(data), src);                      \
       ++data_idx;                                                       \
    } while (0)
 
       for (unsigned i = 0; i < coord_components; i++)
-         ADD_SMP_DATA(coords_src, i);
+         ADD_SMP_DATA(info->coords, i);
 
-      if (proj_src != ROGUE_REG_UNUSED)
-         ADD_SMP_DATA(proj_src, 0);
+      if (info->proj)
+         ADD_SMP_DATA(info->proj, 0);
 
-      /* TODO: lower the shadow samplers */
-      assert(!tex->is_shadow);
-      assert(!tex->is_new_style_shadow);
+      if (info->lod)
+         ADD_SMP_DATA(info->lod, 0);
 
-      if (lod_src != ROGUE_REG_UNUSED)
-         ADD_SMP_DATA(lod_src, 0);
-
-      assert((ddx_src == ROGUE_REG_UNUSED) == (ddy_src == ROGUE_REG_UNUSED));
-      if (ddx_src != ROGUE_REG_UNUSED) {
+      if (info->ddx) {
          for (unsigned i = 0; i < coord_components; i++) {
-            ADD_SMP_DATA(ddx_src, i);
-            ADD_SMP_DATA(ddy_src, i);
+            ADD_SMP_DATA(info->ddx, i);
+            ADD_SMP_DATA(info->ddy, i);
          }
       }
 
-      if (tex->is_array && !PVR_HAS_FEATURE(dev_info, tpu_array_textures)) {
-         assert(secondary_index != ROGUE_REG_UNUSED);
+      if (info->is_array && !PVR_HAS_FEATURE(dev_info, tpu_array_textures)) {
+         assert(info->secondary_idx);
 
-         rogue_ref layer_src = nir_tex_src32_component(b->shader,
-                                                       tex,
-                                                       coords_src,
-                                                       coord_components);
+         rogue_ref layer_src = rogue_nir_src32_component(b->shader,
+                                                         *info->coords,
+                                                         coord_components);
          rogue_ref layer_max = rogue_ref_reg(
             rogue_ssa_vec_reg(b->shader, b->shader->ctx->next_ssa_idx++, 0));
          rogue_alu_instr *max =
@@ -789,18 +795,18 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
             rogue_ssa_vec_reg(b->shader, b->shader->ctx->next_ssa_idx++, 0));
          rogue_ref layer_maxindex = nir_shared_reg_indexed(
             b,
-            tex->src[secondary_index].src,
+            *info->secondary_idx,
             PVR_DESC_IMAGE_SECONDARY_OFFSET_ARRAYMAXINDEX(dev_info));
          rogue_alu_instr *min = rogue_MIN(b, layer, layer_max, layer_maxindex);
          rogue_set_alu_op_mod(min, ROGUE_ALU_OP_MOD_S32);
 
          rogue_ref64 addr_base =
             nir_shared_reg_indexed64(b,
-                                     tex->src[secondary_index].src,
+                                     *info->secondary_idx,
                                      PVR_DESC_IMAGE_SECONDARY_OFFSET_ARRAYBASE);
          rogue_ref addr_stride =
             nir_shared_reg_indexed(b,
-                                   tex->src[secondary_index].src,
+                                   *info->secondary_idx,
                                    PVR_DESC_IMAGE_SECONDARY_OFFSET_ARRAYSTRIDE);
          rogue_ref64 addr_override =
             rogue_ssa_ref64(b->shader, b->shader->ctx->next_ssa_idx++);
@@ -826,32 +832,32 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
             addr_override.hi32);
       }
 
-#define ADD_SMP_OPT(src_idx, comp, bits, shift)                             \
-   do {                                                                     \
-      rogue_ref temp_and = rogue_ref_reg(                                   \
-         rogue_ssa_vec_reg(b->shader, b->shader->ctx->next_ssa_idx++, 0));  \
-      rogue_ref temp_shl = rogue_ref_reg(                                   \
-         rogue_ssa_vec_reg(b->shader, b->shader->ctx->next_ssa_idx++, 0));  \
-      rogue_ref next_smp_opts = rogue_ref_reg(                              \
-         rogue_ssa_vec_reg(b->shader, b->shader->ctx->next_ssa_idx++, 0));  \
-      rogue_IAND(b,                                                         \
-                 temp_and,                                                  \
-                 nir_tex_src32_component(b->shader, tex, offset_src, comp), \
-                 rogue_ref_imm((1 << bits) - 1));                           \
-      rogue_ISHL(b, temp_shl, temp_and, rogue_ref_imm(shift));              \
-      rogue_IOR(b, next_smp_opts, smp_opts, temp_shl);                      \
-      smp_opts = next_smp_opts;                                             \
+#define ADD_SMP_OPT(src, comp, bits, shift)                                \
+   do {                                                                    \
+      rogue_ref temp_and = rogue_ref_reg(                                  \
+         rogue_ssa_vec_reg(b->shader, b->shader->ctx->next_ssa_idx++, 0)); \
+      rogue_ref temp_shl = rogue_ref_reg(                                  \
+         rogue_ssa_vec_reg(b->shader, b->shader->ctx->next_ssa_idx++, 0)); \
+      rogue_ref next_smp_opts = rogue_ref_reg(                             \
+         rogue_ssa_vec_reg(b->shader, b->shader->ctx->next_ssa_idx++, 0)); \
+      rogue_IAND(b,                                                        \
+                 temp_and,                                                 \
+                 rogue_nir_src32_component(b->shader, *src, comp),         \
+                 rogue_ref_imm((1 << bits) - 1));                          \
+      rogue_ISHL(b, temp_shl, temp_and, rogue_ref_imm(shift));             \
+      rogue_IOR(b, next_smp_opts, smp_opts, temp_shl);                     \
+      smp_opts = next_smp_opts;                                            \
    } while (0)
 
-      if (ms_idx_src != ROGUE_REG_UNUSED || offset_src != ROGUE_REG_UNUSED) {
+      if (info->ms_idx || info->offset) {
          rogue_ref smp_opts = rogue_ref_imm(0);
-         if (offset_src != ROGUE_REG_UNUSED) {
+         if (info->offset) {
             for (unsigned i = 0; i < coord_components; i++)
-               ADD_SMP_OPT(offset_src, i, 5, 5 * i);
+               ADD_SMP_OPT(info->offset, i, 5, 5 * i);
          }
 
-         if (ms_idx_src != ROGUE_REG_UNUSED)
-            ADD_SMP_OPT(ms_idx_src, 0, 2, 16);
+         if (info->ms_idx)
+            ADD_SMP_OPT(info->ms_idx, 0, 2, 16);
 
          rogue_MOV(
             b,
@@ -866,26 +872,24 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
 
       assert(data_idx == smp_data_components);
       smp_data_ref = rogue_ref_regarray(smp_data);
-   } else {
-      smp_data_ref = nir_tex_src32(b->shader, tex, coords_src, NULL);
    }
 
    rogue_ref image_state;
-   if (texture_offset_src != ROGUE_REG_UNUSED) {
+   if (info->image_idx) {
       rogue_MOV(b,
                 rogue_ref_reg(rogue_index_reg(b->shader, 0)),
-                nir_tex_src32(b->shader, tex, texture_offset_src, NULL));
+                rogue_nir_src32_component(b->shader, *info->image_idx, 0));
 
       image_state =
-         rogue_ref_reg_indexed(rogue_shared_reg(b->shader, tex->texture_index),
+         rogue_ref_reg_indexed(rogue_shared_reg(b->shader, info->image_base),
                                0);
    } else {
       image_state = rogue_ref_regarray(
-         rogue_shared_regarray(b->shader, 4, tex->texture_index));
+         rogue_shared_regarray(b->shader, 4, info->image_base));
    }
 
    rogue_ref smp_state;
-   if (tex->op == nir_texop_txf || tex->op == nir_texop_txf_ms) {
+   if (info->point_sampler) {
       enum pvr_stage_allocation pvr_stage = mesa_stage_to_pvr(b->shader->stage);
       const struct pvr_pipeline_layout *pipeline_layout =
          b->shader->ctx->pipeline_layout;
@@ -893,24 +897,23 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
          b->shader,
          4,
          pipeline_layout->point_sampler_in_dwords_per_stage[pvr_stage]));
-   } else if (sampler_offset_src != ROGUE_REG_UNUSED) {
+   } else if (info->sampler_idx) {
       rogue_MOV(b,
                 rogue_ref_reg(rogue_index_reg(b->shader, 1)),
-                nir_tex_src32(b->shader, tex, sampler_offset_src, NULL));
+                rogue_nir_src32_component(b->shader, *info->sampler_idx, 0));
 
       smp_state =
-         rogue_ref_reg_indexed(rogue_shared_reg(b->shader, tex->sampler_index),
+         rogue_ref_reg_indexed(rogue_shared_reg(b->shader, info->sampler_base),
                                1);
    } else {
       smp_state = rogue_ref_regarray(
-         rogue_shared_regarray(b->shader, 4, tex->sampler_index));
+         rogue_shared_regarray(b->shader, 4, info->sampler_base));
    }
 
    rogue_backend_instr *smp;
 
-   switch (tex->sampler_dim) {
-   case GLSL_SAMPLER_DIM_1D:
-   case GLSL_SAMPLER_DIM_BUF:
+   switch (coord_components) {
+   case 1:
       smp = rogue_SMP1D(b,
                         dst,
                         rogue_ref_drc(0),
@@ -918,11 +921,9 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
                         smp_data_ref,
                         smp_state,
                         rogue_none(),
-                        rogue_ref_val(channels));
+                        rogue_ref_val(info->channels));
       break;
-   case GLSL_SAMPLER_DIM_2D:
-   case GLSL_SAMPLER_DIM_MS:
-   case GLSL_SAMPLER_DIM_CUBE:
+   case 2:
       smp = rogue_SMP2D(b,
                         dst,
                         rogue_ref_drc(0),
@@ -930,9 +931,9 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
                         smp_data_ref,
                         smp_state,
                         rogue_none(),
-                        rogue_ref_val(channels));
+                        rogue_ref_val(info->channels));
       break;
-   case GLSL_SAMPLER_DIM_3D:
+   case 3:
       smp = rogue_SMP3D(b,
                         dst,
                         rogue_ref_drc(0),
@@ -940,51 +941,121 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
                         smp_data_ref,
                         smp_state,
                         rogue_none(),
-                        rogue_ref_val(channels));
+                        rogue_ref_val(info->channels));
       break;
    default:
-      unreachable("Unsupported glsl_sampler_dim");
+      unreachable("Invalid coord_components");
    }
 
-   if (proj_src != ROGUE_REG_UNUSED)
+   if (info->proj)
       rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_PROJ);
 
-   if (lod_src != ROGUE_REG_UNUSED) {
+   if (info->lod) {
       rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_PPLOD);
-      switch (tex->op) {
-      case nir_texop_txf:
-      case nir_texop_txl:
-         assert(ddx_src == ROGUE_REG_UNUSED);
-         rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_REPLACE);
-         break;
-
-      case nir_texop_txb:
-         assert(ddx_src == ROGUE_REG_UNUSED);
+      if (info->lod_bias)
          rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_BIAS);
-         break;
+      else
+         rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_REPLACE);
+   }
 
+   if (info->is_array && !PVR_HAS_FEATURE(dev_info, tpu_array_textures))
+      rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_TAO);
+
+   if (info->ddx)
+      rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_GRADIENT);
+
+   if (info->ms_idx)
+      rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_SNO);
+
+   if (info->offset)
+      rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_SOO);
+
+   assert(!info->int_coord || !info->nn_coord);
+   if (info->int_coord)
+      rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_INTEGER);
+   else if (info->nn_coord)
+      rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_NNCOORDS);
+
+   if (info->fcnorm)
+      rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_FCNORM);
+
+   if (info->pack_f16)
+      rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_F16);
+
+   return smp;
+}
+
+static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
+{
+   struct rogue_nir_tex_smp_info info = { 0 };
+
+   bool pack_f16;
+   rogue_ref dst = nir_tex_dst32(b->shader, tex, NULL, &pack_f16);
+   assert(!pack_f16);
+
+   unsigned channels = nir_dest_num_components(tex->dest);
+
+   assert(channels <= 4);
+   assert(!tex->is_shadow);
+   assert(!tex->is_new_style_shadow);
+   assert(!tex->is_sparse);
+   assert(!tex->texture_non_uniform);
+   assert(!tex->sampler_non_uniform);
+
+   info.channels = channels;
+   info.dim = tex->sampler_dim;
+   info.is_array = tex->is_array;
+   info.pack_f16 = pack_f16;
+   info.image_base = tex->texture_index;
+   info.sampler_base = tex->sampler_index;
+   if (tex->op == nir_texop_txb)
+      info.lod_bias = true;
+   if (nir_alu_type_get_base_type(tex->dest_type) == nir_type_float)
+      info.fcnorm = true;
+   if (tex->op == nir_texop_txf || tex->op == nir_texop_txf_ms) {
+      info.int_coord = true;
+      info.point_sampler = true;
+   }
+
+   for (unsigned u = 0; u < tex->num_srcs; ++u) {
+      switch (tex->src[u].src_type) {
+      case nir_tex_src_coord:
+         info.coords = &tex->src[u].src;
+         break;
+      case nir_tex_src_bias:
+      case nir_tex_src_lod:
+         info.lod = &tex->src[u].src;
+         break;
+      case nir_tex_src_projector:
+         info.proj = &tex->src[u].src;
+         break;
+      case nir_tex_src_ddx:
+         info.ddx = &tex->src[u].src;
+         break;
+      case nir_tex_src_ddy:
+         info.ddy = &tex->src[u].src;
+         break;
+      case nir_tex_src_offset:
+         info.offset = &tex->src[u].src;
+         break;
+      case nir_tex_src_ms_index:
+         info.ms_idx = &tex->src[u].src;
+         break;
+      case nir_tex_src_texture_offset:
+         info.image_idx = &tex->src[u].src;
+         continue;
+      case nir_tex_src_sampler_offset:
+         info.sampler_idx = &tex->src[u].src;
+         continue;
+      case nir_tex_src_backend1:
+         info.secondary_idx = &tex->src[u].src;
+         continue;
       default:
-         unreachable("Invalid tex op");
+         unreachable("Unsupported NIR tex source type.");
       }
    }
 
-   if (tex->is_array && !PVR_HAS_FEATURE(dev_info, tpu_array_textures))
-      rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_TAO);
-
-   if (ddx_src != ROGUE_REG_UNUSED)
-      rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_GRADIENT);
-
-   if (ms_idx_src != ROGUE_REG_UNUSED)
-      rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_SNO);
-
-   if (offset_src != ROGUE_REG_UNUSED)
-      rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_SOO);
-
-   if (tex->op == nir_texop_txf || tex->op == nir_texop_txf_ms)
-      rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_INTEGER);
-
-   if (nir_alu_type_get_base_type(tex->dest_type) == nir_type_float)
-      rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_FCNORM);
+   rogue_nir_emit_texture_sample(b, dst, &info);
 }
 
 static void rogue_nir_texture_size(rogue_builder *b,
