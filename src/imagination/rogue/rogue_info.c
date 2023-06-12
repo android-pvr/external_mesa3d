@@ -600,6 +600,9 @@ const rogue_backend_op_info rogue_backend_op_infos[ROGUE_BACKEND_OP_COUNT] = {
          [5] = T(VAL),
       },
       /* TODO: This may depend on the other options set. */
+      .dst_stride = {
+         [0] = ~0, /* TODO: validate separately depending on set mods. */
+      },
       .src_stride = {
          [1] = 3,
          [2] = ~0,
@@ -627,6 +630,9 @@ const rogue_backend_op_info rogue_backend_op_infos[ROGUE_BACKEND_OP_COUNT] = {
          [5] = T(VAL),
       },
       /* TODO: This may depend on the other options set. */
+      .dst_stride = {
+         [0] = ~0,
+      },
       .src_stride = {
          [1] = 3,
          [2] = ~0,
@@ -654,6 +660,9 @@ const rogue_backend_op_info rogue_backend_op_infos[ROGUE_BACKEND_OP_COUNT] = {
          [5] = T(VAL),
       },
       /* TODO: This may depend on the other options set. */
+      .dst_stride = {
+         [0] = ~0,
+      },
       .src_stride = {
          [1] = 3,
          [2] = ~0,

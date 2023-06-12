@@ -580,6 +580,7 @@ struct rogue_nir_tex_smp_info {
    bool nn_coord : 1;
    bool point_sampler : 1;
    bool lod_bias : 1;
+   bool is_gather : 1;
    enum glsl_sampler_dim dim;
    unsigned image_base;
    unsigned sampler_base;
@@ -642,8 +643,9 @@ rogue_nir_emit_texture_sample(rogue_builder *b,
       smp_data_components++;
    }
 
-   if (info->lod) {
-      assert(nir_src_num_components(*info->lod) == 1);
+   if (info->lod || info->is_gather) {
+      assert(!(info->lod && info->is_gather));
+      assert(!info->lod || (nir_src_num_components(*info->lod) == 1));
       smp_data_components++;
    }
    if (info->ddx || info->ddy) {
@@ -693,8 +695,13 @@ rogue_nir_emit_texture_sample(rogue_builder *b,
       if (info->proj)
          ADD_SMP_DATA(info->proj, 0);
 
-      if (info->lod)
+      if (info->lod) {
          ADD_SMP_DATA(info->lod, 0);
+      } else if (info->is_gather) {
+         rogue_regarray *data =
+            rogue_ssa_vec_regarray(b->shader, 1, data_base_idx, data_idx++);
+         rogue_MOV(b, rogue_ref_regarray(data), rogue_ref_imm(0));
+      }
 
       if (info->ddx) {
          for (unsigned i = 0; i < coord_components; i++) {
@@ -920,7 +927,7 @@ rogue_nir_emit_texture_sample(rogue_builder *b,
    if (info->proj)
       rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_PROJ);
 
-   if (info->lod) {
+   if (info->lod || info->is_gather) {
       rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_PPLOD);
       if (info->lod_bias)
          rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_BIAS);
@@ -955,7 +962,52 @@ rogue_nir_emit_texture_sample(rogue_builder *b,
    if (info->store_data)
       rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_WRT);
 
+   if (info->is_gather)
+      rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_DATA);
+
    return smp;
+}
+
+static void rogue_nir_emit_gather(rogue_builder *b,
+                                  nir_tex_instr *tex,
+                                  struct rogue_nir_tex_smp_info *info,
+                                  unsigned component)
+{
+   assert(info->is_gather);
+
+   /* Driver provides gather suitable sampler right after the normal one. */
+   info->sampler_base += 4;
+   info->channels = 4;
+   /* Lod will be replaced with constant 0 with is_gather */
+   info->lod = NULL;
+
+   unsigned smp_data_idx = b->shader->ctx->next_ssa_idx++;
+   rogue_ref smp_data = rogue_ref_regarray(
+      rogue_ssa_vec_regarray(b->shader, 2 * 2 * 4, smp_data_idx, 0));
+
+   rogue_nir_emit_texture_sample(b, smp_data, info);
+
+   /*
+    *	tg4 wants the samples in this order:
+    *   bottom-left, bottom-right, top-right, top-left
+    *	whereas the hardware returns
+    *   top-left, top-right, bottom-left, bottom-right
+    */
+   static const unsigned sample_map[] = {
+      2, /* Bottom-left */
+      3, /* Bottom-right */
+      1, /* Top-right */
+      0, /* Top-left */
+   };
+   for (unsigned i = 0; i < ARRAY_SIZE(sample_map); i++) {
+      rogue_ref smp_data_comp = rogue_ref_regarray(
+         rogue_ssa_vec_regarray(b->shader,
+                                1,
+                                smp_data_idx,
+                                sample_map[i] * 4 + component));
+      rogue_ref dst_comp = nir_dst32_component(b->shader, tex->dest, i);
+      rogue_MOV(b, dst_comp, smp_data_comp);
+   }
 }
 
 static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
@@ -975,6 +1027,7 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
    assert(!tex->texture_non_uniform);
    assert(!tex->sampler_non_uniform);
 
+   info.is_gather = (tex->op == nir_texop_tg4);
    info.channels = channels;
    info.dim = tex->sampler_dim;
    info.is_array = tex->is_array;
@@ -1028,6 +1081,11 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
       default:
          unreachable("Unsupported NIR tex source type.");
       }
+   }
+
+   if (tex->op == nir_texop_tg4) {
+      rogue_nir_emit_gather(b, tex, &info, tex->component);
+      return;
    }
 
    rogue_nir_emit_texture_sample(b, dst, &info);
@@ -1210,6 +1268,7 @@ static void trans_nir_tex(rogue_builder *b, nir_tex_instr *tex)
    case nir_texop_txd:
    case nir_texop_txf:
    case nir_texop_txf_ms:
+   case nir_texop_tg4:
       return trans_nir_texop_tex(b, tex);
 
    case nir_texop_txs:
