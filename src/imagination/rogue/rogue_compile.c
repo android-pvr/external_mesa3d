@@ -573,20 +573,19 @@ static rogue_ref64 nir_ssa_intr_dst64(rogue_shader *shader,
    return rogue_ssa_ref64(shader, intr->dest.ssa.index);
 }
 
-static rogue_ref
-nir_shared_reg_indexed(rogue_builder *b, nir_src index, unsigned offset)
+static rogue_ref nir_shared_reg_indexed(rogue_builder *b,
+                                        nir_src index,
+                                        unsigned index_comp,
+                                        unsigned offset)
 {
    if (nir_src_is_const(index))
       return rogue_ref_reg(
-         rogue_shared_reg(b->shader, nir_src_as_uint(index) + offset));
-
-   rogue_reg *index_reg = index.is_ssa
-                             ? rogue_ssa_reg(b->shader, index.ssa->index)
-                             : rogue_temp_reg(b->shader, index.reg.reg->index);
+         rogue_shared_reg(b->shader,
+                          nir_src_comp_as_uint(index, index_comp) + offset));
 
    rogue_MOV(b,
              rogue_ref_reg(rogue_index_reg(b->shader, 0)),
-             rogue_ref_reg(index_reg));
+             rogue_nir_src32_component(b->shader, index, index_comp));
 
    rogue_reg *dst_val =
       rogue_ssa_vec_reg(b->shader, b->shader->ctx->next_ssa_idx++, 0);
@@ -598,19 +597,19 @@ nir_shared_reg_indexed(rogue_builder *b, nir_src index, unsigned offset)
    return rogue_ref_reg(dst_val);
 }
 
-static rogue_ref64
-nir_shared_reg_indexed64(rogue_builder *b, nir_src index, unsigned offset)
+static rogue_ref64 nir_shared_reg_indexed64(rogue_builder *b,
+                                            nir_src index,
+                                            unsigned index_comp,
+                                            unsigned offset)
 {
    if (nir_src_is_const(index))
-      return rogue_shared_ref64(b->shader, nir_src_as_uint(index) + offset);
-
-   rogue_reg *index_reg = index.is_ssa
-                             ? rogue_ssa_reg(b->shader, index.ssa->index)
-                             : rogue_temp_reg(b->shader, index.reg.reg->index);
+      return rogue_shared_ref64(b->shader,
+                                nir_src_comp_as_uint(index, index_comp) +
+                                   offset);
 
    rogue_MOV(b,
              rogue_ref_reg(rogue_index_reg(b->shader, 0)),
-             rogue_ref_reg(index_reg));
+             rogue_nir_src32_component(b->shader, index, index_comp));
 
    rogue_ref64 dst_val =
       rogue_ssa_ref64(b->shader, b->shader->ctx->next_ssa_idx++);
@@ -682,9 +681,11 @@ struct rogue_nir_tex_smp_info {
    nir_src *ddy;
    nir_src *offset;
    nir_src *ms_idx;
+   unsigned secondary_comp;
    nir_src *secondary_idx;
    nir_src *image_idx;
    nir_src *sampler_idx;
+   nir_src *store_data;
 };
 
 static rogue_backend_instr *
@@ -739,6 +740,10 @@ rogue_nir_emit_texture_sample(rogue_builder *b,
       assert(!info->ms_idx ||
              (nir_src_num_components(*info->offset) == coord_components));
       smp_data_components++;
+   }
+   if (info->store_data) {
+      assert(nir_src_num_components(*info->store_data) == info->channels);
+      smp_data_components += info->channels;
    }
 
    rogue_ref smp_data_ref;
@@ -807,6 +812,7 @@ rogue_nir_emit_texture_sample(rogue_builder *b,
          rogue_ref max_layer_index = nir_shared_reg_indexed(
             b,
             *info->secondary_idx,
+            info->secondary_comp,
             PVR_DESC_IMAGE_SECONDARY_OFFSET_ARRAYMAXINDEX(dev_info));
 
          if (cube_array && !info->layer_is_cube_idx) {
@@ -841,10 +847,12 @@ rogue_nir_emit_texture_sample(rogue_builder *b,
          rogue_ref64 addr_base =
             nir_shared_reg_indexed64(b,
                                      *info->secondary_idx,
+                                     info->secondary_comp,
                                      PVR_DESC_IMAGE_SECONDARY_OFFSET_ARRAYBASE);
          rogue_ref addr_stride =
             nir_shared_reg_indexed(b,
                                    *info->secondary_idx,
+                                   info->secondary_comp,
                                    PVR_DESC_IMAGE_SECONDARY_OFFSET_ARRAYSTRIDE);
          rogue_ref64 addr_override =
             rogue_ssa_ref64(b->shader, b->shader->ctx->next_ssa_idx++);
@@ -903,6 +911,12 @@ rogue_nir_emit_texture_sample(rogue_builder *b,
                rogue_ssa_vec_regarray(b->shader, 1, data_base_idx, data_idx)),
             smp_opts);
          ++data_idx;
+      }
+
+      if (info->store_data) {
+         /* store data comes in pre-packed. */
+         for (unsigned i = 0; i < info->channels; i++)
+            ADD_SMP_DATA(info->store_data, i);
       }
 
 #undef ADD_SMP_OPT
@@ -1020,6 +1034,9 @@ rogue_nir_emit_texture_sample(rogue_builder *b,
    if (info->pack_f16)
       rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_F16);
 
+   if (info->store_data)
+      rogue_set_backend_op_mod(smp, ROGUE_BACKEND_OP_MOD_WRT);
+
    return smp;
 }
 
@@ -1087,6 +1104,7 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
          info.sampler_idx = &tex->src[u].src;
          continue;
       case nir_tex_src_backend1:
+         info.secondary_comp = 0;
          info.secondary_idx = &tex->src[u].src;
          continue;
       default:
@@ -1098,12 +1116,31 @@ static void trans_nir_texop_tex(rogue_builder *b, nir_tex_instr *tex)
 }
 
 static void rogue_nir_texture_size(rogue_builder *b,
-                                   unsigned coord_components,
+                                   enum glsl_sampler_dim dim,
                                    bool is_array,
                                    nir_src index,
+                                   unsigned index_comp,
                                    nir_dest dest)
 {
    const struct pvr_device_info *dev_info = b->shader->ctx->compiler->dev_info;
+
+   unsigned coord_components;
+   switch (dim) {
+   case GLSL_SAMPLER_DIM_1D:
+   case GLSL_SAMPLER_DIM_BUF:
+      coord_components = 1;
+      break;
+   case GLSL_SAMPLER_DIM_2D:
+   case GLSL_SAMPLER_DIM_CUBE:
+   case GLSL_SAMPLER_DIM_MS:
+      coord_components = 2;
+      break;
+   case GLSL_SAMPLER_DIM_3D:
+      coord_components = 3;
+      break;
+   default:
+      unreachable("Unsupported glsl_sampler_dim");
+   }
 
    for (int i = 0; i < coord_components; i++) {
       unsigned offset;
@@ -1122,13 +1159,13 @@ static void rogue_nir_texture_size(rogue_builder *b,
       }
       rogue_MOV(b,
                 nir_dst32_component(b->shader, dest, i),
-                nir_shared_reg_indexed(b, index, offset));
+                nir_shared_reg_indexed(b, index, index_comp, offset));
    }
    if (is_array) {
       unsigned offset = PVR_DESC_IMAGE_SECONDARY_OFFSET_ARRAYMAXINDEX(dev_info);
       rogue_IADD32(b,
                    nir_dst32_component(b->shader, dest, coord_components),
-                   nir_shared_reg_indexed(b, index, offset),
+                   nir_shared_reg_indexed(b, index, index_comp, offset),
                    rogue_ref_imm(1));
    }
 }
@@ -1136,6 +1173,7 @@ static void rogue_nir_texture_size(rogue_builder *b,
 static void rogue_nir_texture_samples(rogue_builder *b,
                                       unsigned base_index,
                                       nir_src *index,
+                                      unsigned index_comp,
                                       nir_dest dest)
 {
    rogue_ref smpcnt = rogue_ref_reg(
@@ -1143,7 +1181,7 @@ static void rogue_nir_texture_samples(rogue_builder *b,
 
    rogue_ref img_word0;
    if (index)
-      img_word0 = nir_shared_reg_indexed(b, *index, base_index + 1);
+      img_word0 = nir_shared_reg_indexed(b, *index, index_comp, base_index + 1);
    else
       img_word0 = rogue_ref_reg(rogue_shared_reg(b->shader, base_index + 1));
 
@@ -1162,11 +1200,12 @@ static void rogue_nir_texture_samples(rogue_builder *b,
 static void rogue_nir_texture_levels(rogue_builder *b,
                                      unsigned base_index,
                                      nir_src *index,
+                                     unsigned index_comp,
                                      nir_dest dest)
 {
    rogue_ref img_word1;
    if (index)
-      img_word1 = nir_shared_reg_indexed(b, *index, base_index + 2);
+      img_word1 = nir_shared_reg_indexed(b, *index, index_comp, base_index + 2);
    else
       img_word1 = rogue_ref_reg(rogue_shared_reg(b->shader, base_index + 2));
 
@@ -1178,24 +1217,6 @@ static void rogue_nir_texture_levels(rogue_builder *b,
 
 static void trans_nir_texop_query(rogue_builder *b, nir_tex_instr *tex)
 {
-   unsigned coord_components;
-   switch (tex->sampler_dim) {
-   case GLSL_SAMPLER_DIM_1D:
-   case GLSL_SAMPLER_DIM_BUF:
-      coord_components = 1;
-      break;
-   case GLSL_SAMPLER_DIM_2D:
-   case GLSL_SAMPLER_DIM_CUBE:
-   case GLSL_SAMPLER_DIM_MS:
-      coord_components = 2;
-      break;
-   case GLSL_SAMPLER_DIM_3D:
-      coord_components = 3;
-      break;
-   default:
-      unreachable("Unsupported glsl_sampler_dim");
-   }
-
    unsigned lod_index = ROGUE_REG_UNUSED;
    unsigned secondary_index = ROGUE_REG_UNUSED;
    unsigned texture_offset_src = ROGUE_REG_UNUSED;
@@ -1236,9 +1257,10 @@ static void trans_nir_texop_query(rogue_builder *b, nir_tex_instr *tex)
    if (tex->op == nir_texop_txs) {
       assert(secondary_index != ROGUE_REG_UNUSED);
       return rogue_nir_texture_size(b,
-                                    coord_components,
+                                    tex->sampler_dim,
                                     tex->is_array,
                                     tex->src[secondary_index].src,
+                                    0,
                                     tex->dest);
    }
 
@@ -1248,6 +1270,7 @@ static void trans_nir_texop_query(rogue_builder *b, nir_tex_instr *tex)
                                        texture_offset_src == ROGUE_REG_UNUSED
                                           ? NULL
                                           : &tex->src[texture_offset_src].src,
+                                       0,
                                        tex->dest);
    }
 
@@ -1256,6 +1279,7 @@ static void trans_nir_texop_query(rogue_builder *b, nir_tex_instr *tex)
                                    texture_offset_src == ROGUE_REG_UNUSED
                                       ? NULL
                                       : &tex->src[texture_offset_src].src,
+                                   0,
                                    tex->dest);
 }
 
@@ -1280,6 +1304,82 @@ static void trans_nir_tex(rogue_builder *b, nir_tex_instr *tex)
    }
 
    unreachable("Unsupported NIR tex instruction op.");
+}
+
+static void trans_nir_intrinsic_image(rogue_builder *b,
+                                      nir_intrinsic_instr *intr)
+{
+   struct rogue_nir_tex_smp_info info = {
+      .dim = nir_intrinsic_image_dim(intr),
+      .is_array = nir_intrinsic_image_array(intr),
+      .image_base = 0,
+      .sampler_base = 0,
+      .int_coord = true,
+      .nn_coord = false,
+      .point_sampler = true,
+      .image_idx = &intr->src[0],
+      .secondary_idx = &intr->src[0],
+      .secondary_comp = 1,
+      .coords = &intr->src[1],
+      .ms_idx = (nir_intrinsic_image_dim(intr) == GLSL_SAMPLER_DIM_MS
+                    ? &intr->src[2]
+                    : NULL),
+      .pack_f16 = false,
+      .fcnorm = false,
+      .layer_is_cube_idx = false,
+      .store_data = NULL,
+      .lod_bias = false,
+      .lod = NULL,
+      .proj = NULL,
+      .ddx = NULL,
+      .ddy = NULL,
+      .offset = NULL,
+      .sampler_idx = NULL,
+   };
+   rogue_ref dst = rogue_ref_null();
+
+   switch (intr->intrinsic) {
+   case nir_intrinsic_bindless_image_size:
+      return rogue_nir_texture_size(b,
+                                    info.dim,
+                                    info.is_array,
+                                    *info.image_idx,
+                                    0,
+                                    intr->dest);
+
+   case nir_intrinsic_bindless_image_samples:
+      return rogue_nir_texture_samples(b,
+                                       info.image_base,
+                                       info.image_idx,
+                                       0,
+                                       intr->dest);
+
+   case nir_intrinsic_bindless_image_load:
+      info.lod = &intr->src[3];
+      info.channels = nir_dest_num_components(intr->dest);
+      info.pack_f16 = (nir_intrinsic_dest_type(intr) == nir_type_float16);
+      info.fcnorm = (nir_alu_type_get_base_type(
+                        nir_intrinsic_dest_type(intr)) == nir_type_float);
+      dst = nir_intr_dst32(b->shader, intr, NULL);
+      break;
+
+   case nir_intrinsic_bindless_image_store:
+      info.lod = &intr->src[4];
+      info.store_data = &intr->src[3];
+      info.channels = nir_src_num_components(intr->src[3]);
+      dst = rogue_ref_regarray(
+         rogue_ssa_vec_regarray(b->shader,
+                                info.channels,
+                                b->shader->ctx->next_ssa_idx++,
+                                0));
+      break;
+
+   case nir_intrinsic_bindless_image_texel_address:
+   default:
+      unreachable("Unsupported nir_intrinsic_image op");
+   }
+
+   rogue_nir_emit_texture_sample(b, dst, &info);
 }
 
 static void trans_nir_load_const_bits(rogue_builder *b,
@@ -2285,6 +2385,13 @@ static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
 
    case nir_intrinsic_convert_alu_types:
       return trans_nir_intrinsic_convert_alu_types(b, intr);
+
+   case nir_intrinsic_bindless_image_load:
+   case nir_intrinsic_bindless_image_store:
+   case nir_intrinsic_bindless_image_size:
+   case nir_intrinsic_bindless_image_samples:
+   case nir_intrinsic_bindless_image_texel_address:
+      return trans_nir_intrinsic_image(b, intr);
 
    default:
       break;
