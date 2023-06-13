@@ -273,6 +273,17 @@ static bool lower_discard(nir_builder *b, nir_intrinsic_instr *intr)
    return true;
 }
 
+/* Just return zero for now. */
+static bool lower_load_base_instance(nir_builder *b, nir_intrinsic_instr *intr)
+{
+   b->cursor = nir_before_instr(&intr->instr);
+
+   nir_ssa_def_rewrite_uses(&intr->dest.ssa, nir_imm_int(b, 0));
+   nir_instr_remove(&intr->instr);
+
+   return true;
+}
+
 static bool lower_intrinsic(nir_builder *b,
                             nir_intrinsic_instr *instr,
                             rogue_build_ctx *ctx,
@@ -305,6 +316,9 @@ static bool lower_intrinsic(nir_builder *b,
 
       case nir_intrinsic_discard:
          return lower_discard(b, instr);
+
+      case nir_intrinsic_load_base_instance:
+         return lower_load_base_instance(b, instr);
 
       default:
          break;
