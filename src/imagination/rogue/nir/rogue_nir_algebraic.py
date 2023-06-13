@@ -35,6 +35,9 @@ late = [
 
     (('extract_u8', 'a@32', 'b@32'), ('ubitfield_extract', a, ('imul', b, 8), 8)),
     (('extract_i8', 'a@32', 'b@32'), ('ibitfield_extract', a, ('imul', b, 8), 8)),
+
+    (('f2u32', ('fround_even', a)), ('f2u32', a)),
+    (('f2i32', ('fround_even', a)), ('f2i32', a)),
 ]
 
 def main():
