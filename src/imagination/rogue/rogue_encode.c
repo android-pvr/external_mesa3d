@@ -954,7 +954,7 @@ static void rogue_encode_backend_instr(const rogue_backend_instr *backend,
       bool imm_burstlen = rogue_ref_is_val(&backend->src[1].ref);
 
       rogue_burstlen burstlen = {
-         ._ = imm_burstlen ? rogue_ref_get_val(&backend->src[1].ref) : 0
+         ._ = (imm_burstlen ? rogue_ref_get_val(&backend->src[1].ref) : 0) % 16,
       };
 
       if (imm_burstlen) {
@@ -991,8 +991,9 @@ static void rogue_encode_backend_instr(const rogue_backend_instr *backend,
       instr_encoding->backend.dma.st.immbl = imm_burstlen;
 
       if (imm_burstlen) {
-         rogue_burstlen burstlen = { ._ = rogue_ref_get_val(
-                                        &backend->src[3].ref) };
+         rogue_burstlen burstlen = {
+            ._ = rogue_ref_get_val(&backend->src[3].ref) % 16,
+         };
          instr_encoding->backend.dma.st.burstlen_2_0 = burstlen._2_0;
          instr_encoding->backend.dma.st.burstlen_3 = burstlen._3;
       } else {
