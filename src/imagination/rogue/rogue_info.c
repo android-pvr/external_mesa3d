@@ -357,6 +357,8 @@ const rogue_ctrl_op_mod_info rogue_ctrl_op_mod_infos[ROGUE_CTRL_OP_MOD_COUNT] = 
    [ROGUE_CTRL_OP_MOD_P0_TRUE] = { .str = "if(p0)", },
    [ROGUE_CTRL_OP_MOD_NEVER] = { .str = "never", },
    [ROGUE_CTRL_OP_MOD_P0_FALSE] = { .str = "if(!p0)", },
+   [ROGUE_CTRL_OP_MOD_LOCK] = { .str = "lock", .exclude = OM(RELEASE), },
+   [ROGUE_CTRL_OP_MOD_RELEASE] = { .str = "release", .exclude = OM(LOCK), },
 };
 #undef OM
 
@@ -414,6 +416,11 @@ const rogue_ctrl_op_info rogue_ctrl_op_infos[ROGUE_CTRL_OP_COUNT] = {
    },
    [ROGUE_CTRL_OP_WDF] = { .str = "wdf", .num_srcs = 1,
       .supported_src_types = { [0] = T(DRC), },
+   },
+   [ROGUE_CTRL_OP_MUTEX] = { .str = "mutex",
+      .num_srcs = 1,
+      .supported_op_mods = OM(LOCK) | OM(RELEASE),
+      .supported_src_types = { [0] = T(VAL), },
    },
 };
 #undef T

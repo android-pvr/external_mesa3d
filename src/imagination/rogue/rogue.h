@@ -1574,6 +1574,8 @@ enum rogue_ctrl_op {
 
    ROGUE_CTRL_OP_WDF,
 
+   ROGUE_CTRL_OP_MUTEX,
+
    /* Pseudo-instructions. */
    ROGUE_CTRL_OP_PSEUDO,
    ROGUE_CTRL_OP_END = ROGUE_CTRL_OP_PSEUDO,
@@ -1596,6 +1598,9 @@ enum rogue_ctrl_op_mod {
    ROGUE_CTRL_OP_MOD_P0_TRUE,
    ROGUE_CTRL_OP_MOD_NEVER,
    ROGUE_CTRL_OP_MOD_P0_FALSE,
+
+   ROGUE_CTRL_OP_MOD_LOCK,
+   ROGUE_CTRL_OP_MOD_RELEASE,
 
    ROGUE_CTRL_OP_MOD_COUNT,
 };

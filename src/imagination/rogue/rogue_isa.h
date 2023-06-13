@@ -1336,12 +1336,32 @@ typedef struct rogue_ctrl_nop_encoding {
 static_assert(sizeof(rogue_ctrl_nop_encoding) == 1,
               "sizeof(rogue_ctrl_nop_encoding) != 1");
 
+/* Mutex */
+typedef struct rogue_ctrl_mutex_encoding {
+   /* Byte 0 */
+   struct {
+      unsigned mutexid : 4;
+      unsigned : 2;
+      unsigned lr : 2;
+   } PACKED;
+} PACKED rogue_ctrl_mutex_encoding;
+static_assert(sizeof(rogue_ctrl_mutex_encoding) == 1,
+              "sizeof(rogue_ctrl_mutex_encoding) != 1");
+
+enum lr {
+   LR_RELEASE = 0b00,
+   LR_RELEASE_SLEEP = 0b01,
+   LR_RELEASE_WAKEUP = 0b10,
+   LR_LOCK = 0b11,
+};
+
 /* Common for all control instructions. */
 typedef struct rogue_ctrl_instr_encoding {
    union {
       /* Bytes 0+ */
       rogue_ctrl_ba_encoding ba;
       rogue_ctrl_cnd_encoding cnd;
+      rogue_ctrl_mutex_encoding mutex;
       rogue_ctrl_nop_encoding nop;
    } PACKED;
 } PACKED rogue_ctrl_instr_encoding;

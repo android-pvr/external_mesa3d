@@ -266,6 +266,10 @@ static void rogue_encode_instr_group_header(rogue_instr_group *group,
          h.miscctl = rogue_ref_get_drc_index(&ctrl->src[0].ref);
          break;
 
+      case ROGUE_CTRL_OP_MUTEX:
+         h.ctrlop = CTRLOP_MUTEX;
+         break;
+
       default:
          unreachable("Unsupported ctrl op.");
       }
@@ -1272,6 +1276,18 @@ static void rogue_encode_ctrl_instr(const rogue_ctrl_instr *ctrl,
       default:
          break;
       }
+
+      break;
+
+   case ROGUE_CTRL_OP_MUTEX:
+      instr_encoding->ctrl.mutex.mutexid = rogue_ref_get_val(&ctrl->src[0].ref);
+
+      if (rogue_ctrl_op_mod_is_set(ctrl, OM(LOCK)))
+         instr_encoding->ctrl.mutex.lr = LR_LOCK;
+      else if (rogue_ctrl_op_mod_is_set(ctrl, OM(RELEASE)))
+         instr_encoding->ctrl.mutex.lr = LR_RELEASE;
+      else
+         unreachable("Missing mutex op.");
 
       break;
 
