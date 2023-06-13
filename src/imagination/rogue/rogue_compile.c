@@ -2542,6 +2542,64 @@ static void trans_nir_alu_pack_half_2x16(rogue_builder *b, nir_alu_instr *alu)
 
    rogue_alu_instr *pck_f16f16 = rogue_PCK_F16F16(b, dst, src);
    rogue_set_instr_repeat(&pck_f16f16->instr, src_components);
+}
+
+static void trans_nir_alu_pack_half_2x16_split(rogue_builder *b,
+                                               nir_alu_instr *alu)
+{
+   ASSERTED unsigned dst_components;
+   rogue_ref dst = nir_alu_dst32(b->shader, alu, &dst_components);
+   assert(dst_components == 1);
+
+   rogue_ref dst_intrmdt =
+      rogue_ref_reg(rogue_ssa_reg(b->shader, b->shader->ctx->next_ssa_idx++));
+
+   unsigned src_components;
+   rogue_ref src0 = nir_alu_src32(b->shader, alu, 0, &src_components);
+   assert(src_components == 1);
+
+   rogue_ref src1 = nir_alu_src32(b->shader, alu, 1, &src_components);
+   assert(src_components == 1);
+
+   /* First/lower source. */
+   rogue_alu_instr *mbyp0 =
+      rogue_MBYP0(b, rogue_ref_io(ROGUE_IO_FT0), rogue_ref_imm(0));
+   rogue_set_instr_group_next(&mbyp0->instr, true);
+
+   rogue_alu_instr *pck_f16f16 =
+      rogue_PCK_F16F16(b, rogue_ref_io(ROGUE_IO_FT2), src0);
+   rogue_set_instr_group_next(&pck_f16f16->instr, true);
+
+   rogue_alu_instr *movc = rogue_MOVC(b,
+                                      dst_intrmdt,
+                                      rogue_none(),
+                                      rogue_none(),
+                                      rogue_ref_io(ROGUE_IO_FT2),
+                                      rogue_ref_io(ROGUE_IO_FT0),
+                                      rogue_none(),
+                                      rogue_none());
+
+   rogue_set_alu_dst_mod(movc, 0, ROGUE_ALU_DST_MOD_E0);
+   rogue_set_alu_dst_mod(movc, 0, ROGUE_ALU_DST_MOD_E1);
+
+   /* Second/upper source. */
+   mbyp0 = rogue_MBYP0(b, rogue_ref_io(ROGUE_IO_FT0), dst_intrmdt);
+   rogue_set_instr_group_next(&mbyp0->instr, true);
+
+   pck_f16f16 = rogue_PCK_F16F16(b, rogue_ref_io(ROGUE_IO_FT2), src1);
+   rogue_set_instr_group_next(&pck_f16f16->instr, true);
+
+   movc = rogue_MOVC(b,
+                     dst,
+                     rogue_none(),
+                     rogue_none(),
+                     rogue_ref_io(ROGUE_IO_FT2),
+                     rogue_ref_io(ROGUE_IO_FT0),
+                     rogue_none(),
+                     rogue_none());
+
+   rogue_set_alu_dst_mod(movc, 0, ROGUE_ALU_DST_MOD_E2);
+   rogue_set_alu_dst_mod(movc, 0, ROGUE_ALU_DST_MOD_E3);
    /* rogue_set_alu_op_mod(pck_f16f16, ROGUE_ALU_OP_MOD_ROUNDZERO); */
 }
 
@@ -3703,6 +3761,9 @@ static void trans_nir_alu(rogue_builder *b, nir_alu_instr *alu)
 
    case nir_op_pack_half_2x16:
       return trans_nir_alu_pack_half_2x16(b, alu);
+
+   case nir_op_pack_half_2x16_split:
+      return trans_nir_alu_pack_half_2x16_split(b, alu);
 
    case nir_op_unpack_half_2x16:
       return trans_nir_alu_unpack_half_2x16(b, alu);
