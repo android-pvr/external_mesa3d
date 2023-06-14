@@ -1061,7 +1061,6 @@ static inline unsigned rogue_ref_get_regarray_size(const rogue_ref *ref)
    unreachable("Ref is not a regarray.");
 }
 
-MUST_CHECK
 static inline bool rogue_ref_reg_regarray_info(const rogue_ref *ref,
                                                enum rogue_reg_class *class,
                                                unsigned *index,
