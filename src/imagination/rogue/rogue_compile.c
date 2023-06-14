@@ -653,7 +653,7 @@ rogue_nir_emit_texture_sample(rogue_builder *b,
    }
    if (info->ms_idx || info->offset) {
       assert(!info->ms_idx || (nir_src_num_components(*info->ms_idx) == 1));
-      assert(!info->ms_idx ||
+      assert(!info->offset ||
              (nir_src_num_components(*info->offset) == coord_components));
       smp_data_components++;
    }
@@ -1730,6 +1730,17 @@ static void trans_nir_load_layer_id(rogue_builder *b, nir_intrinsic_instr *intr)
    rogue_add_instr_comment(&mov->instr, "load_layer_id");
 }
 
+static void trans_nir_load_sample_id(rogue_builder *b,
+                                     nir_intrinsic_instr *intr)
+{
+   rogue_ref dst = intr_dst(b->shader, intr, &(unsigned){ 1 }, 32);
+
+   rogue_reg *src = rogue_special_reg(b->shader, ROGUE_SPECIAL_REG_SAMP_NUM);
+   rogue_alu_instr *mov = rogue_MOV(b, dst, rogue_ref_reg(src));
+
+   rogue_add_instr_comment(&mov->instr, "load_sample_id");
+}
+
 static void trans_nir_load_push_consts_base_addr_img(rogue_builder *b,
                                                      nir_intrinsic_instr *intr)
 {
@@ -2370,6 +2381,9 @@ static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
 
    case nir_intrinsic_load_helper_invocation:
       return trans_nir_load_helper_invocation(b, intr);
+
+   case nir_intrinsic_load_sample_id:
+      return trans_nir_load_sample_id(b, intr);
 
    case nir_intrinsic_load_layer_id:
       return trans_nir_load_layer_id(b, intr);
