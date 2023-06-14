@@ -1719,6 +1719,17 @@ static void trans_nir_load_helper_invocation(rogue_builder *b,
    rogue_add_instr_comment(&cmp->instr, "load_helper_invocation");
 }
 
+static void trans_nir_load_layer_id(rogue_builder *b, nir_intrinsic_instr *intr)
+{
+   rogue_ref dst = intr_dst(b->shader, intr, &(unsigned){ 1 }, 32);
+
+   rogue_reg *src =
+      rogue_special_reg(b->shader, ROGUE_SPECIAL_REG_RENDER_TGT_ID);
+   rogue_alu_instr *mov = rogue_MOV(b, dst, rogue_ref_reg(src));
+
+   rogue_add_instr_comment(&mov->instr, "load_layer_id");
+}
+
 static void trans_nir_load_push_consts_base_addr_img(rogue_builder *b,
                                                      nir_intrinsic_instr *intr)
 {
@@ -2359,6 +2370,9 @@ static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
 
    case nir_intrinsic_load_helper_invocation:
       return trans_nir_load_helper_invocation(b, intr);
+
+   case nir_intrinsic_load_layer_id:
+      return trans_nir_load_layer_id(b, intr);
 
    case nir_intrinsic_load_push_consts_base_addr_img:
       return trans_nir_load_push_consts_base_addr_img(b, intr);
