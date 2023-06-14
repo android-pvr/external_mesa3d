@@ -4046,6 +4046,8 @@ nir_shader *rogue_spirv_to_nir(rogue_build_ctx *ctx,
                                unsigned num_spec,
                                struct nir_spirv_specialization *spec);
 
+rogue_shader *rogue_nir_compile(rogue_build_ctx *ctx, nir_shader *nir);
+
 /* Custom NIR passes. */
 bool rogue_nir_algebraic_late(nir_shader *shader);
 

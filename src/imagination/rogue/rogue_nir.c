@@ -680,3 +680,24 @@ nir_shader *rogue_spirv_to_nir(rogue_build_ctx *ctx,
 
    return nir;
 }
+
+/**
+ * \brief Compiles a NIR shader into Rogue.
+ *
+ * Applies rogue nir passes before translating into Rogue.
+ *
+ * \param[in] ctx Shared multi-stage build context.
+ * \param[in] nir NIR shader
+ * \return A rogue_shader* if successful, or NULL if unsuccessful.
+ */
+PUBLIC
+rogue_shader *rogue_nir_compile(rogue_build_ctx *ctx, nir_shader *nir)
+{
+   /* Apply passes. */
+   rogue_nir_passes(ctx, nir, nir->info.stage);
+
+   /* Collect initial build data. */
+   rogue_collect_early_build_data(ctx, nir);
+
+   return rogue_nir_to_rogue(ctx, nir);
+}
