@@ -1349,6 +1349,18 @@ static void trans_nir_load_const(rogue_builder *b,
    unreachable("Unsupported load_const bit size.");
 }
 
+static void trans_nir_intrinsic_load_preamble(rogue_builder *b,
+                                              nir_intrinsic_instr *intr)
+{
+   rogue_ref dst = intr_dst(b->shader, intr, &(unsigned){ 1 }, 32);
+
+   unsigned sh_idx = nir_intrinsic_base(intr);
+   rogue_reg *sh_reg = rogue_shared_reg(b->shader, sh_idx);
+
+   rogue_alu_instr *mov = rogue_MOV(b, dst, rogue_ref_reg(sh_reg));
+   rogue_add_instr_comment(&mov->instr, "load_preamble");
+}
+
 static void trans_nir_intrinsic_load_input_fs(rogue_builder *b,
                                               nir_intrinsic_instr *intr)
 {
@@ -2320,6 +2332,9 @@ static void trans_nir_intrinsic_mutex_img(rogue_builder *b,
 static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
 {
    switch (intr->intrinsic) {
+   case nir_intrinsic_load_preamble:
+      return trans_nir_intrinsic_load_preamble(b, intr);
+
    case nir_intrinsic_load_input:
       return trans_nir_intrinsic_load_input(b, intr);
 
