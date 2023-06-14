@@ -4036,6 +4036,8 @@ unsigned rogue_ubo_reg(rogue_ubo_data *ubo_data,
                        unsigned binding,
                        unsigned offset_bytes);
 
+const nir_shader_compiler_options *rogue_nir_options(void);
+
 nir_shader *rogue_spirv_to_nir(rogue_build_ctx *ctx,
                                gl_shader_stage stage,
                                const char *entry,

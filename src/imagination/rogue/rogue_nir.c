@@ -630,6 +630,12 @@ static void rogue_collect_early_build_data(rogue_build_ctx *ctx,
    }
 }
 
+PUBLIC
+const nir_shader_compiler_options *rogue_nir_options(void)
+{
+   return &nir_options;
+}
+
 /**
  * \brief Converts a SPIR-V shader to NIR.
  *
