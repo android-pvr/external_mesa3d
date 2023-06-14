@@ -282,8 +282,8 @@ static void rogue_encode_instr_group_header(rogue_instr_group *group,
 
    if (group->header.alu != ROGUE_ALU_CONTROL) {
       h.end = group->header.end;
-      /* h.atom = ; */ /* Unused for now */
       h.rpt = group->header.repeat - 1;
+      h.atom = group->header.atom;
    }
 
    util_dynarray_append_mem(binary, group->size.header, &h);
@@ -945,6 +945,41 @@ static void rogue_encode_backend_instr(const rogue_backend_instr *backend,
       instr_encoding->backend.uvsw.imm = 1;
       instr_encoding->backend.uvsw.imm_src.imm_addr =
          rogue_ref_get_vtxout_index(&backend->dst[0].ref);
+      break;
+
+   case ROGUE_BACKEND_OP_ATOMIC:
+      instr_encoding->backend.op = BACKENDOP_DMA;
+      instr_encoding->backend.dma.dmaop = DMAOP_ATOMIC;
+      instr_encoding->backend.dma.atom.drc =
+         rogue_ref_get_drc_index(&backend->src[0].ref);
+      instr_encoding->backend.dma.atom.srcsel =
+         rogue_ref_get_io_src_index(&backend->src[1].ref);
+
+      if (rogue_backend_op_mod_is_set(backend, ROGUE_BACKEND_OP_MOD_IADD))
+         instr_encoding->backend.dma.atom.atomop = ATOMOP_ADD;
+      else if (rogue_backend_op_mod_is_set(backend, ROGUE_BACKEND_OP_MOD_ISUB))
+         instr_encoding->backend.dma.atom.atomop = ATOMOP_SUB;
+      else if (rogue_backend_op_mod_is_set(backend, ROGUE_BACKEND_OP_MOD_XCHG))
+         instr_encoding->backend.dma.atom.atomop = ATOMOP_XCHG;
+      else if (rogue_backend_op_mod_is_set(backend, ROGUE_BACKEND_OP_MOD_UMIN))
+         instr_encoding->backend.dma.atom.atomop = ATOMOP_UMIN;
+      else if (rogue_backend_op_mod_is_set(backend, ROGUE_BACKEND_OP_MOD_IMIN))
+         instr_encoding->backend.dma.atom.atomop = ATOMOP_IMIN;
+      else if (rogue_backend_op_mod_is_set(backend, ROGUE_BACKEND_OP_MOD_UMAX))
+         instr_encoding->backend.dma.atom.atomop = ATOMOP_UMAX;
+      else if (rogue_backend_op_mod_is_set(backend, ROGUE_BACKEND_OP_MOD_IMAX))
+         instr_encoding->backend.dma.atom.atomop = ATOMOP_IMAX;
+      else if (rogue_backend_op_mod_is_set(backend, ROGUE_BACKEND_OP_MOD_AND))
+         instr_encoding->backend.dma.atom.atomop = ATOMOP_AND;
+      else if (rogue_backend_op_mod_is_set(backend, ROGUE_BACKEND_OP_MOD_OR))
+         instr_encoding->backend.dma.atom.atomop = ATOMOP_OR;
+      else if (rogue_backend_op_mod_is_set(backend, ROGUE_BACKEND_OP_MOD_XOR))
+         instr_encoding->backend.dma.atom.atomop = ATOMOP_XOR;
+      else
+         unreachable("No atomic op set.");
+
+      instr_encoding->backend.dma.atom.dstsel =
+         rogue_ref_get_io_src_index(&backend->dst[0].ref);
       break;
 
    case ROGUE_BACKEND_OP_LD: {

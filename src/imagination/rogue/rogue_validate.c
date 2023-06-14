@@ -590,6 +590,10 @@ static bool validate_ctrl_instr(rogue_validation_state *state,
    if (ctrl->instr.end)
       validate_log(state, "CTRL ops have no end flag.");
 
+   /* Control instructions have no atomic flag to set. */
+   if (ctrl->instr.atom)
+      validate_log(state, "CTRL ops have no atomic flag.");
+
    return info->ends_block;
 }
 

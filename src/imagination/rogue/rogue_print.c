@@ -512,6 +512,9 @@ void rogue_print_instr(FILE *fp, const rogue_instr *instr)
    }
    RESET(fp);
 
+   if (instr->atom)
+      fputs(" {atom}", fp);
+
    if (instr->end)
       fputs(" {end}", fp);
 
@@ -676,6 +679,9 @@ rogue_print_instr_group_header(FILE *fp, const rogue_instr_group *group)
    default:
       unreachable("Unsupported instruction group ALU.");
    }
+
+   if (group->header.atom)
+      fputs(".atom", fp);
 
    if (group->header.end)
       fputs(".end", fp);

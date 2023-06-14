@@ -208,6 +208,12 @@ static inline rogue_block *rogue_push_nir_block(rogue_builder *b,
                                    rogue_ref dst0,   \
                                    rogue_ref src0);
 
+#define ROGUE_BUILDER_DEFINE_BACKEND12(op)           \
+   rogue_backend_instr *rogue_##op(rogue_builder *b, \
+                                   rogue_ref dst0,   \
+                                   rogue_ref src0,   \
+                                   rogue_ref src1);
+
 #define ROGUE_BUILDER_DEFINE_BACKEND13(op)           \
    rogue_backend_instr *rogue_##op(rogue_builder *b, \
                                    rogue_ref dst0,   \

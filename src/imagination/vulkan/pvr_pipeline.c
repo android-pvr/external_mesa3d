@@ -1758,9 +1758,9 @@ pvr_vertex_state_init(struct pvr_graphics_pipeline *gfx_pipeline,
    vertex_state->stage_state.const_shared_reg_count = common_data->shareds;
    vertex_state->stage_state.const_shared_reg_offset = 0;
    vertex_state->stage_state.coefficient_size = common_data->coeffs;
-   vertex_state->stage_state.uses_atomic_ops = false;
+   vertex_state->stage_state.uses_atomic_ops = vs_data->has.atomic_ops;
    vertex_state->stage_state.uses_texture_rw = false;
-   vertex_state->stage_state.uses_barrier = false;
+   vertex_state->stage_state.uses_barrier = vs_data->has.barrier;
    vertex_state->stage_state.has_side_effects = false;
    vertex_state->stage_state.empty_program = false;
 
@@ -1822,9 +1822,9 @@ pvr_fragment_state_init(struct pvr_graphics_pipeline *gfx_pipeline,
    fragment_state->stage_state.const_shared_reg_count = 0;
    fragment_state->stage_state.const_shared_reg_offset = 0;
    fragment_state->stage_state.coefficient_size = common_data->coeffs;
-   fragment_state->stage_state.uses_atomic_ops = false;
+   fragment_state->stage_state.uses_atomic_ops = fs_data->has.atomic_ops;
    fragment_state->stage_state.uses_texture_rw = false;
-   fragment_state->stage_state.uses_barrier = false;
+   fragment_state->stage_state.uses_barrier = fs_data->has.barrier;
    fragment_state->stage_state.has_side_effects = fs_data->side_effects;
    fragment_state->stage_state.empty_program = false;
 

@@ -505,8 +505,8 @@ static bool rogue_schedule_instr_group_io(rogue_instr_group *group,
  * instructions are pseudo-instructions that need lowering on certain cores, but
  * real instructions on others, so these mistakes are more likely to happen.
  */
-static inline void rogue_instr_group_put(rogue_instr *instr,
-                                         rogue_instr_group *group)
+static inline void
+rogue_instr_group_put(rogue_instr *instr, rogue_instr_group *group, bool first)
 {
    enum rogue_instr_phase phase = rogue_instr_phase(instr);
    if (phase == ROGUE_INSTR_PHASE_INVALID)
@@ -518,30 +518,37 @@ static inline void rogue_instr_group_put(rogue_instr *instr,
    /* Update phases. */
    instr->group = group;
    instr->index = phase;
+
+   assert(first || group->instrs[phase] == NULL);
    group->instrs[phase] = instr;
+
+   assert(first || !(group->header.phases & BITFIELD_BIT(phase)));
    group->header.phases |= BITFIELD_BIT(phase);
 
-   /* Ensure we're not mixing and matching repeats! */
-   assert(group->header.repeat == 0 || group->header.repeat == instr->repeat);
-
    /* Update repeat count. */
+   assert(first || group->header.repeat == instr->repeat);
    group->header.repeat = instr->repeat;
+   instr->repeat = 0;
 
    /* Set end flag. */
+   assert(first || group->header.end == instr->end);
    group->header.end = instr->end;
    instr->end = false;
 
-   /* Ensure we're not mixing and matching execution conditions! */
-   assert(group->header.exec_cond == ROGUE_EXEC_COND_INVALID ||
-          group->header.exec_cond == instr->exec_cond);
+   /* Set atomic flag. */
+   assert(first || group->header.atom == instr->atom);
+   group->header.atom = instr->atom;
+   instr->atom = false;
 
    /* Set conditional execution flag. */
+   assert(first || group->header.exec_cond == instr->exec_cond);
    group->header.exec_cond = instr->exec_cond;
    instr->exec_cond = ROGUE_EXEC_COND_INVALID;
 }
 
 static inline void rogue_move_instr_to_group(rogue_instr *instr,
-                                             rogue_instr_group *group)
+                                             rogue_instr_group *group,
+                                             bool first)
 {
    /* Remove instruction from block instructions list. */
    list_del(&instr->link);
@@ -550,7 +557,7 @@ static inline void rogue_move_instr_to_group(rogue_instr *instr,
    ralloc_steal(group, instr);
 
    /* Assign instruction to instruction group. */
-   rogue_instr_group_put(instr, group);
+   rogue_instr_group_put(instr, group, first);
 }
 
 static void rogue_lower_regs(rogue_shader *shader)
@@ -939,6 +946,10 @@ static void rogue_calc_backend_instrs_size(rogue_instr_group *group,
       group->size.instrs[phase] = 1;
       break;
 
+   case ROGUE_BACKEND_OP_ATOMIC:
+      group->size.instrs[phase] = 3;
+      break;
+
    case ROGUE_BACKEND_OP_LD:
       group->size.instrs[phase] = 2;
 
@@ -1125,7 +1136,7 @@ static void rogue_calc_header_size(rogue_instr_group *group)
 {
    group->size.header = 2;
    if (group->header.alu != ROGUE_ALU_MAIN ||
-       (group->header.end || group->header.repeat > 1 ||
+       (group->header.end || group->header.repeat > 1 || group->header.atom ||
         group->header.exec_cond > ROGUE_EXEC_COND_P0_TRUE)) {
       group->size.header = 3;
    }
@@ -1244,7 +1255,7 @@ bool rogue_schedule_instr_groups(rogue_shader *shader, bool multi_instr_groups)
          }
 
          assert(group_alu == group->header.alu);
-         rogue_move_instr_to_group(instr, group);
+         rogue_move_instr_to_group(instr, group, !grouping);
 
          grouping = instr->group_next;
 

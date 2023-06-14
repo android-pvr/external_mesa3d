@@ -513,6 +513,7 @@ typedef struct rogue_instr {
    enum rogue_exec_cond exec_cond;
    unsigned repeat;
    bool end;
+   bool atom;
 
    union {
       struct list_head link; /** Link in rogue_block::instrs. */
@@ -591,6 +592,11 @@ static inline void rogue_set_instr_repeat(rogue_instr *instr, unsigned repeat)
 static inline void rogue_set_instr_end(rogue_instr *instr, bool end)
 {
    instr->end = end;
+}
+
+static inline void rogue_set_instr_atom(rogue_instr *instr, bool atom)
+{
+   instr->atom = atom;
 }
 
 static inline void rogue_set_instr_group_next(rogue_instr *instr,
@@ -1795,6 +1801,8 @@ enum rogue_backend_op {
 
    ROGUE_BACKEND_OP_EMITPIX,
 
+   ROGUE_BACKEND_OP_ATOMIC,
+
    ROGUE_BACKEND_OP_LD,
    ROGUE_BACKEND_OP_ST,
 
@@ -1873,6 +1881,17 @@ enum rogue_backend_op_mod {
    ROGUE_BACKEND_OP_MOD_DATA, /* Sample bypass mode: data. */
    ROGUE_BACKEND_OP_MOD_INFO, /* Sample bypass mode: info. */
    ROGUE_BACKEND_OP_MOD_BOTH, /* Sample bypass mode: both. */
+
+   ROGUE_BACKEND_OP_MOD_IADD,
+   ROGUE_BACKEND_OP_MOD_ISUB,
+   ROGUE_BACKEND_OP_MOD_XCHG,
+   ROGUE_BACKEND_OP_MOD_UMIN,
+   ROGUE_BACKEND_OP_MOD_IMIN,
+   ROGUE_BACKEND_OP_MOD_UMAX,
+   ROGUE_BACKEND_OP_MOD_IMAX,
+   ROGUE_BACKEND_OP_MOD_AND,
+   ROGUE_BACKEND_OP_MOD_OR,
+   ROGUE_BACKEND_OP_MOD_XOR,
 
    ROGUE_BACKEND_OP_MOD_TILED, /* Tiled LD/ST. */
 
@@ -2303,6 +2322,7 @@ typedef struct rogue_instr_group {
       enum rogue_alu alu;
 
       bool end; /** Shader end flag. */
+      bool atom;
       unsigned repeat;
    } header;
 
@@ -3865,6 +3885,11 @@ typedef struct rogue_build_data {
          enum pvr_renderpass_hwsetup_input_access type;
          uint32_t on_chip_rt;
       } * inputs;
+
+      struct {
+         bool barrier;
+         bool atomic_ops;
+      } has;
    } fs;
    struct rogue_vs_build_data {
       /* TODO: Should these be removed since the driver allocates the vertex
@@ -3884,6 +3909,11 @@ typedef struct rogue_build_data {
       unsigned num_f16_npc_varyings; /* Number of f16 NPC varyings. */
       unsigned num_f16_flat_varyings; /* Number of f16 flat varyings. */
       unsigned num_f16_linear_varyings; /* Number of f16 linear varyings. */
+
+      struct {
+         bool barrier;
+         bool atomic_ops;
+      } has;
    } vs;
    struct rogue_cs_build_data {
       uint32_t local_id_regs[2];

@@ -453,6 +453,18 @@ rogue_build_backend11(rogue_builder *b,
 }
 
 static inline rogue_backend_instr *
+rogue_build_backend12(rogue_builder *b,
+                      enum rogue_backend_op op,
+                      rogue_ref dst0,
+                      rogue_ref src0,
+                      rogue_ref src1)
+{
+   rogue_ref dsts[] = { dst0 };
+   rogue_ref srcs[] = { src0, src1 };
+   return rogue_build_backend(b, op, 1, dsts, 2, srcs);
+}
+
+static inline rogue_backend_instr *
 rogue_build_backend13(rogue_builder *b,
                       enum rogue_backend_op op,
                       rogue_ref dst0,
@@ -547,6 +559,18 @@ rogue_build_backend16(rogue_builder *b,
       assert(rogue_backend_op_infos[ROGUE_BACKEND_OP_##op].num_dsts == 1); \
       assert(rogue_backend_op_infos[ROGUE_BACKEND_OP_##op].num_srcs == 1); \
       return rogue_build_backend11(b, ROGUE_BACKEND_OP_##op, dst0, src0);  \
+   }
+
+#define ROGUE_BUILDER_DEFINE_BACKEND12(op)                                      \
+   PUBLIC                                                                       \
+   rogue_backend_instr *rogue_##op(rogue_builder *b,                            \
+                                   rogue_ref dst0,                              \
+                                   rogue_ref src0,                              \
+                                   rogue_ref src1)                              \
+   {                                                                            \
+      assert(rogue_backend_op_infos[ROGUE_BACKEND_OP_##op].num_dsts == 1);      \
+      assert(rogue_backend_op_infos[ROGUE_BACKEND_OP_##op].num_srcs == 2);      \
+      return rogue_build_backend12(b, ROGUE_BACKEND_OP_##op, dst0, src0, src1); \
    }
 
 #define ROGUE_BUILDER_DEFINE_BACKEND13(op)                                 \

@@ -1157,6 +1157,43 @@ typedef struct rogue_backend_dma_idf_encoding {
 static_assert(sizeof(rogue_backend_dma_idf_encoding) == 2,
               "sizeof(rogue_backend_dma_idf_encoding) != 2");
 
+typedef struct rogue_backend_dma_atom_encoding {
+   /* Byte 0 */
+   struct {
+      unsigned : 3;
+      unsigned drc : 1;
+      unsigned : 4;
+   } PACKED;
+
+   /* Byte 1 */
+   struct {
+      unsigned srcsel : 3;
+      unsigned : 1;
+      unsigned atomop : 4;
+   } PACKED;
+
+   /* Byte 2 */
+   struct {
+      unsigned dstsel : 3;
+      unsigned : 5;
+   } PACKED;
+} PACKED rogue_backend_dma_atom_encoding;
+static_assert(sizeof(rogue_backend_dma_atom_encoding) == 3,
+              "sizeof(rogue_backend_dma_atom_encoding) != 3");
+
+enum atomop {
+   ATOMOP_ADD = 0b0000,
+   ATOMOP_SUB = 0b0001,
+   ATOMOP_XCHG = 0b0010,
+   ATOMOP_UMIN = 0b0100,
+   ATOMOP_IMIN = 0b0101,
+   ATOMOP_UMAX = 0b0110,
+   ATOMOP_IMAX = 0b0111,
+   ATOMOP_AND = 0b1000,
+   ATOMOP_OR = 0b1001,
+   ATOMOP_XOR = 0b1010,
+};
+
 typedef struct rogue_backend_dma_encoding {
    union {
       /* Byte 0 */
@@ -1169,6 +1206,7 @@ typedef struct rogue_backend_dma_encoding {
       rogue_backend_dma_idf_encoding idf;
       rogue_backend_dma_ld_encoding ld;
       rogue_backend_dma_st_encoding st;
+      rogue_backend_dma_atom_encoding atom;
    } PACKED;
 } PACKED rogue_backend_dma_encoding;
 static_assert(sizeof(rogue_backend_dma_encoding) == 5,

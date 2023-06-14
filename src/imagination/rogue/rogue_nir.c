@@ -47,6 +47,8 @@ static const struct spirv_to_nir_options spirv_options = {
       .int8 = true,
       .storage_16bit = true,
       .storage_8bit = true,
+      .float32_atomic_add = true,
+      .float32_atomic_min_max = true,
    },
 
    .ubo_addr_format = nir_address_format_64bit_global,
@@ -443,6 +445,77 @@ static void rogue_nir_passes(struct rogue_build_ctx *ctx,
 #endif /* !defined(NDEBUG) */
 }
 
+/* TODO: commonise. */
+static void rogue_collect_early_vs_build_data(rogue_build_ctx *ctx,
+                                              nir_shader *nir)
+{
+   const struct shader_info *info = &nir->info;
+   struct rogue_vs_build_data *vs_data = &ctx->stage_data.vs;
+
+   nir_foreach_function (func, nir) {
+      nir_foreach_block (block, func->impl) {
+         nir_foreach_instr (instr, block) {
+            switch (instr->type) {
+            case nir_instr_type_intrinsic:
+               switch (nir_instr_as_intrinsic(instr)->intrinsic) {
+               case nir_intrinsic_global_atomic:
+               case nir_intrinsic_global_atomic_swap:
+                  vs_data->has.atomic_ops = true;
+                  break;
+
+               default:
+                  break;
+               }
+               break;
+
+            default:
+               break;
+            }
+         }
+      }
+   }
+
+   /* TODO */
+   assert(!info->uses_control_barrier);
+   assert(!info->uses_memory_barrier);
+   vs_data->has.barrier = false;
+}
+
+static void rogue_collect_early_fs_build_data(rogue_build_ctx *ctx,
+                                              nir_shader *nir)
+{
+   const struct shader_info *info = &nir->info;
+   struct rogue_fs_build_data *fs_data = &ctx->stage_data.fs;
+
+   nir_foreach_function (func, nir) {
+      nir_foreach_block (block, func->impl) {
+         nir_foreach_instr (instr, block) {
+            switch (instr->type) {
+            case nir_instr_type_intrinsic:
+               switch (nir_instr_as_intrinsic(instr)->intrinsic) {
+               case nir_intrinsic_global_atomic:
+               case nir_intrinsic_global_atomic_swap:
+                  fs_data->has.atomic_ops = true;
+                  break;
+
+               default:
+                  break;
+               }
+               break;
+
+            default:
+               break;
+            }
+         }
+      }
+   }
+
+   /* TODO */
+   assert(!info->uses_control_barrier);
+   assert(!info->uses_memory_barrier);
+   fs_data->has.barrier = false;
+}
+
 static void rogue_collect_early_cs_build_data(rogue_build_ctx *ctx,
                                               nir_shader *nir)
 {
@@ -475,6 +548,11 @@ static void rogue_collect_early_cs_build_data(rogue_build_ctx *ctx,
                   cs_data->has.num_work_groups = true;
                   break;
 
+               case nir_intrinsic_global_atomic:
+               case nir_intrinsic_global_atomic_swap:
+                  cs_data->has.atomic_ops = true;
+                  break;
+
                default:
                   break;
                }
@@ -492,9 +570,6 @@ static void rogue_collect_early_cs_build_data(rogue_build_ctx *ctx,
    assert(!info->uses_memory_barrier);
    cs_data->has.barrier = false;
 
-   /* TODO */
-   cs_data->has.atomic_ops = false;
-
    cs_data->work_size = info->workgroup_size[0] * info->workgroup_size[1] *
                         info->workgroup_size[2];
 }
@@ -504,10 +579,10 @@ static void rogue_collect_early_build_data(rogue_build_ctx *ctx,
 {
    switch (nir->info.stage) {
    case MESA_SHADER_VERTEX:
-      break;
+      return rogue_collect_early_vs_build_data(ctx, nir);
 
    case MESA_SHADER_FRAGMENT:
-      break;
+      return rogue_collect_early_fs_build_data(ctx, nir);
 
    case MESA_SHADER_COMPUTE:
       return rogue_collect_early_cs_build_data(ctx, nir);
