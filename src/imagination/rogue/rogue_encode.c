@@ -24,6 +24,7 @@
 #include "rogue.h"
 #include "rogue_isa.h"
 #include "util/macros.h"
+#include "util/memstream.h"
 #include "util/u_dynarray.h"
 
 #include <stdbool.h>
@@ -1947,6 +1948,29 @@ static void rogue_encode_instr_group(rogue_instr_group *group,
    rogue_encode_instr_group_padding(group, binary);
 }
 
+static void rogue_dump_shader_binary(rogue_shader *shader,
+                                     struct util_dynarray *binary)
+{
+   static unsigned index = 0;
+   char filename[PATH_MAX];
+   sprintf(filename,
+           "%u_%s.bin",
+           index++,
+           shader->stage == MESA_SHADER_NONE
+              ? "uscprog"
+              : _mesa_shader_stage_to_string(shader->stage));
+
+   FILE *fp = fopen(filename, "wb");
+   assert(fp);
+   ASSERTED size_t elems_written =
+      fwrite(util_dynarray_begin(binary),
+             sizeof(uint8_t),
+             util_dynarray_num_elements(binary, uint8_t),
+             fp);
+   assert(elems_written == util_dynarray_num_elements(binary, uint8_t));
+   fclose(fp);
+}
+
 PUBLIC
 void rogue_encode_shader(rogue_build_ctx *ctx,
                          rogue_shader *shader,
@@ -1959,4 +1983,7 @@ void rogue_encode_shader(rogue_build_ctx *ctx,
 
    rogue_foreach_instr_group_in_shader (group, shader)
       rogue_encode_instr_group(group, binary);
+
+   if (ROGUE_DEBUG(DUMP_BINARY))
+      rogue_dump_shader_binary(shader, binary);
 }

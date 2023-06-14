@@ -1710,6 +1710,8 @@ PowerVR driver environment variables
       Skips scalarising NIR loads, enabling the USC to perform burst loads.
    ``skip_cf_opts``
       Skips some control-flow optimisations.
+   ``dump_binary``
+      Dump shader binaries after compilation.
 
 .. envvar:: ROGUE_COLOR
 
