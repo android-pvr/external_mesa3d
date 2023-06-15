@@ -152,6 +152,9 @@ static inline bool rogue_group_instr_needs_olchk(rogue_instr_group *group)
          return true;
    }
 
+   if (backend->op == ROGUE_BACKEND_OP_MOVMSK)
+      return true;
+
    return false;
 }
 
@@ -945,6 +948,40 @@ static void rogue_encode_backend_instr(const rogue_backend_instr *backend,
       instr_encoding->backend.uvsw.imm = 1;
       instr_encoding->backend.uvsw.imm_src.imm_addr =
          rogue_ref_get_vtxout_index(&backend->dst[0].ref);
+      break;
+
+   case ROGUE_BACKEND_OP_MOVMSK:
+      instr_encoding->backend.op = BACKENDOP_MSK;
+
+      instr_encoding->backend.msk.mode = MSK_MODE_ICM;
+      instr_encoding->backend.msk.sm =
+         rogue_backend_op_mod_is_set(backend, OM(SM));
+
+      instr_encoding->backend.msk.mskop = MSK_OP_MOV;
+
+      if (instr_size > 1) {
+         instr_encoding->backend.msk.srcsel =
+            rogue_ref_get_io_src_index(&backend->src[1].ref);
+      }
+      break;
+
+   case ROGUE_BACKEND_OP_SAVMSK:
+      instr_encoding->backend.op = BACKENDOP_MSK;
+
+      if (rogue_backend_op_mod_is_set(backend, ROGUE_BACKEND_OP_MOD_VM))
+         instr_encoding->backend.msk.mode = MSK_MODE_VM;
+      else if (rogue_backend_op_mod_is_set(backend, ROGUE_BACKEND_OP_MOD_ICM))
+         instr_encoding->backend.msk.mode = MSK_MODE_ICM;
+      else if (rogue_backend_op_mod_is_set(backend, ROGUE_BACKEND_OP_MOD_ICMOC))
+         instr_encoding->backend.msk.mode = MSK_MODE_ICMOC;
+      else if (rogue_backend_op_mod_is_set(backend, ROGUE_BACKEND_OP_MOD_ICMI))
+         instr_encoding->backend.msk.mode = MSK_MODE_ICMI;
+      else if (rogue_backend_op_mod_is_set(backend, ROGUE_BACKEND_OP_MOD_CAXY))
+         instr_encoding->backend.msk.mode = MSK_MODE_CAXY;
+      else
+         unreachable("No savmsk mode set.");
+
+      instr_encoding->backend.msk.mskop = MSK_OP_SAV;
       break;
 
    case ROGUE_BACKEND_OP_ATOMIC:

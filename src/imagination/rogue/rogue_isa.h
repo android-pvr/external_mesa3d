@@ -1232,7 +1232,7 @@ typedef struct rogue_backend_vistest_encoding {
 static_assert(sizeof(rogue_backend_vistest_encoding) == 1,
               "sizeof(rogue_backend_vistest_encoding) != 1");
 
-enum ACMPMODE {
+enum acmpmode {
    ACMPMODE_NEVER = 0b000,
    ACMPMODE_LESS = 0b001,
    ACMPMODE_EQUAL = 0b010,
@@ -1241,6 +1241,37 @@ enum ACMPMODE {
    ACMPMODE_NOTEQUAL = 0b101,
    ACMPMODE_GREATEREQUAL = 0b110,
    ACMPMODE_ALWAYS = 0b111,
+};
+
+typedef struct rogue_backend_msk_encoding {
+   /* Byte 0 */
+   struct {
+      unsigned mode : 3;
+      unsigned sm : 1;
+      unsigned mskop : 1;
+      unsigned : 3;
+   } PACKED;
+
+   /* Byte 1 */
+   struct {
+      unsigned srcsel : 3;
+      unsigned : 5;
+   } PACKED;
+} PACKED rogue_backend_msk_encoding;
+static_assert(sizeof(rogue_backend_msk_encoding) == 2,
+              "sizeof(rogue_backend_msk_encoding) != 2");
+
+enum msk_mode {
+   MSK_MODE_VM = 0b000,
+   MSK_MODE_ICM = 0b001,
+   MSK_MODE_ICMOC = 0b010,
+   MSK_MODE_ICMI = 0b011,
+   MSK_MODE_CAXY = 0b100,
+};
+
+enum msk_op {
+   MSK_OP_SAV = 0b0,
+   MSK_OP_MOV = 0b1,
 };
 
 typedef struct rogue_backend_instr_encoding {
@@ -1256,6 +1287,7 @@ typedef struct rogue_backend_instr_encoding {
       rogue_backend_emitpix_encoding emitpix;
       rogue_backend_dma_encoding dma;
       rogue_backend_vistest_encoding vistest;
+      rogue_backend_msk_encoding msk;
    } PACKED;
 } PACKED rogue_backend_instr_encoding;
 static_assert(sizeof(rogue_backend_instr_encoding) == 5,

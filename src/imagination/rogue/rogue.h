@@ -1809,6 +1809,9 @@ enum rogue_backend_op {
    ROGUE_BACKEND_OP_UVSW_EMITTHENENDTASK,
    ROGUE_BACKEND_OP_UVSW_WRITETHENEMITTHENENDTASK,
 
+   ROGUE_BACKEND_OP_MOVMSK,
+   ROGUE_BACKEND_OP_SAVMSK,
+
    ROGUE_BACKEND_OP_IDF,
 
    ROGUE_BACKEND_OP_EMITPIX,
@@ -1904,6 +1907,14 @@ enum rogue_backend_op_mod {
    ROGUE_BACKEND_OP_MOD_AND,
    ROGUE_BACKEND_OP_MOD_OR,
    ROGUE_BACKEND_OP_MOD_XOR,
+
+   ROGUE_BACKEND_OP_MOD_SM, /* Sample mask. */
+
+   ROGUE_BACKEND_OP_MOD_VM, /* Valid mask. */
+   ROGUE_BACKEND_OP_MOD_ICM, /* Input coverage mask. */
+   ROGUE_BACKEND_OP_MOD_ICMOC, /* ICM, ones count. */
+   ROGUE_BACKEND_OP_MOD_ICMI, /* ICM, intensity. */
+   ROGUE_BACKEND_OP_MOD_CAXY, /* Centroid-adjusted x/y co-ords. */
 
    ROGUE_BACKEND_OP_MOD_TILED, /* Tiled LD/ST. */
 

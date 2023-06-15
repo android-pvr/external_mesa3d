@@ -946,6 +946,17 @@ static void rogue_calc_backend_instrs_size(rogue_instr_group *group,
       group->size.instrs[phase] = 1;
       break;
 
+   case ROGUE_BACKEND_OP_MOVMSK:
+      group->size.instrs[phase] = 1;
+
+      if (rogue_backend_op_mod_is_set(backend, OM(SM)))
+         group->size.instrs[phase] = 2;
+      break;
+
+   case ROGUE_BACKEND_OP_SAVMSK:
+      group->size.instrs[phase] = 1;
+      break;
+
    case ROGUE_BACKEND_OP_ATOMIC:
       group->size.instrs[phase] = 3;
       break;
