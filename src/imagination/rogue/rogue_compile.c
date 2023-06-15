@@ -1686,6 +1686,27 @@ static void trans_nir_intrinsic_store_global(rogue_builder *b,
                             store_components);
 }
 
+static void trans_nir_load_helper_invocation(rogue_builder *b,
+                                             nir_intrinsic_instr *intr)
+{
+   rogue_ref dst = intr_dst(b->shader, intr, &(unsigned){ 1 }, 32);
+
+   rogue_ref valid_msk =
+      rogue_ref_reg(rogue_ssa_reg(b->shader, b->shader->ctx->next_ssa_idx++));
+
+   rogue_backend_instr *savmsk = rogue_SAVMSK(b, valid_msk, rogue_none());
+   rogue_set_backend_op_mod(savmsk, ROGUE_BACKEND_OP_MOD_VM);
+
+   rogue_ref imm_0 = rogue_ref_imm(0);
+   rogue_alu_instr *cmp = rogue_cmp(b,
+                                    &dst,
+                                    &valid_msk,
+                                    &imm_0,
+                                    COMPARE_FUNC_EQUAL,
+                                    nir_type_uint32);
+   rogue_add_instr_comment(&cmp->instr, "load_helper_invocation");
+}
+
 static void trans_nir_load_push_consts_base_addr_img(rogue_builder *b,
                                                      nir_intrinsic_instr *intr)
 {
@@ -2320,6 +2341,9 @@ static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
 
    case nir_intrinsic_store_global:
       return trans_nir_intrinsic_store_global(b, intr);
+
+   case nir_intrinsic_load_helper_invocation:
+      return trans_nir_load_helper_invocation(b, intr);
 
    case nir_intrinsic_load_push_consts_base_addr_img:
       return trans_nir_load_push_consts_base_addr_img(b, intr);
