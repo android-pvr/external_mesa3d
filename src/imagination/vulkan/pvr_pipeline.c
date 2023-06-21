@@ -816,6 +816,14 @@ static VkResult pvr_pds_descriptor_program_create_and_upload(
          addr_literals++;
       }
 
+      if (sh_reg_layout->num_workgroups.present) {
+         program.addr_literals[addr_literals] = (struct pvr_pds_addr_literal){
+            .type = PVR_PDS_ADDR_LITERAL_NUM_WORKGROUPS,
+            .destination = sh_reg_layout->num_workgroups.offset,
+         };
+         addr_literals++;
+      }
+
       program.addr_literal_count = addr_literals;
    }
 
@@ -1273,6 +1281,42 @@ pvr_compute_pipeline_alloc_vtx_ins(struct rogue_cs_build_data *cs_data)
    return next_free_reg;
 }
 
+static uint32_t pvr_compute_pipeline_alloc_shareds(
+   const struct pvr_device *device,
+   const struct pvr_compute_pipeline *compute_pipeline,
+   struct pvr_sh_reg_layout *const sh_reg_layout_out)
+{
+   ASSERTED const uint64_t reserved_shared_size =
+      device->pdevice->dev_runtime_info.reserved_shared_size;
+   ASSERTED const uint64_t max_coeff =
+      device->pdevice->dev_runtime_info.max_coeffs;
+
+   const struct pvr_pipeline_layout *layout = compute_pipeline->base.layout;
+   struct pvr_sh_reg_layout reg_layout = { 0 };
+   uint32_t next_free_sh_reg = 0;
+
+   next_free_sh_reg = pvr_pipeline_alloc_shareds(device,
+                                                 layout,
+                                                 PVR_STAGE_ALLOCATION_COMPUTE,
+                                                 &reg_layout);
+
+   reg_layout.num_workgroups.present =
+      compute_pipeline->shader_state.uses_num_workgroups;
+   if (reg_layout.num_workgroups.present) {
+      reg_layout.num_workgroups.offset = next_free_sh_reg;
+      next_free_sh_reg += PVR_DEV_ADDR_SIZE_IN_SH_REGS;
+   }
+
+   *sh_reg_layout_out = reg_layout;
+
+   /* FIXME: We might need to take more things into consideration.
+    * See pvr_calc_fscommon_size_and_tiles_in_flight().
+    */
+   assert(next_free_sh_reg <= reserved_shared_size - max_coeff);
+
+   return next_free_sh_reg;
+}
+
 /* Compiles and uploads shaders and PDS programs. */
 static VkResult pvr_compute_pipeline_compile(
    struct pvr_device *const device,
@@ -1345,18 +1389,24 @@ static VkResult pvr_compute_pipeline_compile(
       cs_data = &ctx->stage_data.cs;
       common_data = &ctx->common_data[stage];
 
-      reg_count = pvr_pipeline_alloc_shareds(device,
-                                             layout,
-                                             PVR_STAGE_ALLOCATION_COMPUTE,
-                                             sh_reg_layout);
-      compute_pipeline->shader_state.const_shared_reg_count = reg_count;
-
       /* NIR middle-end translation. */
       ctx->nir[stage] = pvr_spirv_to_nir(ctx, stage, &pCreateInfo->stage);
       if (!ctx->nir[stage]) {
          result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
          goto err_free_build_context;
       }
+
+      compute_pipeline->shader_state.uses_atomic_ops = cs_data->has.atomic_ops;
+      compute_pipeline->shader_state.uses_barrier = cs_data->has.barrier;
+      compute_pipeline->shader_state.uses_num_workgroups =
+         cs_data->has.num_work_groups;
+      compute_pipeline->shader_state.work_size = cs_data->work_size;
+
+      reg_count = pvr_compute_pipeline_alloc_shareds(device,
+                                                     compute_pipeline,
+                                                     sh_reg_layout);
+
+      compute_pipeline->shader_state.const_shared_reg_count = reg_count;
 
       reg_count = pvr_compute_pipeline_alloc_coeffs(cs_data);
       compute_pipeline->shader_state.coefficient_register_count = reg_count;
@@ -1407,12 +1457,6 @@ static VkResult pvr_compute_pipeline_compile(
          result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
          goto err_free_build_context;
       }
-
-      compute_pipeline->shader_state.uses_atomic_ops = cs_data->has.atomic_ops;
-      compute_pipeline->shader_state.uses_barrier = cs_data->has.barrier;
-      compute_pipeline->shader_state.uses_num_workgroups =
-         cs_data->has.num_work_groups;
-      compute_pipeline->shader_state.work_size = cs_data->work_size;
 
       result = pvr_gpu_upload_usc(device,
                                   util_dynarray_begin(&ctx->binary[stage]),

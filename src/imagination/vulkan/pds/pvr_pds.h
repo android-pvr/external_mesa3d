@@ -100,6 +100,7 @@ enum pvr_pds_addr_literal_type {
    PVR_PDS_ADDR_LITERAL_DESC_SET_ADDRS_TABLE,
    PVR_PDS_ADDR_LITERAL_PUSH_CONSTS,
    PVR_PDS_ADDR_LITERAL_BLEND_CONSTANTS,
+   PVR_PDS_ADDR_LITERAL_NUM_WORKGROUPS,
 };
 
 /*****************************************************************************

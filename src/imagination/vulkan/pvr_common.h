@@ -429,6 +429,14 @@ struct pvr_sh_reg_layout {
       bool present;
       uint32_t offset;
    } blend_consts;
+
+   /* If this is present, it will always take up 2 sh regs in size and contain
+    * the device address of the NumWorkgroups buffer.
+    */
+   struct {
+      bool present;
+      uint32_t offset;
+   } num_workgroups;
 };
 
 struct pvr_pipeline_layout {
