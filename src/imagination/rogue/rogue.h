@@ -207,6 +207,18 @@ typedef struct rogue_special_reg_info {
 extern const rogue_special_reg_info
    rogue_special_reg_infos[ROGUE_SPECIAL_REG_COUNT];
 
+enum rogue_mutex_op {
+   ROGUE_MUTEX_OP_LOCK,
+   ROGUE_MUTEX_OP_RELEASE,
+};
+
+enum rogue_mutex_id {
+   ROGUE_MUTEX_ID_ATOMIC_EMU,
+
+   ROGUE_MUTEX_ID_COUNT,
+};
+static_assert(ROGUE_MUTEX_ID_COUNT <= 16, "Too many mutex IDs.");
+
 #define ROGUE_ISA_DSTS 2
 #define ROGUE_ISA_SRCS 6
 #define ROGUE_ISA_ISSS 6
@@ -2375,6 +2387,12 @@ static inline rogue_instr_group *rogue_instr_group_create(rogue_block *block,
 
 typedef struct rogue_build_ctx rogue_build_ctx;
 
+enum rogue_mutex_state {
+   ROGUE_MUTEX_STATE_RELEASED = 0,
+
+   ROGUE_MUTEX_STATE_LOCKED = BITFIELD_BIT(0),
+};
+
 /** Rogue shader object. */
 typedef struct rogue_shader {
    gl_shader_stage stage; /** Shader stage. */
@@ -2408,6 +2426,8 @@ typedef struct rogue_shader {
    unsigned loop_nestings;
    /* Number of NIR loops in this shader. */
    unsigned loops;
+
+   enum rogue_mutex_state mutex_state;
 
    bool is_grouped; /** Whether the instructions are grouped. */
 
@@ -3271,49 +3291,57 @@ static inline bool rogue_instr_is_nop_end(const rogue_instr *instr)
    return rogue_ctrl_op_mod_is_set(ctrl, ROGUE_CTRL_OP_MOD_END);
 }
 
+static bool rogue_instr_is_pseudo(const rogue_instr *instr)
+{
+   switch (instr->type) {
+   case ROGUE_INSTR_TYPE_ALU:
+      return rogue_instr_as_alu(instr)->op >= ROGUE_ALU_OP_PSEUDO;
+
+   case ROGUE_INSTR_TYPE_BACKEND:
+      return rogue_instr_as_backend(instr)->op >= ROGUE_BACKEND_OP_PSEUDO;
+
+   case ROGUE_INSTR_TYPE_CTRL:
+      return rogue_instr_as_ctrl(instr)->op >= ROGUE_CTRL_OP_PSEUDO;
+
+   case ROGUE_INSTR_TYPE_BITWISE:
+      return rogue_instr_as_bitwise(instr)->op >= ROGUE_BITWISE_OP_PSEUDO;
+
+   default:
+      break;
+   }
+
+   unreachable("Unsupported instruction type.");
+}
+
 static inline enum rogue_instr_phase rogue_instr_phase(const rogue_instr *instr)
 {
+   if (rogue_instr_is_pseudo(instr))
+      return ROGUE_INSTR_PHASE_INVALID;
+
    switch (instr->type) {
    case ROGUE_INSTR_TYPE_ALU: {
       enum rogue_alu_op op = rogue_instr_as_alu(instr)->op;
-      if (op >= ROGUE_ALU_OP_PSEUDO)
-         break;
-
       return rogue_alu_op_infos[op].phase;
    }
 
-   case ROGUE_INSTR_TYPE_BACKEND: {
+   case ROGUE_INSTR_TYPE_BACKEND:
       /* Backend instructions are always in the backend phase. */
-      enum rogue_backend_op op = rogue_instr_as_backend(instr)->op;
-      if (op >= ROGUE_BACKEND_OP_PSEUDO)
-         break;
-
       return ROGUE_INSTR_PHASE_BACKEND;
-   }
 
-   case ROGUE_INSTR_TYPE_CTRL: {
-      /* Control instructions can't be co-issued; just make sure this isn't a
-       * pseudo-instruction. */
-      enum rogue_ctrl_op op = rogue_instr_as_ctrl(instr)->op;
-      if (op >= ROGUE_CTRL_OP_PSEUDO)
-         break;
-
+   case ROGUE_INSTR_TYPE_CTRL:
+      /* Control instructions can't be co-issued. */
       return ROGUE_INSTR_PHASE_CTRL;
-   }
 
    case ROGUE_INSTR_TYPE_BITWISE: {
       enum rogue_bitwise_op op = rogue_instr_as_bitwise(instr)->op;
-      if (op >= ROGUE_BITWISE_OP_PSEUDO)
-         break;
-
       return rogue_bitwise_op_infos[op].phase;
    }
 
    default:
-      unreachable("Unsupported instruction type.");
+      break;
    }
 
-   return ROGUE_INSTR_PHASE_INVALID;
+   unreachable("Unsupported instruction type.");
 }
 
 static inline bool rogue_phase_occupied(enum rogue_instr_phase phase,
@@ -4015,6 +4043,10 @@ bool rogue_nir_expand_swizzles_to_vec(nir_shader *shader);
 bool rogue_nir_pfo(nir_shader *shader, rogue_build_ctx *ctx);
 
 bool rogue_nir_lower_alu_conversion_to_intrinsic(nir_shader *shader);
+
+bool rogue_nir_lower_atomics(nir_shader *shader,
+                             unsigned atomic_op_mask,
+                             nir_variable_mode modes);
 
 bool rogue_nir_lower_fquantize2f16(nir_shader *shader);
 

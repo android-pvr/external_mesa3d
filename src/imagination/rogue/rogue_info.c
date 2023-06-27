@@ -80,7 +80,7 @@ const rogue_special_reg_info rogue_special_reg_infos[ROGUE_SPECIAL_REG_COUNT] = 
    [SR(TASK_ID)] = { .str = "task_id", .valid = true, },
    [SR(SLOT_NUM)] = { .str = "slot_num", .valid = true, },
    [SR(TILE_X_PIX)] = { .str = "tile_x_pixels", .valid = true, },
-   [SR(TILE_Y_PIX)] = { .str = "tile_6_pixels", .valid = true, },
+   [SR(TILE_Y_PIX)] = { .str = "tile_y_pixels", .valid = true, },
    [SR(INST_NUM)] = { .str = "instance_num_in_slot", .valid = true, },
    [SR(DM_TASK_TYPE)] = { .str = "data_master_and_task_type", .valid = true, },
    [SR(SAMP_NUM)] = { .str = "sample_number", .valid = true, },

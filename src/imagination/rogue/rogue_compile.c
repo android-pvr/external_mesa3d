@@ -1796,6 +1796,16 @@ static void trans_nir_intrinsic_load_instance_id(rogue_builder *b,
    rogue_add_instr_commentf(&mov->instr, "load_instance_id(");
 }
 
+static void trans_nir_intrinsic_load_instance_num_img(rogue_builder *b,
+                                                      nir_intrinsic_instr *intr)
+{
+   rogue_ref dst = intr_dst(b->shader, intr, &(unsigned){ 1 }, 32);
+   rogue_reg *src = rogue_special_reg(b->shader, ROGUE_SPECIAL_REG_INST_NUM);
+
+   rogue_alu_instr *mov = rogue_MOV(b, dst, rogue_ref_reg(src));
+   rogue_add_instr_commentf(&mov->instr, "load_instance_num_img");
+}
+
 static void trans_nir_intrinsic_discard(rogue_builder *b,
                                         nir_intrinsic_instr *intr)
 {
@@ -2252,6 +2262,40 @@ static void trans_nir_intrinsic_global_atomic(rogue_builder *b,
    }
 }
 
+static void trans_nir_intrinsic_mutex_img(rogue_builder *b,
+                                          nir_intrinsic_instr *intr)
+{
+   rogue_shader *shader = b->shader;
+   enum rogue_mutex_op mutex_op = nir_intrinsic_mutex_op_img(intr);
+   enum rogue_mutex_id mutex_id = nir_intrinsic_mutex_id_img(intr);
+   enum rogue_ctrl_op_mod mod;
+
+   switch (mutex_op) {
+   case ROGUE_MUTEX_OP_LOCK:
+      mod = ROGUE_CTRL_OP_MOD_LOCK;
+      break;
+
+   case ROGUE_MUTEX_OP_RELEASE:
+      mod = ROGUE_CTRL_OP_MOD_RELEASE;
+      break;
+
+   default:
+      unreachable();
+   }
+
+   if (mutex_op == ROGUE_MUTEX_OP_LOCK) {
+      /* Make sure we don't double lock. */
+      assert(shader->mutex_state == ROGUE_MUTEX_STATE_RELEASED);
+      shader->mutex_state |= ROGUE_MUTEX_STATE_LOCKED;
+   } else {
+      assert(shader->mutex_state & ROGUE_MUTEX_STATE_LOCKED);
+      shader->mutex_state = ROGUE_MUTEX_STATE_RELEASED;
+   }
+
+   rogue_ctrl_instr *mutex = rogue_MUTEX(b, rogue_ref_val(mutex_id));
+   rogue_set_ctrl_op_mod(mutex, mod);
+}
+
 static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
 {
    switch (intr->intrinsic) {
@@ -2301,6 +2345,9 @@ static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
    case nir_intrinsic_load_instance_id:
       return trans_nir_intrinsic_load_instance_id(b, intr);
 
+   case nir_intrinsic_load_instance_num_img:
+      return trans_nir_intrinsic_load_instance_num_img(b, intr);
+
    case nir_intrinsic_discard:
       return trans_nir_intrinsic_discard(b, intr);
 
@@ -2320,6 +2367,9 @@ static void trans_nir_intrinsic(rogue_builder *b, nir_intrinsic_instr *intr)
    case nir_intrinsic_bindless_image_samples:
    case nir_intrinsic_bindless_image_texel_address:
       return trans_nir_intrinsic_image(b, intr);
+
+   case nir_intrinsic_mutex_img:
+      return trans_nir_intrinsic_mutex_img(b, intr);
 
    default:
       break;

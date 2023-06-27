@@ -294,6 +294,9 @@ index("unsigned", "resource_block_intel")
 # Various flags describing the resource access
 index("nir_resource_data_intel", "resource_access_intel")
 
+index("unsigned", "mutex_id_img")
+index("unsigned", "mutex_op_img")
+
 # Register metadata
 # number of vector components
 index("unsigned", "num_components")
@@ -1911,3 +1914,9 @@ intrinsic("load_vulkan_desc_set_addr_img", src_comp=[1, 1], dest_comp=1, indices
 
 # load_push_consts_base_addr_img()
 intrinsic("load_push_consts_base_addr_img", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER], bit_sizes=[64])
+
+# Load the current instance's number/id within its slot.
+intrinsic("load_instance_num_img", dest_comp=1, flags=[CAN_ELIMINATE, CAN_REORDER], bit_sizes=[32])
+
+# Perform a mutex operation (slot granularity).
+intrinsic("mutex_img", indices=[MUTEX_ID_IMG, MUTEX_OP_IMG])

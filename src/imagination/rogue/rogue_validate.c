@@ -37,9 +37,6 @@
 /* TODO: Rogue_validate should make sure that immediate (sources) don't have any
  * modifiers set... */
 
-/* TODO NEXT: Check for emit/end/etc. as last instruction in vertex shader, and
- * nop.end, or end flag set (or just pseudo-end) otherwise. */
-
 typedef struct rogue_validation_state {
    const rogue_shader *shader; /** The shader being validated. */
    const char *when; /** Description of the validation being done. */
@@ -676,11 +673,22 @@ static void validate_bitwise_instr(rogue_validation_state *state,
 
 /* Returns true if instruction can end block. */
 static bool validate_instr(rogue_validation_state *state,
-                           const rogue_instr *instr)
+                           const rogue_instr *instr,
+                           bool is_grouped)
 {
    state->ctx.instr = instr;
 
    bool ends_block = false;
+
+   if (rogue_instr_is_pseudo(instr)) {
+      /* Make sure groups have no pseudo-ops. */
+      if (is_grouped)
+         validate_log(state, "Pseudo-op encountered in instruction group.");
+
+      /* Make sure pseudo-instructions don't have end/atomic set. */
+      if (instr->end || instr->atom)
+         validate_log(state, "Pseudo-op cannot have flags set.");
+   }
 
    switch (instr->type) {
    case ROGUE_INSTR_TYPE_ALU:
@@ -735,7 +743,7 @@ static bool validate_instr_group(rogue_validation_state *state,
 
       /* TODO NEXT: Groups that have control instructions should only have a
        * single instruction. */
-      ends_block = validate_instr(state, instr);
+      ends_block = validate_instr(state, instr, true);
    }
 
    state->ctx.group = NULL;
@@ -765,7 +773,7 @@ static void validate_block(rogue_validation_state *state,
    /* Validate instructions/groups in block. */
    if (!block->shader->is_grouped) {
       rogue_foreach_instr_in_block (instr, block) {
-         bool ends_block = validate_instr(state, instr);
+         bool ends_block = validate_instr(state, instr, false);
          block_ends += ends_block;
          block_end = ends_block ? &instr->link : block_end;
       }
