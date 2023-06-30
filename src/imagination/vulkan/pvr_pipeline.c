@@ -391,12 +391,8 @@ typedef struct pvr_pds_attrib_program (*const pvr_pds_attrib_programs_array_ptr)
 static VkResult pvr_pds_vertex_attrib_programs_create_and_upload(
    struct pvr_device *device,
    const VkAllocationCallbacks *const allocator,
-   const VkPipelineVertexInputStateCreateInfo *const vertex_input_state,
    uint32_t usc_temp_count,
-   const struct rogue_vs_build_data *vs_data,
-
-   /* Needed for the new path. */
-   /* TODO: Remove some of the above once the compiler is hooked up. */
+   struct rogue_vertex_special_vars *special_vars_layout,
    const struct pvr_pds_vertex_dma
       dma_descriptions[static const PVR_MAX_VERTEX_ATTRIB_DMAS],
    uint32_t dma_count,
@@ -406,8 +402,6 @@ static VkResult pvr_pds_vertex_attrib_programs_create_and_upload(
       .dma_list = dma_descriptions,
       .dma_count = dma_count,
    };
-   const rogue_vertex_special_vars *special_vars_layout =
-      &vs_data->special_vars;
    struct pvr_pds_attrib_program *const programs_out = *programs_out_ptr;
    VkResult result;
 
@@ -1129,32 +1123,24 @@ static VkResult pvr_compute_pipeline_compile(
    const VkAllocationCallbacks *const allocator,
    struct pvr_compute_pipeline *const compute_pipeline)
 {
+   const uint32_t cache_line_size =
+      rogue_get_slc_cache_line_size(&device->pdevice->dev_info);
    struct pvr_pipeline_layout *layout = compute_pipeline->base.layout;
    struct pvr_sh_reg_layout *sh_reg_layout =
       &layout->sh_reg_layout_per_stage[PVR_STAGE_ALLOCATION_COMPUTE];
    struct rogue_compile_time_consts_data compile_time_consts_data;
    struct rogue_compiler *compiler = device->pdevice->compiler;
-   uint32_t work_group_input_regs[PVR_WORKGROUP_DIMENSIONS];
    uint32_t local_input_regs[PVR_WORKGROUP_DIMENSIONS];
-   struct rogue_ubo_data ubo_data;
-   uint32_t barrier_coefficient;
-   struct rogue_build_ctx *ctx;
-   uint32_t usc_temps;
-   VkResult result;
-
-   const uint32_t cache_line_size =
-      rogue_get_slc_cache_line_size(&device->pdevice->dev_info);
-   gl_shader_stage stage = MESA_SHADER_COMPUTE;
-   struct rogue_cs_build_data *cs_data;
+   const gl_shader_stage stage = MESA_SHADER_COMPUTE;
    rogue_common_build_data *common_data;
+   struct rogue_cs_build_data *cs_data;
+   struct rogue_build_ctx *ctx;
    uint32_t reg_count;
+   VkResult result;
 
    ctx = rogue_build_context_create(compiler, layout);
    if (!ctx)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-
-   cs_data = &ctx->stage_data.cs;
-   common_data = &ctx->common_data[stage];
 
    /* NIR middle-end translation. */
    ctx->nir[stage] = pvr_spirv_to_nir(ctx, stage, &pCreateInfo->stage);
@@ -1162,6 +1148,9 @@ static VkResult pvr_compute_pipeline_compile(
       result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
       goto err_free_build_context;
    }
+
+   cs_data = &ctx->stage_data.cs;
+   common_data = &ctx->common_data[stage];
 
    compute_pipeline->shader_state.uses_atomic_ops = cs_data->has.atomic_ops;
    compute_pipeline->shader_state.uses_barrier = cs_data->has.barrier;
@@ -1172,7 +1161,6 @@ static VkResult pvr_compute_pipeline_compile(
    reg_count = pvr_compute_pipeline_alloc_shareds(device,
                                                   compute_pipeline,
                                                   sh_reg_layout);
-
    compute_pipeline->shader_state.const_shared_reg_count = reg_count;
 
    reg_count = pvr_compute_pipeline_alloc_coeffs(cs_data);
@@ -1181,30 +1169,23 @@ static VkResult pvr_compute_pipeline_compile(
    reg_count = pvr_compute_pipeline_alloc_vtx_ins(cs_data);
    compute_pipeline->shader_state.input_register_count = reg_count;
 
-   /* TODO: Add proper handling for this. */
-   assert(cs_data->has.barrier == false);
-   cs_data->barrier_reg = ROGUE_REG_UNUSED;
-   barrier_coefficient = cs_data->barrier_reg;
-
-   if (cs_data->has.work_group_id_x)
-      work_group_input_regs[0] = cs_data->workgroup_regs[0];
-   else
-      work_group_input_regs[0] = PVR_PDS_COMPUTE_INPUT_REG_UNUSED;
-
-   if (cs_data->has.work_group_id_y)
-      work_group_input_regs[1] = cs_data->workgroup_regs[1];
-   else
-      work_group_input_regs[1] = PVR_PDS_COMPUTE_INPUT_REG_UNUSED;
-
-   if (cs_data->has.work_group_id_z)
-      work_group_input_regs[2] = cs_data->workgroup_regs[2];
-   else
-      work_group_input_regs[2] = PVR_PDS_COMPUTE_INPUT_REG_UNUSED;
-
    /* We make sure that the compiler's unused reg value is compatible with
     * the pds api.
     */
    STATIC_ASSERT(ROGUE_REG_UNUSED == PVR_PDS_COMPUTE_INPUT_REG_UNUSED);
+
+   /* TODO: Add proper handling for this. */
+   assert(cs_data->has.barrier == false);
+   cs_data->barrier_reg = ROGUE_REG_UNUSED;
+
+   if (!cs_data->has.work_group_id_x)
+      assert(cs_data->workgroup_regs[0] == PVR_PDS_COMPUTE_INPUT_REG_UNUSED);
+
+   if (!cs_data->has.work_group_id_y)
+      assert(cs_data->workgroup_regs[1] == PVR_PDS_COMPUTE_INPUT_REG_UNUSED);
+
+   if (!cs_data->has.work_group_id_z)
+      assert(cs_data->workgroup_regs[2] == PVR_PDS_COMPUTE_INPUT_REG_UNUSED);
 
    /* TODO: Get rid of this copy when removing the hard coding path. */
    local_input_regs[0] = cs_data->local_id_regs[0];
@@ -1233,17 +1214,11 @@ static VkResult pvr_compute_pipeline_compile(
    if (result != VK_SUCCESS)
       goto err_free_build_context;
 
-   ubo_data = common_data->ubo_data;
-   usc_temps = common_data->temps;
-
-   /* TODO: Remove these once the hard coding path is removed. */
-   compile_time_consts_data = (struct rogue_compile_time_consts_data){ 0 };
-
    result = pvr_pds_descriptor_program_create_and_upload(
       device,
       allocator,
       &compile_time_consts_data,
-      &ubo_data,
+      &common_data->ubo_data,
       layout,
       PVR_STAGE_ALLOCATION_COMPUTE,
       sh_reg_layout,
@@ -1255,9 +1230,9 @@ static VkResult pvr_compute_pipeline_compile(
       device,
       allocator,
       local_input_regs,
-      work_group_input_regs,
-      barrier_coefficient,
-      usc_temps,
+      cs_data->workgroup_regs,
+      cs_data->barrier_reg,
+      common_data->temps,
       compute_pipeline->shader_state.bo->dev_addr,
       &compute_pipeline->primary_program,
       &compute_pipeline->primary_program_info);
@@ -1267,19 +1242,18 @@ static VkResult pvr_compute_pipeline_compile(
    /* If the workgroup ID is required, then we require the base workgroup
     * variant of the PDS compute program as well.
     */
-   compute_pipeline->flags.base_workgroup =
-      work_group_input_regs[0] != PVR_PDS_COMPUTE_INPUT_REG_UNUSED ||
-      work_group_input_regs[1] != PVR_PDS_COMPUTE_INPUT_REG_UNUSED ||
-      work_group_input_regs[2] != PVR_PDS_COMPUTE_INPUT_REG_UNUSED;
+   compute_pipeline->flags.base_workgroup = cs_data->has.work_group_id_x ||
+                                            cs_data->has.work_group_id_y ||
+                                            cs_data->has.work_group_id_z;
 
    if (compute_pipeline->flags.base_workgroup) {
       result = pvr_pds_compute_base_workgroup_variant_program_init(
          device,
          allocator,
          local_input_regs,
-         work_group_input_regs,
-         barrier_coefficient,
-         usc_temps,
+         cs_data->workgroup_regs,
+         cs_data->barrier_reg,
+         common_data->temps,
          compute_pipeline->shader_state.bo->dev_addr,
          &compute_pipeline->primary_base_workgroup_variant_program);
       if (result != VK_SUCCESS)
@@ -1496,7 +1470,7 @@ pvr_vertex_state_init(struct pvr_graphics_pipeline *gfx_pipeline,
     */
    vertex_state->stage_state.pds_temps_count = ~0;
 
-   vertex_state->vertex_input_size = vtxin_regs_used;
+   vertex_state->vertex_input_size = vs_data->num_vertex_input_regs;
    vertex_state->vertex_output_size =
       vs_data->num_vertex_outputs * ROGUE_REG_SIZE_BYTES;
 
@@ -2499,32 +2473,25 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
                               struct pvr_graphics_pipeline *const gfx_pipeline,
                               const struct vk_graphics_pipeline_state *state)
 {
+   const uint32_t cache_line_size =
+      rogue_get_slc_cache_line_size(&device->pdevice->dev_info);
    struct pvr_pipeline_layout *layout = gfx_pipeline->base.layout;
+   VkResult result;
+
+   struct rogue_compiler *compiler = device->pdevice->compiler;
+   struct rogue_build_ctx *ctx;
+
+   struct pvr_pds_vertex_dma vtx_dma_descriptions[PVR_MAX_VERTEX_ATTRIB_DMAS];
+   uint32_t vtx_dma_count = 0;
    struct pvr_sh_reg_layout *sh_reg_layout_vert =
       &layout->sh_reg_layout_per_stage[PVR_STAGE_ALLOCATION_VERTEX_GEOMETRY];
    struct pvr_sh_reg_layout *sh_reg_layout_frag =
       &layout->sh_reg_layout_per_stage[PVR_STAGE_ALLOCATION_FRAGMENT];
-   const VkPipelineVertexInputStateCreateInfo *const vertex_input_state =
-      pCreateInfo->pVertexInputState;
-   const uint32_t cache_line_size =
-      rogue_get_slc_cache_line_size(&device->pdevice->dev_info);
-   struct rogue_compiler *compiler = device->pdevice->compiler;
-   struct rogue_build_ctx *ctx;
-   VkResult result;
-
-   /* Vars needed for the new path. */
-   struct pvr_pds_vertex_dma vtx_dma_descriptions[PVR_MAX_VERTEX_ATTRIB_DMAS];
-   uint32_t vtx_dma_count = 0;
-   rogue_vertex_inputs *vertex_input_layout;
-   rogue_vertex_special_vars *vertex_special_vars;
-   unsigned *vertex_input_reg_count;
-
-   uint32_t sh_count[PVR_STAGE_ALLOCATION_COUNT] = { 0 };
+   uint32_t sh_count[PVR_STAGE_ALLOCATION_FRAGMENT + 1] = { 0 };
 
    PVR_FROM_HANDLE(pvr_render_pass, pass, pCreateInfo->renderPass);
    const struct pvr_render_subpass *const subpass =
       &pass->subpasses[pCreateInfo->subpass];
-
    const struct pvr_renderpass_hw_map *subpass_map =
       &pass->hw_setup->subpass_map[pCreateInfo->subpass];
    const struct pvr_renderpass_hwsetup_subpass *hw_subpass =
@@ -2549,34 +2516,36 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
       pCreateInfo->pInputAssemblyState->topology ==
       VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN;
 
-   vertex_input_layout = &ctx->stage_data.vs.inputs;
-   vertex_special_vars = &ctx->stage_data.vs.special_vars;
-   vertex_input_reg_count = &ctx->stage_data.vs.num_vertex_input_regs;
+   pvr_graphics_pipeline_alloc_vertex_inputs(
+      pCreateInfo->pVertexInputState,
+      &ctx->stage_data.vs.inputs,
+      &ctx->stage_data.vs.num_vertex_input_regs,
+      &vtx_dma_descriptions,
+      &vtx_dma_count);
 
-   pvr_graphics_pipeline_alloc_vertex_inputs(vertex_input_state,
-                                             vertex_input_layout,
-                                             vertex_input_reg_count,
-                                             &vtx_dma_descriptions,
-                                             &vtx_dma_count);
-
-   pvr_graphics_pipeline_alloc_vertex_special_vars(vertex_input_reg_count,
-                                                   vertex_special_vars);
+   pvr_graphics_pipeline_alloc_vertex_special_vars(
+      &ctx->stage_data.vs.num_vertex_input_regs,
+      &ctx->stage_data.vs.special_vars);
 
    for (enum pvr_stage_allocation pvr_stage =
            PVR_STAGE_ALLOCATION_VERTEX_GEOMETRY;
         pvr_stage < PVR_STAGE_ALLOCATION_COMPUTE;
-        ++pvr_stage)
+        pvr_stage++) {
       sh_count[pvr_stage] = pvr_graphics_pipeline_alloc_shareds(
          device,
          gfx_pipeline,
          pvr_stage,
          &layout->sh_reg_layout_per_stage[pvr_stage]);
+   }
 
    /* NIR middle-end translation. */
-   for (gl_shader_stage stage = MESA_SHADER_FRAGMENT; stage > MESA_SHADER_NONE;
+   /* clang-format off */
+   for (gl_shader_stage stage = MESA_SHADER_FRAGMENT;
+        stage > MESA_SHADER_NONE;
         stage--) {
-      const VkPipelineShaderStageCreateInfo *create_info;
+      /* clang-format on */
       size_t stage_index = gfx_pipeline->stage_indices[stage];
+      const VkPipelineShaderStageCreateInfo *create_info;
 
       /* Skip unused/inactive stages. */
       if (stage_index == ~0)
@@ -2602,8 +2571,11 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
     */
 
    /* Back-end translation. */
-   for (gl_shader_stage stage = MESA_SHADER_FRAGMENT; stage > MESA_SHADER_NONE;
+   /* clang-format off */
+   for (gl_shader_stage stage = MESA_SHADER_FRAGMENT;
+        stage > MESA_SHADER_NONE;
         stage--) {
+      /* clang-format on */
       if (!ctx->nir[stage])
          continue;
 
@@ -2622,7 +2594,7 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
 
    pvr_vertex_state_init(gfx_pipeline,
                          &ctx->common_data[MESA_SHADER_VERTEX],
-                         *vertex_input_reg_count,
+                         ctx->stage_data.vs.num_vertex_input_regs,
                          &ctx->stage_data.vs);
 
    /* FIXME: For now we just overwrite it but the compiler shouldn't be
@@ -2718,9 +2690,8 @@ pvr_graphics_pipeline_compile(struct pvr_device *const device,
    result = pvr_pds_vertex_attrib_programs_create_and_upload(
       device,
       allocator,
-      vertex_input_state,
       ctx->common_data[MESA_SHADER_VERTEX].temps,
-      &ctx->stage_data.vs,
+      &ctx->stage_data.vs.special_vars,
       vtx_dma_descriptions,
       vtx_dma_count,
       &gfx_pipeline->shader_state.vertex.pds_attrib_programs);
