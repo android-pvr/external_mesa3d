@@ -47,7 +47,6 @@
 #include "pvr_csb_enum_helpers.h"
 #include "pvr_debug.h"
 #include "pvr_device_info.h"
-#include "pvr_hardcode.h"
 #include "pvr_job_render.h"
 #include "pvr_limits.h"
 #include "pvr_pds.h"

@@ -26,7 +26,6 @@
 
 #include "hwdef/rogue_hw_utils.h"
 #include "pvr_clear.h"
-#include "pvr_hardcode.h"
 #include "pvr_pds.h"
 #include "pvr_private.h"
 #include "pvr_shader_factory.h"
