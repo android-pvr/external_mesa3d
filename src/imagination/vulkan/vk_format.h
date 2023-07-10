@@ -134,4 +134,23 @@ static inline bool vk_format_is_depth(VkFormat format)
    return util_format_has_depth(vk_format_description(format));
 }
 
+static inline VkFormat vk_format_from_num_dwords(uint32_t dword_count)
+{
+   switch (dword_count) {
+   case 1:
+      return VK_FORMAT_R32_UINT;
+   case 2:
+      return VK_FORMAT_R32G32_UINT;
+   case 3:
+      return VK_FORMAT_R32G32B32_UINT;
+   case 4:
+      return VK_FORMAT_R32G32B32A32_UINT;
+   default:
+      break;
+   }
+
+   unreachable("Unsupported dword_count.");
+   return VK_FORMAT_UNDEFINED;
+}
+
 #endif /* VK_FORMAT_H */

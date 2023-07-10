@@ -48,6 +48,7 @@
 #include "util/simple_mtx.h"
 #include "util/u_atomic.h"
 #include "vk_alloc.h"
+#include "vk_format.h"
 #include "vk_log.h"
 
 struct pvr_spm_scratch_buffer {
@@ -763,20 +764,6 @@ void pvr_spm_finish_eot_state(struct pvr_device *device,
    pvr_bo_suballoc_free(spm_eot_state->usc_eot_program);
 }
 
-static VkFormat pvr_get_format_from_dword_count(uint32_t dword_count)
-{
-   switch (dword_count) {
-   case 1:
-      return VK_FORMAT_R32_UINT;
-   case 2:
-      return VK_FORMAT_R32G32_UINT;
-   case 4:
-      return VK_FORMAT_R32G32B32A32_UINT;
-   default:
-      unreachable("Invalid dword_count");
-   }
-}
-
 static VkResult pvr_spm_setup_texture_state_words(
    struct pvr_device *device,
    uint32_t dword_count,
@@ -790,7 +777,7 @@ static VkResult pvr_spm_setup_texture_state_words(
     * writing to layer 0.
     */
    struct pvr_texture_state_info info = {
-      .format = pvr_get_format_from_dword_count(dword_count),
+      .format = vk_format_from_num_dwords(dword_count),
       .mem_layout = PVR_MEMLAYOUT_LINEAR,
 
       .type = VK_IMAGE_VIEW_TYPE_2D,

@@ -33,6 +33,7 @@
 #include "rogue/rogue.h"
 #include "rogue/rogue_builder.h"
 #include "util/u_dynarray.h"
+#include "vk_format.h"
 
 static bool needs_packing(enum pvr_transfer_pbe_pixel_src format)
 {
@@ -752,7 +753,8 @@ pvr_uscgen_tq_frag_nir(const struct pvr_device *device,
    fs_data->outputs =
       rzalloc_array_size(rogue_ctx, sizeof(*fs_data->outputs), loads);
 
-   fs_data->outputs[0].format = pvr_uscgen_raw_pipe_format(pixel_size);
+   fs_data->outputs[0].format =
+      vk_format_to_pipe_format(vk_format_from_num_dwords(pixel_size));
    fs_data->outputs[0].accum_format = PVR_PBE_ACCUM_FORMAT_UINT32;
    fs_data->outputs[0].mrt_resource = &mrt_resource;
 

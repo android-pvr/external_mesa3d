@@ -538,7 +538,7 @@ pvr_uscgen_load_op_clears_nir(nir_builder *b,
       fs_data->outputs[rt_idx].accum_format = PVR_PBE_ACCUM_FORMAT_UINT32;
       fs_data->outputs[rt_idx].mrt_resource = mrt_resource;
       fs_data->outputs[rt_idx].format =
-         pvr_uscgen_raw_pipe_format(accum_size_dwords);
+         vk_format_to_pipe_format(vk_format_from_num_dwords(accum_size_dwords));
 
       for (int i = 0; i < accum_size_dwords; i++)
          chans[i] = nir_load_preamble(b, 1, 32, .base = ctx->next_sh_reg++);
