@@ -1089,10 +1089,6 @@ uint32_t pvr_pbe_pixel_num_loads(enum pvr_transfer_pbe_pixel_src pbe_format)
    case PVR_TRANSFER_PBE_PIXEL_SRC_DMRG_D24S8_D24S8:
    case PVR_TRANSFER_PBE_PIXEL_SRC_DMRG_D32_D24S8:
    case PVR_TRANSFER_PBE_PIXEL_SRC_DMRG_D32U_D24S8:
-   case PVR_TRANSFER_PBE_PIXEL_SRC_Y_UV_INTERLEAVED:
-   case PVR_TRANSFER_PBE_PIXEL_SRC_Y_U_V:
-   case PVR_TRANSFER_PBE_PIXEL_SRC_YUV_PACKED:
-   case PVR_TRANSFER_PBE_PIXEL_SRC_YVU_PACKED:
       return 1U;
 
    case PVR_TRANSFER_PBE_PIXEL_SRC_NUM:
@@ -1104,12 +1100,6 @@ uint32_t pvr_pbe_pixel_num_loads(enum pvr_transfer_pbe_pixel_src pbe_format)
 bool pvr_pbe_pixel_is_norm(enum pvr_transfer_pbe_pixel_src pbe_format)
 {
    switch (pbe_format) {
-   case PVR_TRANSFER_PBE_PIXEL_SRC_Y_U_V:
-   case PVR_TRANSFER_PBE_PIXEL_SRC_YUV_PACKED:
-
-   case PVR_TRANSFER_PBE_PIXEL_SRC_Y_UV_INTERLEAVED:
-   case PVR_TRANSFER_PBE_PIXEL_SRC_YVU_PACKED:
-
    case PVR_TRANSFER_PBE_PIXEL_SRC_F16F16:
    case PVR_TRANSFER_PBE_PIXEL_SRC_U16NORM:
    case PVR_TRANSFER_PBE_PIXEL_SRC_S16NORM:
@@ -1206,9 +1196,6 @@ uint32_t pvr_pbe_pixel_size(enum pvr_transfer_pbe_pixel_src pbe_format)
    case PVR_TRANSFER_PBE_PIXEL_SRC_DMRG_D32U_D24S8:
    case PVR_TRANSFER_PBE_PIXEL_SRC_CONV_S8D24_D24S8:
 
-   case PVR_TRANSFER_PBE_PIXEL_SRC_YUV_PACKED:
-   case PVR_TRANSFER_PBE_PIXEL_SRC_YVU_PACKED:
-
    case PVR_TRANSFER_PBE_PIXEL_SRC_MASK16:
    case PVR_TRANSFER_PBE_PIXEL_SRC_MASK32:
       return 1;
@@ -1235,9 +1222,6 @@ uint32_t pvr_pbe_pixel_size(enum pvr_transfer_pbe_pixel_src pbe_format)
    case PVR_TRANSFER_PBE_PIXEL_SRC_SMRG_D24S8_D32S8:
    case PVR_TRANSFER_PBE_PIXEL_SRC_SMRG_D32S8_D32S8:
    case PVR_TRANSFER_PBE_PIXEL_SRC_DMRG_D32S8_D32S8:
-
-   case PVR_TRANSFER_PBE_PIXEL_SRC_Y_U_V:
-   case PVR_TRANSFER_PBE_PIXEL_SRC_Y_UV_INTERLEAVED:
 
    case PVR_TRANSFER_PBE_PIXEL_SRC_MASK48:
    case PVR_TRANSFER_PBE_PIXEL_SRC_MASK64:
